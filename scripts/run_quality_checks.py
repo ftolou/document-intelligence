@@ -10,7 +10,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TARGETS = [
-    "src/receipt_intelligence/query",
+    "src/receipt_intelligence/rag",
+    "src/receipt_intelligence/rag_sql",
     "src/receipt_intelligence/observability",
     "src/receipt_intelligence/web",
     "src/receipt_intelligence/services/artifact_service.py",
@@ -39,7 +40,6 @@ TARGETS = [
     "scripts/run_test_profile.py",
     "scripts/check_dependency_compatibility.py",
     "scripts/run_quality_checks.py",
-    "scripts/phase6_cutover.py",
     "scripts/verify_runtime_layout.py",
 ]
 

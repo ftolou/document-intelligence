@@ -44,7 +44,6 @@ def readiness():
 
 @core_bp.get("/api/config")
 def config():
-    services = get_app_services()
     return jsonify(
         {
             "ollama_url": settings.OLLAMA_URL,
