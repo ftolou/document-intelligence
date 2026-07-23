@@ -6,18 +6,18 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from receipt_intelligence.rag.candidate_resolver import CandidateResolver, CandidateResolverConfig
+from receipt_intelligence.rag.embedding_client import OllamaEmbeddingClient
+from receipt_intelligence.rag.item_retriever import ItemSemanticRetriever
 from receipt_intelligence.rag_sql.answer_formatter import (
     AnswerFormatterConfig,
     EvidenceBoundAnswerFormatter,
 )
-from receipt_intelligence.rag.embedding_client import OllamaEmbeddingClient
-from receipt_intelligence.rag.item_retriever import ItemSemanticRetriever
 from receipt_intelligence.rag_sql.engine import RagSqlEngine
-from receipt_intelligence.rag_sql.graph_state import RagSqlGraphConfig
 from receipt_intelligence.rag_sql.executor import (
     ReadOnlySqlExecutor,
     ReadOnlySqlExecutorConfig,
 )
+from receipt_intelligence.rag_sql.graph_state import RagSqlGraphConfig
 from receipt_intelligence.rag_sql.models import RagSqlResponse
 from receipt_intelligence.rag_sql.planner import RagSqlPlanner, RagSqlPlannerConfig
 from receipt_intelligence.rag_sql.question_analyzer import (

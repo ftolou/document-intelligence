@@ -12,13 +12,13 @@ from receipt_intelligence.rag_sql.answer_formatter import (
     validate_answer_formatter_result,
 )
 from receipt_intelligence.rag_sql.engine import RagSqlEngine, RagSqlRetrievalError
-from receipt_intelligence.rag_sql.graph import RAG_SQL_GRAPH_VERSION
-from receipt_intelligence.rag_sql.graph_state import RagSqlGraphConfig, RagSqlGraphState
 from receipt_intelligence.rag_sql.executor import (
     ReadOnlySqlExecutor,
     ReadOnlySqlExecutorConfig,
     SqlExecutionError,
 )
+from receipt_intelligence.rag_sql.graph import RAG_SQL_GRAPH_VERSION
+from receipt_intelligence.rag_sql.graph_state import RagSqlGraphConfig, RagSqlGraphState
 from receipt_intelligence.rag_sql.models import (
     RAG_SQL_ANALYSIS_SCHEMA_VERSION,
     RAG_SQL_ENGINE_VERSION,
@@ -44,15 +44,15 @@ from receipt_intelligence.rag_sql.question_analyzer import (
     QuestionAnalyzerConfig,
     RagSqlQuestionAnalyzer,
 )
-from receipt_intelligence.rag_sql.schema_catalog import (
-    DEFAULT_SCHEMA_CATALOG,
-    SCHEMA_CATALOG_VERSION,
-    StaticSchemaCatalog,
-)
 from receipt_intelligence.rag_sql.runtime import (
     RagSqlRuntime,
     RagSqlRuntimeConfig,
     build_rag_sql_runtime_from_settings,
+)
+from receipt_intelligence.rag_sql.schema_catalog import (
+    DEFAULT_SCHEMA_CATALOG,
+    SCHEMA_CATALOG_VERSION,
+    StaticSchemaCatalog,
 )
 from receipt_intelligence.rag_sql.validator import (
     RagSqlValidator,

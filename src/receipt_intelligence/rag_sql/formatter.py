@@ -19,7 +19,6 @@ from receipt_intelligence.rag_sql.models import (
     ValidatedSqlPlan,
 )
 
-
 _DESCRIPTIVE_OPERATIONS = frozenset({"describe_product", "identify_brand", "identify_product_type"})
 APPROVED_EVIDENCE_FIELDS = frozenset(
     {
