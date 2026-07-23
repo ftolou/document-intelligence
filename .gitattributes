@@ -1,1 +1,36 @@
-* text=auto eol=lf
+# Normalize all text files in Git
+* text=auto
+
+# Source code and configuration: always store as LF
+*.py       text eol=lf
+*.js       text eol=lf
+*.ts       text eol=lf
+*.json     text eol=lf
+*.yml      text eol=lf
+*.yaml     text eol=lf
+*.toml     text eol=lf
+*.ini      text eol=lf
+*.cfg      text eol=lf
+*.md       text eol=lf
+*.txt      text eol=lf
+*.html     text eol=lf
+*.css      text eol=lf
+*.sh       text eol=lf
+Dockerfile text eol=lf
+*.dockerfile text eol=lf
+
+# Windows scripts may remain CRLF
+*.ps1      text eol=crlf
+*.bat      text eol=crlf
+*.cmd      text eol=crlf
+
+# Binary files must never be modified
+*.png      binary
+*.jpg      binary
+*.jpeg     binary
+*.gif      binary
+*.pdf      binary
+*.zip      binary
+*.ico      binary
+*.woff     binary
+*.woff2    binary
