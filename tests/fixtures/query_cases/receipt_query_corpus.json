@@ -1,0 +1,91 @@
+{
+  "schema_version": "receipt_query_corpus_v2",
+  "receipts": [
+    {
+      "job_id": "june_dm",
+      "merchant": {"name": "dm-drogerie markt"},
+      "date": "2026-06-12",
+      "currency": "EUR",
+      "totals": {"grand_total": 10.0, "paid_total": 10.0},
+      "items": [
+        {"description": "HEAD&SHOULDERS CLASSIC", "category": "item", "category_key": "personal_care/shampoo", "line_total": 3.95},
+        {"description": "WASSER", "category": "item", "category_key": "groceries_beverages", "line_total": 0.79}
+      ],
+      "human_review": {"status": "approved"}
+    },
+    {
+      "job_id": "june_rewe",
+      "merchant": {"name": "REWE"},
+      "date": "2026-06-18",
+      "currency": "EUR",
+      "totals": {"grand_total": 20.0, "paid_total": 20.0},
+      "items": [
+        {"description": "MILCH", "category": "item", "category_key": "groceries_dairy_eggs", "line_total": 2.0},
+        {"description": "SCHUHE", "category": "item", "category_key": "clothing", "line_total": 49.0}
+      ],
+      "human_review": {"status": "approved"}
+    },
+    {
+      "job_id": "july_rewe",
+      "merchant": {"name": "REWE"},
+      "date": "2026-07-05",
+      "currency": "EUR",
+      "totals": {"grand_total": 45.0, "paid_total": 45.0},
+      "items": [
+        {"description": "BROT", "category": "item", "category_key": "groceries_bakery", "line_total": 3.0},
+        {"description": "WASSER", "category": "item", "category_key": "groceries_beverages", "line_total": 0.99}
+      ],
+      "human_review": {"status": "approved"}
+    }
+  ],
+  "cases": [
+    {
+      "id": "merchant_month_sum",
+      "question": "How much did I spend at REWE in 2026-06?",
+      "expected_tools": ["analytical_query"],
+      "expected_result_type": "aggregate",
+      "expected_entity": "receipts",
+      "expected_value": 20.0
+    },
+    {
+      "id": "semantic_item_sum",
+      "question": "How much did I spend on shampoo?",
+      "expected_tools": ["analytical_query"],
+      "expected_result_type": "aggregate",
+      "expected_entity": "items",
+      "expected_value": 3.95
+    },
+    {
+      "id": "merchant_grouping",
+      "question": "Break down my spending by merchant in 2026.",
+      "expected_tools": ["analytical_query"],
+      "expected_result_type": "grouped",
+      "expected_entity": "receipts",
+      "expected_groups": {"rewe": 65.0, "dm": 10.0}
+    },
+    {
+      "id": "receipt_count",
+      "question": "How many receipts do I have from REWE?",
+      "expected_tools": ["analytical_query"],
+      "expected_result_type": "aggregate",
+      "expected_entity": "receipts",
+      "expected_value": 2
+    },
+    {
+      "id": "cheapest_unique_item",
+      "question": "show me the cheapest Item, show only the Item and not on every receipt",
+      "expected_tools": ["analytical_query"],
+      "expected_result_type": "item_matches",
+      "expected_entity": "items",
+      "expected_row": {"description": "WASSER", "line_total": 0.79}
+    },
+    {
+      "id": "german_merchant_sum",
+      "question": "Wie viel habe ich bei REWE ausgegeben?",
+      "expected_tools": ["analytical_query"],
+      "expected_result_type": "aggregate",
+      "expected_entity": "receipts",
+      "expected_value": 65.0
+    }
+  ]
+}

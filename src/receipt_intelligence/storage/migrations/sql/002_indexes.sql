@@ -1,0 +1,10 @@
+CREATE INDEX IF NOT EXISTS idx_receipts_job ON receipts(job_id);
+CREATE INDEX IF NOT EXISTS idx_receipts_merchant ON receipts(merchant_normalized);
+CREATE INDEX IF NOT EXISTS idx_receipts_date ON receipts(receipt_date);
+CREATE INDEX IF NOT EXISTS idx_items_receipt ON receipt_items(receipt_id);
+CREATE INDEX IF NOT EXISTS idx_items_category ON receipt_items(category);
+CREATE INDEX IF NOT EXISTS idx_review_queue_status ON review_queue(queue_status);
+CREATE INDEX IF NOT EXISTS idx_review_queue_job ON review_queue(job_id);
+CREATE INDEX IF NOT EXISTS idx_review_queue_fingerprint ON review_queue(content_fingerprint);
+CREATE INDEX IF NOT EXISTS idx_review_queue_hash ON review_queue(file_sha256);
+CREATE INDEX IF NOT EXISTS idx_dupes_job ON duplicate_candidates(job_id);

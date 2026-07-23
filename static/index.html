@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title id="appTitle">Receipt Intelligence</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main class="page app-shell">
+    <header class="hero app-header">
+      <div class="brand-block">
+        <div class="brand-mark" aria-hidden="true">RI</div>
+        <div>
+          <p class="eyebrow">Local-first receipt intelligence</p>
+          <h1 id="appHeading">Receipt Intelligence</h1>
+          <p class="sub">Extract, review, approve, and query receipt data with an auditable local AI pipeline.</p>
+        </div>
+      </div>
+      <div class="header-meta">
+        <span class="system-indicator"><span class="system-dot" aria-hidden="true"></span>Local workspace</span>
+        <div class="badge neutral" id="appVersionBadge">version</div>
+      </div>
+    </header>
+
+    <nav class="tab-nav primary-nav" aria-label="Main workflow tabs">
+      <button type="button" class="tab-button active" data-tab-target="run" aria-selected="true"><span>Process</span><small>Single receipt</small></button>
+      <button type="button" class="tab-button" data-tab-target="batch" aria-selected="false"><span>Batch</span><small>Folder runner</small></button>
+      <button type="button" class="tab-button" data-tab-target="review" aria-selected="false"><span>Review</span><small>Approval queue</small></button>
+      <button type="button" class="tab-button" data-tab-target="ask" aria-selected="false"><span>Ask</span><small>Receipt analytics</small></button>
+      <button type="button" class="tab-button" data-tab-target="data" aria-selected="false"><span>Receipt data</span><small>Maintenance</small></button>
+    </nav>
+
+    <section class="tab-panel active" id="tab-run" data-tab-panel="run">
+    <section class="card">
+      <form id="uploadForm">
+        <div class="field full">
+          <label>Receipt image</label>
+          <label class="fileDrop">
+            <input id="file" name="file" type="file" accept="image/*" required />
+            <span>Choose PNG/JPG/WebP/TIFF receipt image</span>
+          </label>
+        </div>
+
+        <div class="llm-box">
+          <h2>LLM-main parser</h2>
+          <div class="grid">
+            <div class="field">
+              <label>Ollama URL</label>
+              <input name="ollama_url" id="ollama_url" />
+              <small>Docker users often need <code>http://host.docker.internal:11434</code>.</small>
+            </div>
+            <div class="field">
+              <label>Ollama model</label>
+              <input name="model" id="model" />
+            </div>
+            <div class="field">
+              <label>Context tokens</label>
+              <input name="num_ctx" id="num_ctx" type="number" />
+            </div>
+            <div class="field">
+              <label>Predict tokens</label>
+              <input name="num_predict" id="num_predict" type="number" />
+            </div>
+            <div class="field">
+              <label>OCR language</label>
+              <input name="ocr_lang" id="ocr_lang" />
+              <small>Use <code>german</code> for German receipts.</small>
+            </div>
+            <div class="field">
+              <label>OCR device</label>
+              <input name="ocr_device" id="ocr_device" />
+            </div>
+          </div>
+        </div>
+
+        <div class="llm-box">
+          <h2>Optional VLM evidence layer</h2>
+          <div class="grid">
+            <div class="field">
+              <label class="checkline"><input name="vlm_enabled" id="vlm_enabled" type="checkbox" /> Enable VLM-first structured evidence</label>
+              <small>Enabling this runs PaddleOCR-VL first for layout regions, OCRs detected crops, then sends compact region evidence to Gemma.</small>
+            </div>
+            <div class="field">
+              <label>VLM backend</label>
+              <input name="vlm_backend" id="vlm_backend" />
+              <small>Use <code>http_service</code>. The main app routes old <code>paddleocr_vl</code> values to the separate service unless local VLM is explicitly allowed.</small>
+            </div>
+            <div class="field">
+              <label>VLM service URL</label>
+              <input name="vlm_service_url" id="vlm_service_url" />
+              <small>Default in Docker Compose: <code>http://receipt-vlm:7870</code>.</small>
+            </div>
+          </div>
+        </div>
+
+        <div class="llm-box">
+          <h2>LLM-first item categorization</h2>
+          <div class="grid">
+            <div class="field">
+              <label class="checkline"><input name="categorization_enabled" id="categorization_enabled" type="checkbox" /> Enable item categorization</label>
+              <small>Runs after final validation. Categorization never changes extracted totals/items; it only appends category metadata.</small>
+            </div>
+            <div class="field">
+              <label>Categorization model</label>
+              <input name="categorization_model" id="categorization_model" />
+              <small>Defaults to the same Ollama model as the parser.</small>
+            </div>
+            <div class="field">
+              <label>Category context tokens</label>
+              <input name="categorization_num_ctx" id="categorization_num_ctx" type="number" />
+            </div>
+            <div class="field">
+              <label>Category predict tokens</label>
+              <input name="categorization_num_predict" id="categorization_num_predict" type="number" />
+            </div>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button id="run-button" type="submit">Run parser</button>
+          <small class="v14-note">OCR uses the V13 Docker/Paddle runtime; parsing uses the V14 LLM-main architecture.</small>
+        </div>
+      </form>
+    </section>
+
+
+    <section class="card hidden" id="statusCard">
+      <div class="progress-header">
+        <div>
+          <h2>Live pipeline feedback</h2>
+          <p id="live-status">Waiting for job...</p>
+        </div>
+        <div id="state" class="badge neutral">queued</div>
+      </div>
+      <div class="progress-bar"><div id="progress-bar-fill"></div></div>
+      <div class="rowBetween">
+        <small>Job ID</small>
+        <code id="jobId"></code>
+      </div>
+
+      <h3>Timeline</h3>
+      <ul id="events" class="timeline static"></ul>
+
+      <h3>Artifacts</h3>
+      <div id="artifacts" class="links artifacts"></div>
+
+      <h3>Extracted receipt information</h3>
+      <div id="receiptSummary" class="receipt-summary empty">Run a receipt to see merchant, totals, payments, taxes, items and validation issues here.</div>
+
+      <h3>Human review</h3>
+      <div id="humanReviewPanel" class="review-panel empty">Run a receipt to edit key fields, approve/reject the result, and save an auditable human-review record.</div>
+
+      <h3>Final JSON preview</h3>
+      <pre id="preview"></pre>
+    </section>
+    </section>
+
+    <section class="tab-panel" id="tab-batch" data-tab-panel="batch" hidden>
+    <section class="card">
+      <form id="batchForm">
+        <div class="batch-heading">
+          <div>
+            <h2>Batch folder runner</h2>
+            <p class="sub small">Run the same pipeline serially for every supported image in a mounted server folder. In Docker Compose, put photos into <code>./var/batch_input</code> on the host and use <code>/app/var/batch_input</code> here.</p>
+          </div>
+          <div class="badge neutral">Serial GPU-safe batch</div>
+        </div>
+        <div class="grid">
+          <div class="field full">
+            <label>Server folder path</label>
+            <input name="folder_path" id="batch_folder_path" placeholder="/app/var/batch_input" />
+            <small>Relative paths are resolved under <code>/app/var/batch_input</code>. Absolute paths are allowed only inside that mounted folder by default.</small>
+          </div>
+          <div class="field">
+            <label class="checkline"><input name="recursive" id="batch_recursive" type="checkbox" /> Include subfolders</label>
+          </div>
+          <div class="field">
+            <label>Maximum files</label>
+            <input name="max_files" id="batch_max_files" type="number" min="1" value="250" />
+          </div>
+        </div>
+        <div class="form-actions">
+          <button id="batch-run-button" type="submit">Run folder batch</button>
+          <small class="v14-note">Batch execution is serial by design, so VLM/Gemma do not compete for GPU memory.</small>
+        </div>
+      </form>
+    </section>
+
+    <section class="card hidden" id="batchStatusCard">
+      <div class="progress-header">
+        <div>
+          <h2>Batch feedback</h2>
+          <p id="batch-live-status">Waiting for batch...</p>
+        </div>
+        <div id="batch-state" class="badge neutral">queued</div>
+      </div>
+      <div class="progress-bar"><div id="batch-progress-bar-fill"></div></div>
+      <div class="rowBetween">
+        <small>Batch ID</small>
+        <code id="batchJobId"></code>
+      </div>
+      <h3>Batch timeline</h3>
+      <ul id="batchEvents" class="timeline static"></ul>
+      <h3>Batch artifacts</h3>
+      <div id="batchArtifacts" class="links artifacts"></div>
+      <h3>Batch results</h3>
+      <div id="batchSummary" class="receipt-summary empty">Run a folder batch to see every receipt decision here.</div>
+    </section>
+
+
+    </section>
+
+
+    <section class="tab-panel" id="tab-review" data-tab-panel="review" hidden>
+      <section class="card" id="reviewQueueCard">
+        <div class="batch-heading">
+          <div>
+            <h2>Review Queue</h2>
+            <p class="sub small">Batch and single runs are stored here as pending, rejected, auto-validated or duplicate candidates. Approve only trusted receipts before they enter the Ask/RAG database.</p>
+          </div>
+          <div class="badge neutral" id="reviewQueueBadge">Queue not loaded</div>
+        </div>
+        <div class="form-actions compact-actions">
+          <label class="field inline-field">
+            <span>Status filter</span>
+            <select id="reviewQueueFilter">
+              <option value="all">All</option>
+              <option value="needs_review">Needs review</option>
+              <option value="duplicate_candidate">Duplicate candidates</option>
+              <option value="rejected">Rejected</option>
+              <option value="auto_validated">Auto-validated</option>
+              <option value="approved">Approved</option>
+              <option value="imported">Imported</option>
+            </select>
+          </label>
+          <button id="refresh-review-queue-button" type="button">Refresh queue</button>
+        </div>
+        <div id="reviewQueueResult" class="receipt-summary empty">Run a receipt or batch to populate the review queue.</div>
+      </section>
+    </section>
+
+    <section class="tab-panel" id="tab-ask" data-tab-panel="ask" hidden>
+      <section class="ask-workspace" id="askReceiptsCard">
+        <header class="section-hero ask-hero">
+          <div>
+            <p class="section-kicker">Approved receipt data</p>
+            <h2>Ask your receipts</h2>
+            <p class="sub">Find receipts and products, compare spending, or generate safe read-only analytics from natural language.</p>
+          </div>
+          <div class="query-heading-badges">
+            <div class="badge ok" id="askReceiptsEngineBadge">RAG + SQL</div>
+          </div>
+        </header>
+
+        <section class="query-composer" aria-labelledby="askQueryLabel">
+          <form id="askReceiptsForm">
+            <div class="query-control-row query-engine-summary">
+              <div class="engine-principle">
+                <strong>RAG-SQL with LangGraph</strong>
+                <span>Semantic product resolution, validated read-only SQL, and deterministic result formatting.</span>
+              </div>
+              <div class="engine-principle">
+                <strong>Reviewed data only</strong>
+                <span>Answers are grounded in approved receipt records and reviewed product semantics.</span>
+              </div>
+            </div>
+
+            <div class="field full query-input-field">
+              <label id="askQueryLabel" for="askReceiptsQuestion">Question</label>
+              <textarea id="askReceiptsQuestion" name="question" rows="3" placeholder="Ask about products, receipts, merchants, dates, or spending…" aria-describedby="askQueryHelp"></textarea>
+              <small id="askQueryHelp">Press Enter to submit. Use Shift+Enter for a new line.</small>
+            </div>
+
+            <div class="query-examples" aria-label="Example receipt questions">
+              <span>Examples</span>
+              <button type="button" class="query-example-chip" data-query-example="Wie viel habe ich insgesamt ausgegeben?">Total spending</button>
+              <button type="button" class="query-example-chip" data-query-example="Zeige mir die Quittung mit Vittel.">Receipt with Vittel</button>
+              <button type="button" class="query-example-chip" data-query-example="Welche Produkte habe ich bei LIDL gekauft?">Products at LIDL</button>
+            </div>
+
+            <div class="form-actions query-actions">
+              <button id="ask-receipts-button" class="button-primary" type="submit">
+                <span class="button-label">Ask receipts</span>
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <section id="askQueryProgress" class="query-progress hidden" aria-live="polite" aria-atomic="true">
+          <div class="query-progress-heading">
+            <div class="query-spinner" aria-hidden="true"></div>
+            <div>
+              <strong id="askQueryProgressTitle">Working on your question…</strong>
+              <span id="askQueryProgressMessage">Understanding the request</span>
+            </div>
+            <time id="askQueryElapsed">0s</time>
+          </div>
+          <ol class="query-progress-steps">
+            <li data-query-step="analysis" class="active">Understand question</li>
+            <li data-query-step="retrieval">Search approved receipts</li>
+            <li data-query-step="resolution">Resolve matching products</li>
+            <li data-query-step="planning">Prepare query</li>
+            <li data-query-step="execution">Validate and execute</li>
+          </ol>
+        </section>
+
+        <section class="query-result-shell" aria-labelledby="askResultHeading">
+          <div class="query-result-header">
+            <div>
+              <p class="section-kicker">Result</p>
+              <h3 id="askResultHeading">Receipt answer</h3>
+            </div>
+            <span id="askResultStatus" class="badge neutral">Ready</span>
+          </div>
+          <div id="askReceiptsResult" class="query-empty-state" aria-live="polite">
+            <div class="empty-state-icon" aria-hidden="true">?</div>
+            <strong>Ask a question about your approved receipts</strong>
+            <span>Results, receipt links, and optional technical diagnostics will appear here.</span>
+          </div>
+        </section>
+
+      </section>
+    </section>
+
+    <section class="tab-panel" id="tab-data" data-tab-panel="data" hidden>
+      <section class="data-workspace" id="receiptDataWorkspace">
+        <header class="section-hero data-hero">
+          <div>
+            <p class="section-kicker">Approved analytics source</p>
+            <h2>Receipt data &amp; maintenance</h2>
+            <p class="sub">Inspect the approved receipt database used by Ask, refresh its status, open records for review, or remove obsolete data.</p>
+          </div>
+          <div class="query-heading-badges">
+            <div class="badge neutral" id="receiptDbBadge">DB not loaded</div>
+          </div>
+        </header>
+
+        <section class="data-overview-grid" aria-label="Receipt database overview">
+          <article class="card data-panel">
+            <div class="data-panel-header">
+              <div>
+                <p class="section-kicker">Overview</p>
+                <h3>Database status</h3>
+                <p class="sub small">Approved receipts and purchase items available to Ask Your Receipts.</p>
+              </div>
+              <button id="refresh-receipt-db-button" type="button" class="button-secondary">Refresh status</button>
+            </div>
+            <div id="receiptDbSummary" class="receipt-summary empty">Open this tab or refresh to inspect the local SQLite analytics database.</div>
+          </article>
+
+          <article class="card data-panel data-maintenance-panel">
+            <div class="data-panel-header">
+              <div>
+                <p class="section-kicker">Maintenance</p>
+                <h3>Approved receipt records</h3>
+                <p class="sub small">Open individual receipts or remove records that should no longer be used by analytics and RAG.</p>
+              </div>
+              <button id="refresh-receipt-list-button" type="button" class="button-secondary">Refresh receipt list</button>
+            </div>
+            <div class="maintenance-warning" role="note">
+              <strong>Destructive action</strong>
+              <span>Deleting approved receipts also removes their derived searchable item records. This action does not recreate missing data.</span>
+            </div>
+            <div id="receiptDbList" class="receipt-summary empty">Refresh the list to manage approved/imported database records.</div>
+            <div class="maintenance-actions">
+              <button id="delete-all-receipts-button" type="button" class="danger-button">Delete all approved receipts</button>
+            </div>
+          </article>
+        </section>
+      </section>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>

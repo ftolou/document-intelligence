@@ -1,0 +1,40 @@
+# Explicit build override for CI/CD and release builds.
+# The default docker-compose.yml intentionally has no build sections so normal
+# local runs never rebuild heavy images by accident.
+#
+# Build order:
+#   1) receipt-app-runtime
+#   2) receipt-vlm-runtime
+#   3) receipt-app
+#   4) receipt-vlm
+
+services:
+  receipt-app-runtime:
+    image: receipt-app-runtime:py311
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.app-runtime
+    profiles: ["build"]
+
+  receipt-vlm-runtime:
+    image: receipt-vlm-runtime:cu126
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.vlm-runtime-cu126
+    profiles: ["build"]
+
+  receipt-app:
+    image: paddle-gemma-receipt-app:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.app
+      args:
+        APP_RUNTIME_IMAGE: receipt-app-runtime:py311
+
+  receipt-vlm:
+    image: paddle-gemma-receipt-vlm:gpu-python-cu126
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.vlm-app
+      args:
+        VLM_RUNTIME_IMAGE: receipt-vlm-runtime:cu126

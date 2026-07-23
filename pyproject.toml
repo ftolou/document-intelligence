@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "document-intelligence-pipeline"
+version = "1.0.0"
+description = "Local-first OCR/VLM/LLM document intelligence pipeline, currently optimized for receipts."
+requires-python = ">=3.11"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+receipt_intelligence = ["prompts/*.txt", "storage/migrations/sql/*.sql"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = [
+    "unit: fast isolated tests",
+    "integration: database or service integration",
+    "regression: saved receipt regression suite",
+    "gpu: requires the GPU VLM service",
+    "ollama: requires a reachable Ollama model",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = [
+    "var",
+    "model_cache",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["B011"]
+
+[tool.mypy]
+python_version = "3.11"
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+exclude = "^(var|model_cache)/"

@@ -1,0 +1,216 @@
+"""Regression tests for the scoped v1.24.1 reliability fixes."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from unittest.mock import patch
+
+from receipt_intelligence.extraction.categorization.items import (
+    build_categorization_prompt,
+    categorize_receipt_items_llm,
+)
+from receipt_intelligence.extraction.parsing.llm_parser import run_llm_main_parser
+from receipt_intelligence.extraction.repair.item_order import sort_items_by_printed_order
+from receipt_intelligence.extraction.repair.vertical_price_stack import (
+    _fused_region_table_candidate,
+)
+
+
+def _valid_receipt_without_overall_confidence() -> dict:
+    return {
+        "schema_version": "v14_6_llm_receipt_1",
+        "parse_status": "ok",
+        "currency": "EUR",
+        "merchant": {
+            "name": "REWE",
+            "address": None,
+            "tax_id": None,
+            "source_line_ids": ["line_001"],
+        },
+        "date": "2026-07-14",
+        "time": "12:00:00",
+        "items": [
+            {
+                "description": "MILCH",
+                "line_total": 1.29,
+                "category": "item",
+                "source_line_ids": ["line_010"],
+            }
+        ],
+        "taxes": [],
+        "totals": {
+            "subtotal": 1.29,
+            "tax_total": None,
+            "grand_total": 1.29,
+            "paid_total": 1.29,
+            "change": None,
+            "source_line_ids": ["line_020"],
+        },
+        "payments": [],
+        "unresolved_rows": [],
+        "warnings": [],
+    }
+
+
+def test_missing_overall_confidence_does_not_trigger_full_llm_retry(tmp_path: Path) -> None:
+    ocr_path = tmp_path / "ocr.json"
+    ocr_path.write_text(
+        json.dumps({"image_width": 100, "image_height": 100, "words": [], "lines": []}),
+        encoding="utf-8",
+    )
+    raw = json.dumps(_valid_receipt_without_overall_confidence())
+
+    with patch(
+        "receipt_intelligence.extraction.parsing.llm_parser.ollama_generate",
+        return_value=raw,
+    ) as generate:
+        result = run_llm_main_parser(
+            ocr_json_path=ocr_path,
+            ollama_url="http://unused",
+            model="test-model",
+            json_retry_count=2,
+        )
+
+    assert generate.call_count == 1
+    assert len(result["attempts"]) == 1
+    assert result["attempts"][0]["status"] == "ok"
+    assert result["receipt"]["overall_confidence"] == 0.6
+    assert any("without an LLM retry" in warning for warning in result["receipt"]["warnings"])
+
+
+def test_sequence_merge_preserves_printed_order_across_line_namespaces() -> None:
+    region_sequence = [
+        {"description": "APPLE", "source_line_ids": ["region_line_002"]},
+        {"description": "CHEESE", "source_line_ids": ["region_line_004"]},
+    ]
+    table_sequence = [
+        {"description": "APPLE", "source_line_ids": ["line_010"]},
+        {"description": "BREAD", "source_line_ids": ["line_011"]},
+        {"description": "CHEESE", "source_line_ids": ["line_012"]},
+    ]
+    mixed_items = [
+        {"description": "CHEESE", "line_total": 3.0},
+        {"description": "APPLE", "line_total": 1.0},
+        {"description": "BREAD", "line_total": 2.0},
+    ]
+
+    ordered = sort_items_by_printed_order(
+        mixed_items,
+        sequences=[region_sequence, table_sequence],
+    )
+
+    assert [item["description"] for item in ordered] == ["APPLE", "BREAD", "CHEESE"]
+
+
+def test_fused_recovery_preserves_printed_order_when_sources_are_mixed() -> None:
+    receipt = {
+        "items": [
+            {"description": "APPLE", "product_description": "APPLE", "line_total": 1.0},
+            {"description": "CHEESE", "product_description": "CHEESE", "line_total": 3.0},
+        ]
+    }
+    visual_evidence = {
+        "best_preferred_item_block": {
+            "rows": [
+                {
+                    "row_id": "region_line_002",
+                    "description_candidate": "APPLE",
+                    "amount": 1.0,
+                    "source_line_ids": ["region_line_002"],
+                },
+                {
+                    "row_id": "region_line_004",
+                    "description_candidate": "CHEESE",
+                    "amount": 3.0,
+                    "source_line_ids": ["region_line_004"],
+                },
+            ],
+            "unmatched_product_rows": [],
+        }
+    }
+    table_arbitration = {
+        "ocr_layout_item_candidates": [
+            {
+                "row_id": "row_010",
+                "description": "APPLE",
+                "line_total": 1.0,
+                "source_line_ids": ["line_010"],
+                "evidence_text": "APPLE 1,00",
+            },
+            {
+                "row_id": "row_011",
+                "description": "BREAD",
+                "line_total": 2.0,
+                "source_line_ids": ["line_011"],
+                "evidence_text": "BREAD 2,00",
+            },
+            {
+                "row_id": "row_012",
+                "description": "CHEESE",
+                "line_total": 3.0,
+                "source_line_ids": ["line_012"],
+                "evidence_text": "CHEESE 3,00",
+            },
+        ]
+    }
+
+    items, diagnostics = _fused_region_table_candidate(
+        receipt=receipt,
+        target_total=6.0,
+        visual_evidence=visual_evidence,
+        table_arbitration=table_arbitration,
+    )
+
+    assert diagnostics["status"] == "balanced_without_residual_assignment"
+    assert [item["description"] for item in items] == ["APPLE", "BREAD", "CHEESE"]
+
+
+def test_categorizer_caps_incomplete_semantic_expansion_without_dictionary() -> None:
+    receipt = {
+        "merchant": {"name": "REWE"},
+        "currency": "EUR",
+        "items": [
+            {
+                "description": "BIO TK SCHNITTLA",
+                "product_description": "BIO TK SCHNITTLA",
+                "raw_description": "BIO TK SCHNITTLA",
+                "line_total": 0.79,
+                "category": "item",
+            }
+        ],
+    }
+    model_output = {
+        "schema_version": "v14_14_item_categories_1",
+        "items": [
+            {
+                "item_index": 0,
+                "description": "BIO TK SCHNITTLA",
+                "category_key": "groceries_meat_fish",
+                "category_group": "Food & Groceries",
+                "confidence": 1.0,
+                "text_certainty": "incomplete_or_unfamiliar",
+                "evidence_terms": ["BIO", "TK", "SCHNITTLA"],
+                "reason": "Schnittl refers to a meat product.",
+            }
+        ],
+        "warnings": [],
+    }
+
+    with patch(
+        "receipt_intelligence.extraction.categorization.items.ollama_generate",
+        return_value=json.dumps(model_output),
+    ):
+        result = categorize_receipt_items_llm(
+            receipt,
+            ollama_url="http://unused",
+            model="test-model",
+        )
+
+    item = result["receipt"]["items"][0]
+    assert item["category_key"] == "groceries_meat_fish"
+    assert item["category_confidence"] <= 0.60
+    assert item["category_review_required"] is True
+    assert "text_certainty:incomplete_or_unfamiliar" in item["category_review_reasons"]
+    assert "semantic_expansion_not_explicit_in_receipt_text" in item["category_review_reasons"]
+    assert "Never complete, translate, or invent" in build_categorization_prompt(receipt)

@@ -1,0 +1,7 @@
+# Install together with application requirements for local development:
+#   python -m pip install -r requirements/app.txt -r requirements/dev.txt
+pytest>=8.2,<10
+pytest-cov>=5,<8
+ruff>=0.6,<1
+mypy>=1.10,<2
+pre-commit>=3.7,<5

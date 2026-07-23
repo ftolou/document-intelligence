@@ -1,0 +1,55 @@
+# Heavy CUDA/PaddleOCR-VL runtime image.
+# Build this only when CUDA base image, system deps, or requirements/vlm-gpu-cu126.txt change.
+FROM nvidia/cuda:12.6.3-cudnn-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+    CUDA_VISIBLE_DEVICES=0 \
+    FLAGS_selected_gpus=0 \
+    PADDLE_DEVICE=gpu:0 \
+    VLM_DEVICE=gpu:0 \
+    VLM_ENGINE=transformers \
+    VLM_SERVICE_RUNNER=python \
+    VLM_ALLOW_CPU_FALLBACK=0 \
+    FLAGS_use_mkldnn=0 \
+    FLAGS_use_onednn=0 \
+    FLAGS_enable_pir_api=0 \
+    FLAGS_enable_pir_in_executor=0
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-dev \
+    libglib2.0-0 \
+    libgl1 \
+    libgomp1 \
+    libstdc++6 \
+    curl \
+    git \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/python3 /usr/bin/python
+
+COPY requirements/vlm-gpu-cu126.txt /tmp/requirements-vlm-gpu-cu126.txt
+
+# PaddleOCR/PaddleX may bring a torch package indirectly.
+# Remove any torch stack and reinstall a matched cu126 torch/torchvision set.
+# Do not run CUDA import smoke tests at build time; the build container has no NVIDIA runtime.
+RUN python -m pip install --upgrade pip setuptools wheel \
+    && python -m pip install -r /tmp/requirements-vlm-gpu-cu126.txt \
+    && (python -m pip uninstall -y torch torchvision || true) \
+    && python -m pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cu126
+
+RUN mkdir -p /app/var/uploads /app/var/jobs /app/var/database /app/var/reports /app/var/batch_input /app/var/logs
+
+EXPOSE 7870
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
+    CMD curl -fsS http://localhost:7870/health || exit 1
+
+CMD ["python", "vlm_service.py"]

@@ -1,0 +1,20 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: python -m ruff check
+        language: system
+        types: [python]
+        files: ^(src/receipt_intelligence/(query|observability|web|runtime|extraction)/|tests/|scripts/(run_(tests|quality_checks|test_profile)|check_dependency_compatibility)\.py$)
+      - id: ruff-format
+        name: ruff format check
+        entry: python -m ruff format --check
+        language: system
+        types: [python]
+        files: ^(src/receipt_intelligence/(query|observability|web|runtime|extraction)/|tests/|scripts/(run_(tests|quality_checks|test_profile)|check_dependency_compatibility)\.py$)
+      - id: pytest-fast
+        name: pytest fast suite
+        entry: python -m pytest -m "not gpu and not ollama"
+        language: system
+        pass_filenames: false

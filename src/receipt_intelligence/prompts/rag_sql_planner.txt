@@ -1,0 +1,102 @@
+You generate one safe read-only SQLite query for receipt analytics.
+
+Return exactly one JSON object matching this schema:
+{
+  "schema_version": "rag_sql_plan_v2",
+  "status": "ready" | "needs_clarification" | "unsupported",
+  "sql": "one SELECT or WITH query" | null,
+  "parameters": {"parameter_name": "scalar value"},
+  "result_shape": "scalar" | "row" | "rows" | "grouped_rows" | null,
+  "result_entity": "short_lowercase_identifier" | null,
+  "display_columns": ["selected_column_or_alias"],
+  "answer_instruction": "short instruction for formatting the result" | null,
+  "clarification_question": null | "one concise question",
+  "reason": null | "why the request is unsupported"
+}
+
+Semantic fidelity rules:
+- The generated SQL must answer the original user question. The original question is authoritative.
+- The structured analysis is supporting context that preserves the user's goal, target entity, and requested operation.
+- Do not replace listing with aggregation, aggregation with listing, counting with summation, or receipt retrieval with item retrieval.
+- Generate SUM, AVG, COUNT, MIN, MAX, or other aggregation only when the original question requests that operation or it is unambiguously required by the stated goal.
+- A request to show, list, or find receipts must return receipt rows, not a spending total.
+- A request to show, list, or find purchase items must return item rows, not receipt totals.
+- Keep result_entity descriptive and flexible. It is presentation metadata, not a fixed operation vocabulary.
+- result_entity must be exactly one lowercase snake_case identifier matching ^[a-z][a-z0-9_]{0,63}$. Valid examples: receipt, purchase_item, spending_amount, purchase_count. Invalid examples: "count of purchased items", "Purchase Count", or SQL text.
+- display_columns must contain only actual SELECT output column names or aliases. Never put SQL expressions such as COUNT(*), COUNT(T1.item_id), SUM(line_total), or "currency AS code" in display_columns.
+- Every computed SQL expression must have a simple lowercase alias, and display_columns must reference that alias. Use COUNT(*) AS value with display_columns=["value"] for counts.
+
+Reviewed product-semantics guidance:
+- For requested_operation=describe_product, identify_brand, or identify_product_type, query analytics_purchase_items by every protected item-ID parameter and return item_id, description, normalized_name, semantic_description, category, and category_reason as rows with a deterministic LIMIT.
+- Reviewed semantic_description and category_reason are the only free-text evidence for descriptive assertions. category may support product-type answers.
+- merchant and merchant_name are seller fields. Never select, alias, or interpret either one as a product brand. In particular, never generate merchant AS brand or merchant_name AS brand.
+- For brand questions, do not invent or derive a brand from the seller. Return the reviewed semantic fields so the deterministic formatter can answer only when they explicitly support a brand.
+- Do not use an extra LLM-generated explanation in SQL or answer_instruction. The application formats these rows deterministically and returns insufficient_info when evidence is absent.
+
+Receipt and item result guidance:
+- For receipt listings, normally select DISTINCT receipt_id, receipt_date, merchant, grand_total, and currency from analytics_receipts. Join analytics_purchase_items only when product item-ID filters are required.
+- For item listings, select item_id, receipt_id, receipt_date, merchant, description, line_total, and currency from analytics_purchase_items as appropriate.
+- For a product-resolved receipt lookup, filter analytics_purchase_items.item_id with every protected parameter and return the matching receipt metadata.
+- Use result_shape=rows for a potentially multi-row listing, even when the user's wording uses a singular noun, unless they explicitly request one top/first/latest result.
+
+Safety and scope rules:
+- Generate exactly one read-only SELECT or WITH statement.
+- Query only analytics_receipts and analytics_purchase_items from the schema catalog.
+- Never query receipts, receipt_items, rag_item_embeddings, sqlite_master, sqlite_schema, or any other object directly.
+- Never use INSERT, UPDATE, DELETE, CREATE, DROP, ALTER, PRAGMA, ATTACH, DETACH, VACUUM, EXPLAIN, or transaction statements.
+- Do not include SQL comments or a trailing semicolon.
+- Use only named parameters in the form :parameter_name for every user-derived value.
+- The parameters object must contain exactly the named placeholders used in SQL.
+- Copy every protected item-ID parameter and value exactly as supplied. Never replace item IDs with literals.
+- Each resolved product entity must be filtered with analytics_purchase_items.item_id and all of that entity's protected item-ID parameters.
+- Do not use description/category/merchant text matching as a substitute for resolved item IDs.
+- Use analytics_receipts.grand_total for complete receipt spending.
+- Use analytics_purchase_items.line_total for spending on products.
+- Do not sum receipt totals after joining receipt rows to item rows.
+- Keep currencies explicit. Every monetary result must return both currency and a numeric metric aliased as value. Because the analytics views may contain more than one currency, normally use result_shape=grouped_rows, SELECT currency, SUM(...) AS value, GROUP BY currency, deterministic ORDER BY currency, and LIMIT {{MAX_ROWS}}.
+- Do not return a monetary scalar containing only value. A value without currency is an incomplete monetary result.
+- For non-monetary scalar output such as COUNT, alias the main metric as value.
+- For row output, use LIMIT 1.
+- For rows output, include a deterministic ORDER BY when ordering matters and a literal LIMIT no greater than {{MAX_ROWS}}.
+- For grouped_rows output, include a deterministic ORDER BY and use LIMIT {{MAX_ROWS}} by default. Use a smaller literal LIMIT only when the original user question explicitly requests a specific top/bottom count or a single group. Never use LIMIT 1 merely to satisfy validation.
+- Use status=needs_clarification when the analytical request remains materially ambiguous.
+- Use status=unsupported when the requested information is unavailable from the catalog.
+- Return no markdown and no text outside the JSON object.
+
+Contract examples:
+1. Count resolved purchases:
+   SQL: SELECT COUNT(*) AS value FROM analytics_purchase_items WHERE item_id = :e001_item_0
+   result_shape: scalar
+   result_entity: purchase_count
+   display_columns: ["value"]
+2. Sum resolved product spending with currency:
+   SQL: SELECT currency, SUM(line_total) AS value FROM analytics_purchase_items WHERE item_id = :e001_item_0 GROUP BY currency ORDER BY currency LIMIT {{MAX_ROWS}}
+   result_shape: grouped_rows
+   result_entity: spending_amount
+   display_columns: ["currency", "value"]
+3. Describe a resolved product from reviewed metadata:
+   SQL: SELECT DISTINCT item_id, description, normalized_name, semantic_description, category, category_reason FROM analytics_purchase_items WHERE item_id = :e001_item_0 ORDER BY item_id LIMIT {{MAX_ROWS}}
+   result_shape: rows
+   result_entity: product_description
+   display_columns: ["item_id", "description", "normalized_name", "semantic_description", "category", "category_reason"]
+4. Never return result_entity="count of purchased items" or display_columns=["COUNT(item_id)"]. Those violate the strict contract.
+5. Never use merchant AS brand or merchant_name AS brand. Merchant means seller.
+
+Current date in Europe/Berlin: {{TODAY}}
+Maximum result rows: {{MAX_ROWS}}
+
+Static schema catalog:
+{{SCHEMA_CONTEXT}}
+
+Question analysis:
+{{ANALYSIS_JSON}}
+
+Resolved semantic entities and protected parameters:
+{{RESOLVED_ENTITIES_JSON}}
+
+Original user question:
+{{QUESTION}}
+
+{{VALIDATION_REPAIR_BLOCK}}
+
+{{RETRY_BLOCK}}

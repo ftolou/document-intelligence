@@ -1,0 +1,139 @@
+name: document-intelligence-pipeline
+
+services:
+  receipt-app:
+    image: paddle-gemma-receipt-app:latest
+    ports:
+      - "7860:7860"
+    environment:
+      APP_HOST: "0.0.0.0"
+      APP_PORT: "7860"
+      APP_PROJECT_ROOT: "/app"
+      VAR_DIR: "/app/var"
+
+      # Stable PaddleOCR CPU runtime flags for the main app container.
+      FLAGS_enable_pir_api: "0"
+      FLAGS_use_mkldnn: "0"
+      FLAGS_use_onednn: "0"
+      OCR_ENABLE_MKLDNN: "0"
+      OCR_DEVICE: "cpu"
+      OCR_LANG: "german"
+      OCR_MAX_SIDE_LIMIT: "4000"
+      OCR_DET_LIMIT_SIDE_LEN: "4000"
+
+      # Ollama runs on the Windows host / laptop, not inside this compose stack.
+      OLLAMA_URL: "http://host.docker.internal:11434"
+      OLLAMA_MODEL: "gemma4"
+      OLLAMA_KEEP_ALIVE: "${OLLAMA_KEEP_ALIVE:-}"
+
+      # Keep the RAG-SQL Gemma runner resident and use one context size across
+      # analysis, candidate resolution, SQL planning, and bounded answer formatting. Different num_ctx
+      # values can cause Ollama to create/reload separate model runners.
+      RAG_SQL_LLM_KEEP_ALIVE: "${RAG_SQL_LLM_KEEP_ALIVE:-30m}"
+      RAG_SQL_LLM_NUM_CTX: "${RAG_SQL_LLM_NUM_CTX:-6144}"
+      RAG_SQL_ANSWER_FORMATTER_ENABLED: "${RAG_SQL_ANSWER_FORMATTER_ENABLED:-1}"
+      RAG_SQL_ANSWER_FORMATTER_MODEL: "${RAG_SQL_ANSWER_FORMATTER_MODEL:-gemma4}"
+      RAG_SQL_ANSWER_FORMATTER_NUM_PREDICT: "${RAG_SQL_ANSWER_FORMATTER_NUM_PREDICT:-768}"
+      RAG_SQL_ANSWER_FORMATTER_TIMEOUT_SECONDS: "${RAG_SQL_ANSWER_FORMATTER_TIMEOUT_SECONDS:-120}"
+      RAG_SQL_ANSWER_FORMATTER_RETRY_COUNT: "${RAG_SQL_ANSWER_FORMATTER_RETRY_COUNT:-1}"
+      RAG_EMBEDDING_KEEP_ALIVE: "${RAG_EMBEDDING_KEEP_ALIVE:-30m}"
+
+      NUM_CTX: "24384"
+      NUM_PREDICT: "8192"
+      LLM_JSON_RETRY_COUNT: "1"
+      OLLAMA_FORMAT_JSON: "1"
+      MAX_LINES_FOR_LLM: "220"
+
+      # Baseline: VLM is enabled as a separate GPU service.
+      VLM_ENABLED: "1"
+      VLM_BACKEND: "http_service"
+      VLM_SERVICE_URL: "http://receipt-vlm:7870"
+      VLM_CORRECTION_ENABLED: "1"
+      VLM_TIMEOUT_SECONDS: "900"
+      VLM_SERVICE_REQUEST_TIMEOUT_SECONDS: "900"
+
+      # No automatic Ollama unload/reload in the baseline.
+      VLM_GPU_ORCHESTRATION: "none"
+      OLLAMA_UNLOAD_BEFORE_VLM: "0"
+      OLLAMA_RELOAD_AFTER_VLM: "0"
+      OLLAMA_CONTROL_MODE: "api"
+      OLLAMA_CONTROL_TIMEOUT_SECONDS: "120"
+      OLLAMA_GPU_HANDOFF_WAIT_SECONDS: "0"
+
+      # V14.14 item categorization.
+      CATEGORIZATION_ENABLED: "1"
+      CATEGORIZATION_MODEL: "gemma4"
+      CATEGORIZATION_NUM_CTX: "8192"
+      CATEGORIZATION_NUM_PREDICT: "4096"
+      CATEGORIZATION_TIMEOUT_SECONDS: "180"
+      CATEGORIZATION_FORMAT_JSON: "1"
+
+      # Ask Your Receipts telemetry and readiness.
+      QUERY_TELEMETRY_ENABLED: "1"
+      QUERY_TELEMETRY_PATH: "/app/var/logs/query_events.jsonl"
+      READINESS_PROBE_OLLAMA: "1"
+      READINESS_PROBE_VLM: "1"
+      READINESS_REQUIRE_OLLAMA: "0"
+      READINESS_REQUIRE_VLM: "0"
+      READINESS_TIMEOUT_SECONDS: "2"
+    volumes:
+      - ./var:/app/var
+      - ${MODEL_CACHE_ROOT:-./model_cache}/paddleocr:/root/.paddleocr
+      - ${MODEL_CACHE_ROOT:-./model_cache}/paddlex:/root/.paddlex
+      - ${MODEL_CACHE_ROOT:-./model_cache}/huggingface:/root/.cache/huggingface
+      - ${MODEL_CACHE_ROOT:-./model_cache}/torch:/root/.cache/torch
+      - ${MODEL_CACHE_ROOT:-./model_cache}/paddle:/root/.cache/paddle
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      receipt-vlm:
+        condition: service_healthy
+
+  receipt-vlm:
+    image: paddle-gemma-receipt-vlm:gpu-python-cu126
+    ports:
+      - "7870:7870"
+    gpus: all
+    environment:
+      VLM_SERVICE_HOST: "0.0.0.0"
+      VLM_SERVICE_PORT: "7870"
+      APP_PROJECT_ROOT: "/app"
+      VAR_DIR: "/app/var"
+      VLM_SERVICE_BACKEND: "paddleocr_vl"
+      VLM_SERVICE_RUNNER: "cli"
+      VLM_ENGINE: "transformers"
+      PYTORCH_CUDA_WHEEL_INDEX: "cu126"
+
+      PADDLEX_HOME: "/root/.paddlex"
+      HF_HOME: "/root/.cache/huggingface"
+      TRANSFORMERS_CACHE: "/root/.cache/huggingface"
+      TORCH_HOME: "/root/.cache/torch"
+      PADDLE_HOME: "/root/.cache/paddle"
+
+      VLM_DEVICE: "gpu:0"
+      VLM_ALLOW_CPU_FALLBACK: "0"
+      VLM_TIMEOUT_SECONDS: "900"
+      VLM_SERVICE_MAX_SIDE_LIMIT: "1200"
+
+      CUDA_VISIBLE_DEVICES: "0"
+      FLAGS_selected_gpus: "0"
+      PADDLE_DEVICE: "gpu:0"
+      NVIDIA_VISIBLE_DEVICES: "all"
+      NVIDIA_DRIVER_CAPABILITIES: "compute,utility"
+      FLAGS_use_mkldnn: "0"
+      FLAGS_use_onednn: "0"
+      FLAGS_enable_pir_api: "0"
+      FLAGS_enable_pir_in_executor: "0"
+    volumes:
+      - ./var:/app/var
+      - ${MODEL_CACHE_ROOT:-./model_cache}/paddleocr:/root/.paddleocr
+      - ${MODEL_CACHE_ROOT:-./model_cache}/paddlex:/root/.paddlex
+      - ${MODEL_CACHE_ROOT:-./model_cache}/huggingface:/root/.cache/huggingface
+      - ${MODEL_CACHE_ROOT:-./model_cache}/torch:/root/.cache/torch
+      - ${MODEL_CACHE_ROOT:-./model_cache}/paddle:/root/.cache/paddle
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:7870/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s

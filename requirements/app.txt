@@ -1,0 +1,26 @@
+# Core web + parsing
+flask==3.1.1
+requests==2.32.4
+# Keep Requests' transport/encoding detection within its supported ranges.
+urllib3>=2.2,<3
+charset-normalizer>=3.3,<4
+chardet>=5.2,<6
+pillow==11.3.0
+opencv-python-headless==4.12.0.88
+python-dotenv==1.1.1
+
+# Keep NumPy below 2.3 for SciPy/sklearn/paddlex compatibility.
+numpy==2.2.6
+
+# PaddleOCR stack copied from the known-working V13 Docker setup.
+paddlepaddle==3.2.0
+paddleocr>=3.0.0,<4.0.0
+
+# Optional V14.5 VLM layer:
+# Keep disabled unless your PaddleOCR package/runtime exposes PaddleOCRVL or you
+# provide VLM_COMMAND. Extra VLM dependencies are intentionally not forced here
+# to preserve the known-working V13/V14 Docker OCR runtime.
+
+# RAG-SQL graph orchestration and typed validation.
+langgraph==1.2.7
+pydantic>=2.7,<3

@@ -1,0 +1,1 @@
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --no-deps --force-recreate receipt-app

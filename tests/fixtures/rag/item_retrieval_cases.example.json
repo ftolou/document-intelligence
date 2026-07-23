@@ -1,0 +1,26 @@
+[
+  {
+    "case_id": "shoes",
+    "query": "Schuhe",
+    "top_k": 5,
+    "expected_any_terms": ["schuh", "sneaker"],
+    "forbidden_terms": ["krawatte"],
+    "forbidden_parser_item_types": ["discount", "deposit", "refund", "fee"],
+    "notes": "Replace expected_any_terms with stable expected_item_ids from your approved database before using this as a regression gate."
+  },
+  {
+    "case_id": "water",
+    "query": "Wasser",
+    "top_k": 5,
+    "expected_any_terms": ["wasser", "mineral"],
+    "forbidden_parser_item_types": ["discount", "deposit", "refund", "fee"],
+    "notes": "Keep this case only when an approved drinking-water product exists in the database."
+  },
+  {
+    "case_id": "toothpaste",
+    "query": "Zahnpasta",
+    "top_k": 5,
+    "expected_any_terms": ["zahnp", "elmex", "zahnpasta"],
+    "forbidden_parser_item_types": ["discount", "deposit", "refund", "fee"]
+  }
+]

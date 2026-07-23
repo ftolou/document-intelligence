@@ -1,0 +1,74 @@
+"""Application-facing service for the single RAG-SQL query engine."""
+
+from __future__ import annotations
+
+import time
+import uuid
+from dataclasses import dataclass
+from typing import Any
+
+from receipt_intelligence.observability.query import QueryTelemetrySink
+from receipt_intelligence.observability.timing import utc_now_iso
+from receipt_intelligence.rag_sql.graph import RAG_SQL_GRAPH_VERSION
+from receipt_intelligence.rag_sql.runtime import (
+    RagSqlRuntime,
+    build_rag_sql_runtime_from_settings,
+)
+
+
+@dataclass(slots=True)
+class ReceiptQueryService:
+    """Execute receipt questions through RAG-SQL and attach app metadata."""
+
+    runtime: RagSqlRuntime
+    telemetry_sink: QueryTelemetrySink | None = None
+
+    def execute(self, question: str, *, limit: int = 25) -> dict[str, Any]:
+        query_id = f"q_{uuid.uuid4().hex}"
+        started_at = utc_now_iso()
+        started_perf = time.perf_counter()
+
+        response = self.runtime.execute(question)
+        payload = response.model_dump(mode="json")
+        diagnostics = payload.setdefault("diagnostics", {})
+        diagnostics.setdefault("requested_api_limit", max(1, min(100, int(limit))))
+        diagnostics.setdefault("orchestrator", "langgraph")
+        diagnostics.setdefault("graph_version", RAG_SQL_GRAPH_VERSION)
+        duration_ms = diagnostics.get("duration_ms")
+        if not isinstance(duration_ms, int | float):
+            duration_ms = (time.perf_counter() - started_perf) * 1000.0
+            diagnostics["duration_ms"] = duration_ms
+
+        errors: list[str] = []
+        if payload.get("error"):
+            errors.append(str(payload["error"]))
+
+        payload["execution"] = {
+            "engine": "rag_sql",
+            "engine_version": payload.get("engine_version"),
+            "orchestrator": "langgraph",
+            "graph_version": RAG_SQL_GRAPH_VERSION,
+            "query_id": query_id,
+            "started_at": started_at,
+            "duration_ms": float(duration_ms),
+            "status": payload.get("status"),
+            "errors": errors,
+            "financial_calculation": "deterministic_sql",
+            "sql_generation_by_llm": True,
+        }
+        if self.telemetry_sink is not None:
+            self.telemetry_sink.record(payload)
+        return payload
+
+
+def build_receipt_query_service_from_settings(
+    *,
+    telemetry_sink: QueryTelemetrySink | None = None,
+) -> ReceiptQueryService:
+    return ReceiptQueryService(
+        runtime=build_rag_sql_runtime_from_settings(),
+        telemetry_sink=telemetry_sink,
+    )
+
+
+__all__ = ["ReceiptQueryService", "build_receipt_query_service_from_settings"]
