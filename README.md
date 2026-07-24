@@ -1,117 +1,126 @@
-# Document Intelligence Pipeline
+# Document Intelligence for Receipts
 
-Local-first OCR/VLM/LLM document intelligence pipeline, currently specialized for receipts.
+[![CI](https://github.com/ftolou/document-intelligence/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/ftolou/document-intelligence/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/Python-3.11-blue)
+![Docker](https://img.shields.io/badge/Runtime-Docker_Compose-2496ED)
+![Local AI](https://img.shields.io/badge/AI-Local--first-4B8BBE)
 
-The current module processes receipt images with **PaddleOCR**, optional **PaddleOCR-VL**, **Ollama/Gemma**, deterministic validation, item categorization, batch execution, side-by-side auditable human review with receipt image and item correction, regression reporting, and a **receipt intelligence database + hybrid RAG search**. It is positioned as a portfolio-ready AI automation / KI Manager case study: the app demonstrates how an AI result can be extracted, validated, reviewed by a human, stored as structured business data, and queried later with evidence.
+A local-first system that turns receipt images into **reviewed structured data** and answers natural-language questions through **hybrid retrieval and validated read-only SQL**.
 
-## What this project proves
+**Local-first · Human-reviewed · Evidence-bound**
 
-- **AI workflow implementation:** image upload -> explicit extraction stages -> OCR/VLM evidence -> LLM extraction -> validation -> categorized JSON.
-- **Human-in-the-loop control:** reviewers can correct key fields and save an auditable approval record.
-- **Receipt intelligence database:** approved receipts and item lines are stored in SQLite as the source of truth.
-- **RAG-SQL LangGraph Engine:** semantic product resolution, validated read-only SQL, bounded repair, deterministic answer extraction, and evidence-bound LLM fallback are orchestrated as an explicit graph.
-- **Quality management:** batch execution and regression-report generation make failures measurable.
-- **Local/DSGVO-aware architecture:** Ollama runs locally on the host; Docker services isolate the app and VLM layer.
-- **Release discipline:** Docker Compose, PowerShell helpers, GitHub Actions syntax/build checks, and reproducible artifacts.
+<!--
+Replace this comment with a genuine, anonymized screenshot before publishing:
+![Human review interface](docs/screenshots/04-human-review.png)
+-->
 
+## Why I built it
 
-## Staged receipt extraction
+I first worked on receipt understanding with a CRNN-based OCR pipeline. Character recognition was not the reason I stopped that project: the unresolved problem was semantic interpretation. A system still had to decide which lines were products, how quantities and discounts related to prices, and which values represented totals, payments, or taxes.
 
-The compatibility entry point now delegates to a five-stage application workflow:
+Modern OCR, vision-language models, embeddings, and LLMs make that semantic layer practical. But a useful document system cannot stop at a model response. It also needs deterministic checks, bounded repair, human approval, traceability, persistence, and a safe way to calculate answers from reviewed data.
 
-```text
-prepare -> visual evidence -> main parsing -> repair/correction -> finalize
+This repository implements that complete path for German and European retail receipts.
+
+## System at a glance
+
+```mermaid
+flowchart LR
+    A[Receipt image] --> B[OCR and optional VLM evidence]
+    B --> C[LLM semantic extraction]
+    C --> D[Validation and bounded repair]
+    D --> E[Human review]
+    E --> F[(Approved receipt database)]
+
+    Q[Natural-language question] --> G[LangGraph RAG-SQL workflow]
+    F --> H[Hybrid item retrieval]
+    H --> G
+    F --> G
+    G --> I[Validated read-only SQL]
+    I --> J[Evidence-backed answer]
 ```
 
-Each run persists an extraction stage trace and an extraction metrics artifact while retaining all established
-receipt artifact names. See [`docs/PROJECT_STRUCTURE.md`](docs/PROJECT_STRUCTURE.md) for the active package boundaries.
+The application connects two workflows:
 
-## Ask Your Receipts
+- **Extraction:** image → OCR/VLM evidence → structured receipt → validation → human approval.
+- **Analytics:** question → semantic item resolution → validated SQL → grounded answer.
 
-After saving a human review, the app automatically imports the approved receipt
-and item lines into `var/database/receipt_intelligence.db`. **Ask Your Receipts**
-uses one production query path:
+## Results and validation
 
-```text
-question
-  -> LangGraph question analysis
-  -> semantic retrieval and candidate resolution when required
-  -> SQL generation
-  -> deterministic SQL validation and bounded repair
-  -> read-only SQLite execution
-  -> deterministic answer extraction
-  -> bounded LLM normalization only for evidence-rich ambiguity
-  -> deterministic evidence validation and final rendering
-```
+The current published evidence focuses on software and workflow validation. It does not yet claim a statistically representative model-quality benchmark.
 
-The engine uses reviewed receipt data and curated analytics views only. Product
-identity is resolved to database item IDs before SQL planning. Reviewed
-`semantic_description` and `category_reason` fields support grounded product
-descriptions, product-type answers, and explicit brand identification. Seller
-metadata is never treated as a product brand. Clear results stay on the fast
-path without another LLM call. Ambiguous reviewed evidence may enter a bounded
-structured formatter, but every returned value and supporting item ID is
-validated against the SQL rows before deterministic rendering. Missing or
-invalid evidence returns `insufficient_info` instead of an invented answer.
+| Check | Current evidence |
+|---|---:|
+| Containerized unit test suite | **198 passed** |
+| Deterministic RAG-SQL regression corpus | **1 passed** |
+| Python compilation and scoped Ruff checks | Automated in GitHub Actions |
+| Frontend JavaScript syntax | Automated in GitHub Actions |
+| Docker application build and dependency compatibility | Automated in GitHub Actions |
 
-Useful commands:
+The next quantitative milestone is a reviewed benchmark covering extraction accuracy, retrieval Recall@5/MRR, SQL validity, `insufficient_info` behavior, and per-node latency. Until that dataset is complete, those metrics are intentionally not estimated.
+
+<!--
+Replace this comment with a genuine screenshot showing a grounded answer:
+![Ask Your Receipts workspace](docs/screenshots/10-ask-your-receipts.png)
+-->
+
+## Key design decisions
+
+### Staged extraction with an explicit trust boundary
+
+OCR and optional VLM output are treated as evidence rather than final truth. An LLM performs semantic extraction, while deterministic code validates schema, arithmetic, totals, and consistency before bounded repair is considered. A human reviewer can correct the result, and only approved data is used for downstream analytics.
+
+See [`src/receipt_intelligence/extraction/`](src/receipt_intelligence/extraction/) and [`docs/HUMAN_REVIEW.md`](docs/HUMAN_REVIEW.md).
+
+### Retrieval identifies products; SQL performs calculations
+
+Semantic matching and numerical computation are separated deliberately. Dense and lexical retrieval resolve product concepts such as “shoes” or “mineral water” to concrete reviewed item IDs. SQL then performs exact filtering, grouping, comparison, and aggregation over those protected IDs.
+
+See [`src/receipt_intelligence/rag/`](src/receipt_intelligence/rag/) and [`docs/RAG_SEMANTIC_RETRIEVAL.md`](docs/RAG_SEMANTIC_RETRIEVAL.md).
+
+### The LLM proposes SQL but never executes it
+
+LangGraph makes analysis, planning, validation, execution, repair, and answer formatting explicit. The validator accepts only bounded read-only queries against curated analytics views and approved functions. Invalid or unsupported plans are rejected, while missing evidence produces `insufficient_info` instead of an invented answer.
+
+See [`src/receipt_intelligence/rag_sql/`](src/receipt_intelligence/rag_sql/) and [`docs/RAG_SQL_ENGINE.md`](docs/RAG_SQL_ENGINE.md).
+
+### Local models are isolated behind replaceable services
+
+The application uses Ollama for local generation and embeddings, while the optional GPU-intensive VLM runs as a separate service. Heavy runtime images are separated from thin application images so normal code changes do not rebuild the complete AI stack. Model-specific integration remains behind explicit adapters and settings rather than spreading across the application.
+
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`docs/DOCKER_IMAGE_DESIGN.md`](docs/DOCKER_IMAGE_DESIGN.md).
+
+## Technical trade-offs
+
+| Decision | Trade-off |
+|---|---|
+| LLM-first parsing plus deterministic validation | Handles diverse layouts better than a rule-only parser, but requires strict contracts and post-validation. |
+| Optional VLM evidence | Improves difficult layout interpretation, but increases latency and GPU demand. |
+| Human approval before analytics | Adds review effort, but establishes a clear source of truth for exact calculations. |
+| Hybrid dense and lexical retrieval | Improves semantic and exact-term matching, but requires fusion and separate retrieval evaluation. |
+| Resolve item IDs before SQL planning | Adds an explicit resolution stage, but prevents fragile product matching inside generated SQL. |
+| Deterministic SQL validation and rendering | Restricts open-ended generation, but keeps execution and factual output under application control. |
+| Local-first deployment | Preserves privacy and inspectability, but requires local model and container resources. |
+
+## Quick start
+
+### Prerequisites
+
+- Windows 11 with Docker Desktop
+- NVIDIA GPU support for the default VLM service
+- Ollama running on the host
+- A compatible local generation model, for example `gemma4`
+- A compatible embedding model, for example `embeddinggemma`
+
+### 1. Configure the environment
 
 ```powershell
-python scripts/demo_rag_sql_query.py "Wie viel habe ich für Schuhe ausgegeben?"
-python scripts/run_tests.py
-python scripts/import_approved_receipts_to_db.py --results-dir var/jobs
+Copy-Item .env.example .env
 ```
 
-See [`docs/RAG_SQL_ENGINE.md`](docs/RAG_SQL_ENGINE.md) and
-[`docs/RAG_SQL_PRODUCT_SEMANTICS.md`](docs/RAG_SQL_PRODUCT_SEMANTICS.md).
+Review model names, model-cache paths, and GPU settings in `.env`.
 
-## RAG hybrid semantic retrieval
-
-After building the approved item embedding index, inspect fused dense/lexical matches with:
-
-```powershell
-docker compose -f docker-compose.yml -f docker-compose.dev.yml exec receipt-app `
-  python /app/scripts/search_rag_items.py "Schuhe" --limit 10
-```
-
-Hybrid retrieval combines dense and lexical evidence before bounded candidate
-resolution. RAG-SQL is the only application query engine and uses LangGraph for
-explicit routing, validated read-only SQL, bounded repair, and evidence-bound answer
-formatting without slowing clear queries. See `docs/RAG_SEMANTIC_RETRIEVAL.md` and
-`docs/RAG_SQL_ENGINE.md`.
-
-## Documentation
-
-See [`docs/index.md`](docs/index.md) for the current documentation set. Historical patch notes are under [`docs/archive/`](docs/archive/README.md).
-
-## Canonical runtime layout
-
-All generated state is stored under `var/`. New jobs include a `manifest.json`
-that catalogs their artifacts. Legacy runtime directories are no longer mounted
-or searched. Current runtime ownership and extraction package boundaries are documented in
-[`docs/PROJECT_STRUCTURE.md`](docs/PROJECT_STRUCTURE.md). Historical implementation
-notes remain under [`docs/archive/`](docs/archive/README.md).
-
-## Runtime services
-
-```text
-receipt-app  Flask UI/API, CPU PaddleOCR, LLM extraction, validation, review, batch runner, SQLite receipt DB, Ask Your Receipts
-receipt-vlm  Optional GPU PaddleOCR-VL evidence service
-Ollama       Runs on the Windows host, e.g. http://host.docker.internal:11434
-```
-
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the architecture diagram.
-
-## Quick start on Windows
-
-Prerequisites:
-
-- Docker Desktop with NVIDIA GPU support if you use the VLM service.
-- Ollama running on the host machine.
-- A local model available in Ollama, for example `gemma4`.
-- Optional persistent model cache folder outside the repo.
-
-First-time build:
+### 2. Build the runtime and application images
 
 ```powershell
 .\scripts\docker\build-app-runtime.ps1
@@ -120,137 +129,69 @@ First-time build:
 .\scripts\docker\build-vlm.ps1
 ```
 
-Start normally:
+The runtime images contain heavy dependencies. Normal source changes use thin application images or development bind mounts and do not require rebuilding the heavy runtimes.
 
-```powershell
-docker compose up -d --no-build
-```
-
-Or use the helper:
+### 3. Start the application
 
 ```powershell
 .\start_windows.ps1
 ```
 
-Open the UI:
+Open:
 
 ```text
 http://localhost:7860
 ```
 
-Check the VLM service:
+Check the optional VLM service:
 
 ```powershell
 Invoke-RestMethod http://localhost:7870/health | ConvertTo-Json -Depth 5
 ```
 
-## Local development without rebuilds
+## Typical workflow
 
-For normal Python/HTML/CSS/JS changes, use bind mounts and restart only the changed service:
+1. Upload a receipt image.
+2. Inspect extraction, validation, and repair progress.
+3. Review and correct the structured receipt.
+4. Approve the result and persist it to SQLite.
+5. Build or update the reviewed-item embedding index.
+6. Ask an analytical question in natural language.
 
-```powershell
-.\scripts\docker\start.ps1
-```
-
-Restart app code:
-
-```powershell
-.\scripts\docker\restart-app.ps1
-```
-
-Restart VLM code:
+Example query:
 
 ```powershell
-.\scripts\docker\restart-vlm.ps1
+python scripts/demo_rag_sql_query.py "Wie viel habe ich für Schuhe ausgegeben?"
 ```
 
-Restart both app and VLM:
+## Development and quality checks
 
 ```powershell
-.\scripts\docker\restart-all.ps1
+python scripts/run_tests.py
+python scripts/run_test_profile.py regression
+python scripts/run_quality_checks.py
 ```
 
-If PowerShell blocks script execution on your machine, run the command in the current session with:
+GitHub Actions covers compilation, linting, frontend syntax, Docker builds, dependency compatibility, unit tests, the deterministic query regression corpus, and CLI packaging.
 
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-```
+## Current scope and limitations
 
-## Human review workflow
+- The extraction workflow is currently optimized for German and European retail receipts.
+- Human review remains part of the trust boundary; unreviewed model output is not treated as accounting truth.
+- The default setup targets a local single-user environment, not a hardened multi-tenant SaaS deployment.
+- VLM processing is computationally expensive and intentionally isolated as an optional service.
+- Quality depends on the selected local models and the diversity of the reviewed receipt corpus.
+- A representative public benchmark for extraction, retrieval, SQL validity, and latency is still in preparation.
+- The project is not financial, accounting, or tax software.
 
-After a receipt job is finished, the UI shows a **Human review** section with the original receipt image on the left and editable extraction fields on the right. The reviewer can correct high-value receipt fields and item rows such as product name, category, quantity, unit price and line total. Saving the review creates these artifacts inside the job folder:
+## Documentation
 
-```text
-approved_receipt.json
-human_review_record.json
-```
-
-The review record contains reviewer, status, notes, timestamp, changed fields, submitted field values, submitted item corrections, and the database import result. For an already imported receipt, the editor reads and writes SQLite directly by `receipt_id`; job JSON is only a best-effort mirror. Product-name, normalized-name, parser-row-type, reviewed-category, category-reason, or semantic-description changes invalidate the affected vectors and selectively reindex those item IDs. Merchant, date, quantity, and monetary edits update relational/FTS data without re-embedding.
-
-## Batch execution and regression report
-
-Put test receipt images into:
-
-```text
-./var/batch_input
-```
-
-Run a batch from the UI with server folder:
-
-```text
-/app/var/batch_input
-```
-
-Generate a regression report from saved jobs:
-
-```powershell
-python .\scripts\generate_regression_report.py --results-dir .\var\jobs --out-dir .\var\reports\regression_report
-```
-
-The script writes:
-
-```text
-var/reports/regression_report/regression_summary.json
-var/reports/regression_report/regression_jobs.csv
-var/reports/regression_report/regression_report.md
-```
-
-This turns the project into a measurable AI-quality case study instead of a one-off OCR demo.
-
-## Portfolio documentation
-
-- [`docs/archive/portfolio/PORTFOLIO_PHASE1.md`](docs/archive/portfolio/PORTFOLIO_PHASE1.md) — what was added for Phase 1 and how to present it.
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — architecture diagram and data flow.
-- [`docs/HUMAN_REVIEW.md`](docs/HUMAN_REVIEW.md) — review API and audit artifacts.
-- [`docs/REGRESSION_REPORTING.md`](docs/REGRESSION_REPORTING.md) — batch/regression reporting concept.
-- [`docs/SCREENSHOT_GUIDE.md`](docs/SCREENSHOT_GUIDE.md) — screenshots to capture for applications.
-
-## Repository structure
-
-```text
-├── src/receipt_intelligence/       Python package, including observability
-├── static/                         Browser UI
-├── docker/                         Runtime and thin app Dockerfiles
-├── scripts/                        Build, restart, batch, and report helpers
-├── docs/                           Portfolio and technical documentation
-└── var/                            Runtime jobs, DB, reports, uploads, and logs
-```
-
-## Rebuild rules
-
-Rebuild runtime images only when dependencies or base-image strategy changes:
-
-```text
-requirements/*.txt
-docker/Dockerfile.app-runtime
-docker/Dockerfile.vlm-runtime-cu126
-CUDA / Paddle / PaddleOCR / PaddleX / Torch dependency strategy
-system apt packages
-```
-
-For normal source-code changes, use development bind mounts and restart the service instead of rebuilding heavy images. Phase 7 changes app dependency constraints, so upgrading from v1.21 requires one app-runtime rebuild; the VLM image remains unchanged.
-
-
-## Current extraction capabilities
-
-The active extraction pipeline includes dedicated table interpretation, OCR/VLM row arbitration, validation-gated right-column and vertical price-stack recovery, compact patch-only correction, duplicate-aware review queues, and approved-receipt database import. Current operating documentation is indexed in [`docs/index.md`](docs/index.md); detailed release chronology is archived in [`docs/archive/RELEASE_HISTORY.md`](docs/archive/RELEASE_HISTORY.md).
+- [Architecture](docs/ARCHITECTURE.md)
+- [Human review](docs/HUMAN_REVIEW.md)
+- [RAG-SQL engine](docs/RAG_SQL_ENGINE.md)
+- [Semantic retrieval](docs/RAG_SEMANTIC_RETRIEVAL.md)
+- [Reviewed product semantics](docs/RAG_SQL_PRODUCT_SEMANTICS.md)
+- [Observability and readiness](docs/operations/OBSERVABILITY.md)
+- [Docker image design](docs/DOCKER_IMAGE_DESIGN.md)
+- [Development guide](docs/DEVELOPMENT.md)
+- [Complete documentation index](docs/index.md)
