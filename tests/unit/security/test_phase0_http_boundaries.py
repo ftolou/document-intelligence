@@ -7,7 +7,9 @@ import pytest
 pytest.importorskip("flask")
 from flask import Flask  # noqa: E402
 
-from receipt_intelligence.services import vlm_service  # noqa: E402
+from receipt_intelligence.application.vlm import VlmAnalysisService  # noqa: E402
+from receipt_intelligence.entrypoints.vlm_http import app as vlm_http  # noqa: E402
+from receipt_intelligence.entrypoints.vlm_http.settings import VlmHttpSettings  # noqa: E402
 from receipt_intelligence.web import request_parsing  # noqa: E402
 
 
@@ -66,49 +68,69 @@ def test_upload_options_ignore_external_urls_and_commands(monkeypatch) -> None:
     assert options["ollama_gpu_handoff_wait_seconds"] == 3.0
 
 
-def test_vlm_service_rejects_path_outside_allowed_roots(monkeypatch, tmp_path: Path) -> None:
+def test_vlm_service_rejects_path_outside_allowed_roots(tmp_path: Path) -> None:
     allowed = tmp_path / "allowed"
     outside = tmp_path / "outside"
     allowed.mkdir()
     outside.mkdir()
     image = outside / "receipt.jpg"
     image.write_bytes(b"image")
-    monkeypatch.setattr(vlm_service, "ALLOWED_INPUT_ROOTS", (allowed.resolve(),))
-
-    path, error = vlm_service._resolve_allowed_image_path(image)
+    path, error = vlm_http.resolve_allowed_image_path(
+        image,
+        (allowed.resolve(),),
+    )
 
     assert path is None
     assert error == "Image path is outside the configured VLM input roots."
 
 
-def test_vlm_service_uses_only_server_execution_policy(monkeypatch, tmp_path: Path) -> None:
+def test_vlm_service_uses_only_server_execution_policy(tmp_path: Path) -> None:
     allowed = tmp_path / "var"
     results = allowed / "vlm-results"
+    uploads = allowed / "uploads"
     allowed.mkdir()
+    uploads.mkdir()
     image = allowed / "receipt.jpg"
     image.write_bytes(b"not-a-real-image")
 
-    monkeypatch.setattr(vlm_service, "ALLOWED_INPUT_ROOTS", (allowed.resolve(),))
-    monkeypatch.setattr(vlm_service, "RESULTS_DIR", results)
-    monkeypatch.setattr(vlm_service, "BACKEND", "paddleocr_vl")
-    monkeypatch.setattr(vlm_service, "COMMAND", "")
-    monkeypatch.setattr(vlm_service, "RUNNER", "cli")
+    class FakeEngine:
+        def analyze(self, request):
+            return {
+                "status": "ok",
+                "backend": "paddleocr_vl_cli",
+                "observed_image": str(request.image_path),
+                "observed_timeout": request.timeout_seconds,
+            }
 
-    def forbidden_command(*args, **kwargs):
-        raise AssertionError("request-controlled command backend was selected")
-
-    def fake_cli(image_path: Path, result_dir: Path, timeout_seconds: float):
-        return {
-            "status": "ok",
-            "backend": "paddleocr_vl_cli",
-            "observed_image": str(image_path),
-            "observed_timeout": timeout_seconds,
-        }
-
-    monkeypatch.setattr(vlm_service, "_run_command_backend", forbidden_command)
-    monkeypatch.setattr(vlm_service, "_run_paddleocr_vl_cli", fake_cli)
-
-    client = vlm_service.app.test_client()
+    settings = VlmHttpSettings(
+        app_version="test",
+        upload_dir=uploads,
+        results_dir=results,
+        allowed_input_roots=(allowed.resolve(),),
+        backend="paddleocr_vl",
+        command="",
+        timeout_seconds=900.0,
+        max_upload_mb=25,
+        max_side_limit=0,
+        runner="cli",
+        engine="transformers",
+        device="gpu:0",
+        allow_cpu_fallback=False,
+        host="127.0.0.1",
+        port=7870,
+    )
+    service = VlmAnalysisService(
+        engine=FakeEngine(),
+        results_dir=results,
+        service_version="test",
+        timeout_seconds=settings.timeout_seconds,
+        max_side_limit=settings.max_side_limit,
+        runner_name=settings.runner,
+        engine_name=settings.engine,
+        device_name=settings.device,
+    )
+    app = vlm_http.create_app(settings=settings, analysis_service=service)
+    client = app.test_client()
     response = client.post(
         "/api/vlm/analyze",
         json={
@@ -127,5 +149,5 @@ def test_vlm_service_uses_only_server_execution_policy(monkeypatch, tmp_path: Pa
     assert payload["status"] == "ok"
     assert payload["run_id"] == "unsafe-run"
     assert payload["runner"] == "cli"
-    assert payload["observed_timeout"] == vlm_service.TIMEOUT_SECONDS
+    assert payload["observed_timeout"] == settings.timeout_seconds
     assert (results / "unsafe-run").is_dir()

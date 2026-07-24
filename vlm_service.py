@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compatibility entrypoint for the src-layout package."""
+"""Compatibility entrypoint for the standalone VLM HTTP transport."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ SRC_DIR = Path(__file__).resolve().parent / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from receipt_intelligence.services.vlm_service import app, main
+from receipt_intelligence.entrypoints.vlm_http.app import app, main
 
 if __name__ == "__main__":
     main()

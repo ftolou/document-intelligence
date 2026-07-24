@@ -22,9 +22,8 @@ TARGETS = [
     "src/receipt_intelligence/services/review_service.py",
     "src/receipt_intelligence/storage",
     "src/receipt_intelligence/runtime",
-    "src/receipt_intelligence/engines/vl_engine.py",
     "src/receipt_intelligence/services/ollama_control.py",
-    "src/receipt_intelligence/services/vlm_service.py",
+    "src/receipt_intelligence/entrypoints/vlm_http",
     "src/receipt_intelligence/extraction/__init__.py",
     "src/receipt_intelligence/extraction/artifacts.py",
     "src/receipt_intelligence/extraction/config.py",
@@ -49,6 +48,7 @@ TARGETS = [
     "scripts/check_security_boundaries.py",
     "scripts/check_configuration_contracts.py",
     "scripts/check_model_boundaries.py",
+    "scripts/check_vlm_architecture.py",
     "scripts/run_quality_checks.py",
     "scripts/verify_runtime_layout.py",
 ]
@@ -60,6 +60,7 @@ commands = [
     [sys.executable, "scripts/check_security_boundaries.py"],
     [sys.executable, "scripts/check_configuration_contracts.py"],
     [sys.executable, "scripts/check_model_boundaries.py"],
+    [sys.executable, "scripts/check_vlm_architecture.py"],
     [sys.executable, "-m", "ruff", "check", *TARGETS],
     [sys.executable, "-m", "ruff", "format", "--check", *TARGETS],
 ]

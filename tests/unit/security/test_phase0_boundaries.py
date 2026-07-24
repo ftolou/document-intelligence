@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from receipt_intelligence.engines import vl_engine
+from receipt_intelligence.adapters.vlm import trusted_command
 from receipt_intelligence.runtime.command_execution import split_command
 from receipt_intelligence.services import ollama_control
 
@@ -64,9 +64,9 @@ def test_vlm_command_template_expands_paths_as_single_arguments(monkeypatch, tmp
         captured.update(kwargs)
         return SimpleNamespace(returncode=0, stdout='{"ok": true}', stderr="")
 
-    monkeypatch.setattr(vl_engine.subprocess, "run", fake_run)
+    monkeypatch.setattr(trusted_command.subprocess, "run", fake_run)
 
-    result = vl_engine._run_command_backend(
+    result = trusted_command.run_trusted_command(
         'python wrapper.py --image "{image}" --out "{output_json}"',
         image,
         output,

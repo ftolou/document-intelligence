@@ -1,4 +1,4 @@
-﻿"""Normalization helpers shared by storage repositories and query planning."""
+"""Normalization helpers shared by storage repositories and query planning."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import re
 from datetime import datetime, timezone
 from typing import Any
 
-_WORD_RE = re.compile(r"[\wÃ¤Ã¶Ã¼Ã„Ã–ÃœÃŸ]+", re.UNICODE)
+_WORD_RE = re.compile(r"[\wäöüÄÖÜß]+", re.UNICODE)
 
 CATEGORY_ALIASES: dict[str, list[str]] = {
     "personal_care/shampoo": [
@@ -29,7 +29,7 @@ CATEGORY_ALIASES: dict[str, list[str]] = {
     "personal_care/hygiene": [
         "hygiene",
         "personal care",
-        "kÃ¶rperpflege",
+        "körperpflege",
         "hygieneartikel",
         "shampoo",
         "duschgel",
@@ -57,7 +57,7 @@ CATEGORY_ALIASES: dict[str, list[str]] = {
         "cleaning supplies",
         "cleaner",
         "reiniger",
-        "spÃ¼lmittel",
+        "spülmittel",
         "waschmittel",
         "detergent",
         "domestos",
@@ -68,7 +68,7 @@ CATEGORY_ALIASES: dict[str, list[str]] = {
         "baby",
         "windeln",
         "diapers",
-        "feuchttÃ¼cher",
+        "feuchttücher",
         "wipes",
         "hipp",
         "bebivita",
@@ -91,7 +91,7 @@ MERCHANT_ALIASES: dict[str, list[str]] = {
     "dm": ["dm", "dm-drogerie", "dm drogerie", "dm-drogerie markt", "drogerie markt"],
     "rossmann": ["rossmann", "rossmann drogerie"],
     "rewe": ["rewe"],
-    "aldi": ["aldi", "aldi sÃ¼d", "aldi sued", "aldi nord"],
+    "aldi": ["aldi", "aldi süd", "aldi sued", "aldi nord"],
     "lidl": ["lidl"],
     "edeka": ["edeka"],
     "kaufland": ["kaufland"],
@@ -119,10 +119,10 @@ def utc_now() -> str:
 def normalize_text(value: Any) -> str:
     text = str(value or "").lower()
     replacements = {
-        "Ã¤": "ae",
-        "Ã¶": "oe",
-        "Ã¼": "ue",
-        "ÃŸ": "ss",
+        "ä": "ae",
+        "ö": "oe",
+        "ü": "ue",
+        "ß": "ss",
         "&": " and ",
         "+": " plus ",
     }
@@ -142,7 +142,7 @@ def as_float(value: Any) -> float | None:
         return None
     if isinstance(value, (int, float)):
         return float(value)
-    text = str(value).strip().replace("â‚¬", "").replace("EUR", "").replace(" ", "")
+    text = str(value).strip().replace("€", "").replace("EUR", "").replace(" ", "")
     if text.count(",") == 1 and text.count(".") == 0:
         text = text.replace(",", ".")
     elif text.count(",") == 1 and text.count(".") >= 1:

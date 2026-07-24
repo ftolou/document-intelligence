@@ -16,6 +16,7 @@
 - [Human review](HUMAN_REVIEW.md)
 - [Regression reporting](REGRESSION_REPORTING.md)
 - [VLM troubleshooting](VLM_TROUBLESHOOTING.md)
+- [VLM adapter architecture](VLM_ADAPTER_ARCHITECTURE.md)
 
 ## Historical material
 

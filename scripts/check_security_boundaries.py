@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail CI when Phase 0 execution and transport boundaries regress."""
+"""Fail CI when execution and transport boundaries regress."""
 
 from __future__ import annotations
 
@@ -55,13 +55,18 @@ for field in (
         )
 
 vlm_service_source = (
-    ROOT / "src" / "receipt_intelligence" / "services" / "vlm_service.py"
+    ROOT
+    / "src"
+    / "receipt_intelligence"
+    / "entrypoints"
+    / "vlm_http"
+    / "app.py"
 ).read_text(encoding="utf-8")
 for field in ("backend", "runner", "command", "timeout_seconds", "max_side_limit"):
     fragment = f'payload.get("{field}")'
     if fragment in vlm_service_source:
         violations.append(
-            "src/receipt_intelligence/services/vlm_service.py: "
+            "src/receipt_intelligence/entrypoints/vlm_http/app.py: "
             f"execution-policy field remains request-controlled: {field}"
         )
 
@@ -75,4 +80,4 @@ if violations:
         print(f"- {violation}")
     raise SystemExit(1)
 
-print("Phase 0 security boundary checks passed.")
+print("Security boundary checks passed.")

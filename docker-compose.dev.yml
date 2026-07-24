@@ -17,6 +17,10 @@ services:
       - ${MODEL_CACHE_ROOT:-./model_cache}/paddle:/root/.cache/paddle
 
   receipt-vlm:
+    working_dir: /app
+    environment:
+      PYTHONPATH: /app/src
+    command: [ "python", "-m", "receipt_intelligence.entrypoints.vlm_http.app" ]
     volumes:
       - .:/app
       - ./var:/app/var
