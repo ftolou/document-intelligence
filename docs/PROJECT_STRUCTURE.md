@@ -14,9 +14,10 @@ document-intelligence-pipeline/
 │   ├── pipeline/           stable integrated pipeline entry point only
 │   ├── rag_sql/            LangGraph orchestration, semantic resolution, safe SQL, and formatting
 │   ├── runtime/            canonical runtime paths and job manifests
-│   ├── services/           application services
+│   ├── application/        ports, resource contracts, and explicit use cases
+│   ├── services/           reusable application workflow implementations
 │   ├── storage/            SQLite repositories and migrations
-│   └── web/                Flask application factory and blueprints
+│   └── web/                Flask transport, presenters, and blueprint adapters
 ├── tests/                  unit, integration, and regression tests
 ├── scripts/
 │   └── docker/             service-specific Docker operations

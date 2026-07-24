@@ -1,51 +1,23 @@
-"""Ask Your Receipts API backed exclusively by RAG-SQL LangGraph."""
+"""Ask Your Receipts API backed exclusively by the application query use case."""
 
 from __future__ import annotations
 
 from flask import Blueprint, jsonify, request
 
+from receipt_intelligence.application.errors import InvalidRequestError
 from receipt_intelligence.web.dependencies import get_app_services
 from receipt_intelligence.web.query_response import normalize_query_response, query_error_payload
 
 query_bp = Blueprint("query", __name__)
-_ALLOWED_FIELDS = {"question", "limit"}
 
 
 @query_bp.post("/api/ask-receipts")
 def ask_receipts():
-    payload = request.get_json(silent=True)
-    if not isinstance(payload, dict):
-        return jsonify(
-            query_error_payload(error_code="invalid_request", error="Expected JSON object.")
-        ), 400
-
-    unsupported_fields = sorted(set(payload) - _ALLOWED_FIELDS)
-    if unsupported_fields:
-        return (
-            jsonify(
-                query_error_payload(
-                    error_code="unsupported_request_field",
-                    error=f"Unsupported request field(s): {', '.join(unsupported_fields)}.",
-                )
-            ),
-            400,
-        )
-
-    question = str(payload.get("question") or "").strip()
-    if not question:
-        return (
-            jsonify(query_error_payload(error_code="missing_question", error="Missing question.")),
-            400,
-        )
     try:
-        limit = max(1, min(100, int(payload.get("limit", 25))))
-    except (TypeError, ValueError):
-        limit = 25
-
-    services = get_app_services()
-    try:
-        result = services.receipt_query_service.execute(question, limit=limit)
+        result = get_app_services().ask_receipts.execute(request.get_json(silent=True))
         return jsonify(normalize_query_response(result))
+    except InvalidRequestError as exc:
+        return jsonify(query_error_payload(error_code=exc.code, error=str(exc))), 400
     except Exception as exc:
         return (
             jsonify(

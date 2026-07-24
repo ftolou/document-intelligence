@@ -1,5 +1,6 @@
 """Stable application ports implemented by infrastructure adapters."""
 
+from receipt_intelligence.application.ports.jobs import JobProcessor, JobRepository
 from receipt_intelligence.application.ports.llm import (
     GenerationRequest,
     GenerationResult,
@@ -15,12 +16,21 @@ from receipt_intelligence.application.ports.model_lifecycle import (
     NoOpModelLifecycleCoordinator,
 )
 from receipt_intelligence.application.ports.ocr import OcrEngine, OcrRequest
+from receipt_intelligence.application.ports.receipts import (
+    ReceiptEditor,
+    ReceiptRepository,
+    ReviewApplier,
+    ReviewWorkflow,
+)
+from receipt_intelligence.application.ports.runtime import RuntimeInformation
 from receipt_intelligence.application.ports.vlm import VlmEngine, VlmRequest
 
 __all__ = [
     "GenerationRequest",
     "GenerationResult",
     "GenerationValue",
+    "JobProcessor",
+    "JobRepository",
     "LlmGateway",
     "ModelCallMetrics",
     "ModelLifecycleCoordinator",
@@ -28,6 +38,11 @@ __all__ = [
     "NoOpModelLifecycleCoordinator",
     "OcrEngine",
     "OcrRequest",
+    "ReceiptEditor",
+    "ReceiptRepository",
+    "ReviewApplier",
+    "ReviewWorkflow",
+    "RuntimeInformation",
     "VlmEngine",
     "VlmRequest",
     "coerce_generation_result",

@@ -3,6 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from receipt_intelligence.adapters.storage.sqlite.analytical_query import (
+    SQLiteAnalyticalQueryRepository,
+)
 from receipt_intelligence.observability.ollama import OllamaCallMetrics
 from receipt_intelligence.rag.candidate_models import CandidateResolutionResult
 from receipt_intelligence.rag.models import SemanticItemMatch, SemanticItemSearchResult
@@ -196,7 +199,7 @@ def test_engine_executes_resolved_item_ids_without_dsl(tmp_path: Path) -> None:
         resolver=FakeResolver(resolver_result),  # type: ignore[arg-type]
         planner=FakePlanner(plan),  # type: ignore[arg-type]
         validator=RagSqlValidator(),
-        executor=ReadOnlySqlExecutor(db.db_path),
+        executor=ReadOnlySqlExecutor(SQLiteAnalyticalQueryRepository(db.db_path)),
     )
 
     response = engine.execute("Wie viel habe ich für Schuhe ausgegeben?")
@@ -265,7 +268,7 @@ def test_engine_preserves_receipt_lookup_semantics(tmp_path: Path) -> None:
         resolver=FakeResolver(resolver_result),  # type: ignore[arg-type]
         planner=FakePlanner(plan),  # type: ignore[arg-type]
         validator=RagSqlValidator(),
-        executor=ReadOnlySqlExecutor(db.db_path),
+        executor=ReadOnlySqlExecutor(SQLiteAnalyticalQueryRepository(db.db_path)),
     )
 
     response = engine.execute("Zeige mir die Quittung mit Vittel.")
@@ -332,7 +335,7 @@ def test_engine_stops_on_candidate_clarification_before_sql(tmp_path: Path) -> N
         resolver=resolver,  # type: ignore[arg-type]
         planner=planner,  # type: ignore[arg-type]
         validator=RagSqlValidator(),
-        executor=ReadOnlySqlExecutor(db.db_path),
+        executor=ReadOnlySqlExecutor(SQLiteAnalyticalQueryRepository(db.db_path)),
     )
 
     response = engine.execute("Schuhe")
@@ -400,7 +403,7 @@ def test_engine_skips_product_retrieval_for_general_spending(tmp_path: Path) -> 
         resolver=resolver,  # type: ignore[arg-type]
         planner=planner,  # type: ignore[arg-type]
         validator=RagSqlValidator(),
-        executor=ReadOnlySqlExecutor(db.db_path),
+        executor=ReadOnlySqlExecutor(SQLiteAnalyticalQueryRepository(db.db_path)),
     )
 
     response = engine.execute("Wie viel habe ich insgesamt ausgegeben?")
@@ -464,7 +467,7 @@ def test_engine_repairs_sql_after_deterministic_validation_failure(
         resolver=FakeResolver(resolver_result),  # type: ignore[arg-type]
         planner=planner,  # type: ignore[arg-type]
         validator=RagSqlValidator(),
-        executor=ReadOnlySqlExecutor(db.db_path),
+        executor=ReadOnlySqlExecutor(SQLiteAnalyticalQueryRepository(db.db_path)),
         validation_repair_count=1,
     )
 
@@ -552,7 +555,7 @@ def test_engine_returns_validation_error_when_repaired_sql_is_still_invalid(
         resolver=resolver,  # type: ignore[arg-type]
         planner=planner,  # type: ignore[arg-type]
         validator=RagSqlValidator(),
-        executor=ReadOnlySqlExecutor(db.db_path),
+        executor=ReadOnlySqlExecutor(SQLiteAnalyticalQueryRepository(db.db_path)),
         validation_repair_count=1,
     )
 
@@ -623,7 +626,7 @@ def test_engine_can_disable_validation_repair(tmp_path: Path) -> None:
         ),
         planner=planner,  # type: ignore[arg-type]
         validator=RagSqlValidator(),
-        executor=ReadOnlySqlExecutor(db.db_path),
+        executor=ReadOnlySqlExecutor(SQLiteAnalyticalQueryRepository(db.db_path)),
         validation_repair_count=0,
     )
 
@@ -714,7 +717,7 @@ def test_engine_exposes_ollama_stage_metrics_and_summary(tmp_path: Path) -> None
         resolver=resolver,  # type: ignore[arg-type]
         planner=FakePlanner(plan),  # type: ignore[arg-type]
         validator=RagSqlValidator(),
-        executor=ReadOnlySqlExecutor(db.db_path),
+        executor=ReadOnlySqlExecutor(SQLiteAnalyticalQueryRepository(db.db_path)),
     )
 
     response = engine.execute("Wie viel habe ich insgesamt ausgegeben?")
@@ -787,7 +790,7 @@ def test_engine_returns_insufficient_info_for_unsupported_brand_metadata(
         resolver=FakeResolver(resolver_result),  # type: ignore[arg-type]
         planner=FakePlanner(plan),  # type: ignore[arg-type]
         validator=RagSqlValidator(),
-        executor=ReadOnlySqlExecutor(db.db_path),
+        executor=ReadOnlySqlExecutor(SQLiteAnalyticalQueryRepository(db.db_path)),
     )
 
     response = engine.execute("Which brand is Vittel?")

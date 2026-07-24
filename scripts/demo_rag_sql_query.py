@@ -26,6 +26,7 @@ from receipt_intelligence.rag_sql.runtime import (  # noqa: E402
     RagSqlRuntime,
     RagSqlRuntimeConfig,
 )
+from receipt_intelligence.storage.bootstrap import initialize_database  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -48,6 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = build_parser().parse_args()
+    initialize_database(args.db)
     shared_num_ctx = settings.RAG_SQL_LLM_NUM_CTX
     keep_alive = (
         settings.RAG_SQL_LLM_KEEP_ALIVE

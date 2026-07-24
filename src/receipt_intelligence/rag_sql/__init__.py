@@ -1,109 +1,73 @@
-"""Isolated RAG-assisted read-only SQL query strategy."""
+"""Public API for the RAG-assisted read-only SQL strategy.
 
-from receipt_intelligence.rag_sql.answer_formatter import (
-    ANSWER_FORMAT_SCHEMA_VERSION,
-    AnswerFormatterConfig,
-    AnswerFormatterPayload,
-    AnswerFormatterResult,
-    AnswerFormattingError,
-    AnswerValidationResult,
-    EvidenceBoundAnswerFormatter,
-    render_validated_answer,
-    validate_answer_formatter_result,
-)
-from receipt_intelligence.rag_sql.engine import RagSqlEngine, RagSqlRetrievalError
-from receipt_intelligence.rag_sql.executor import (
-    ReadOnlySqlExecutor,
-    ReadOnlySqlExecutorConfig,
-    SqlExecutionError,
-)
-from receipt_intelligence.rag_sql.graph import RAG_SQL_GRAPH_VERSION
-from receipt_intelligence.rag_sql.graph_state import RagSqlGraphConfig, RagSqlGraphState
-from receipt_intelligence.rag_sql.models import (
-    RAG_SQL_ANALYSIS_SCHEMA_VERSION,
-    RAG_SQL_ENGINE_VERSION,
-    RAG_SQL_PLAN_SCHEMA_VERSION,
-    QuestionAnalysisPayload,
-    QuestionAnalysisResult,
-    RagSqlPlanPayload,
-    RagSqlPlanResult,
-    RagSqlResponse,
-    ResolvedSemanticEntity,
-    SemanticEntity,
-    SqlExecutionResult,
-    ValidatedSqlPlan,
-)
-from receipt_intelligence.rag_sql.planner import (
-    RagSqlPlanner,
-    RagSqlPlannerConfig,
-    RagSqlPlanningError,
-    build_protected_item_parameters,
-)
-from receipt_intelligence.rag_sql.question_analyzer import (
-    QuestionAnalysisError,
-    QuestionAnalyzerConfig,
-    RagSqlQuestionAnalyzer,
-)
-from receipt_intelligence.rag_sql.runtime import (
-    RagSqlRuntime,
-    RagSqlRuntimeConfig,
-    build_rag_sql_runtime_from_settings,
-)
-from receipt_intelligence.rag_sql.schema_catalog import (
-    DEFAULT_SCHEMA_CATALOG,
-    SCHEMA_CATALOG_VERSION,
-    StaticSchemaCatalog,
-)
-from receipt_intelligence.rag_sql.validator import (
-    RagSqlValidator,
-    SqlValidationError,
-    SqlValidatorConfig,
-)
+Exports are resolved lazily so importing lightweight models, ports, or storage
+adapters does not require the optional LangGraph runtime.
+"""
 
-__all__ = [
-    "ANSWER_FORMAT_SCHEMA_VERSION",
-    "AnswerFormatterConfig",
-    "AnswerFormatterPayload",
-    "AnswerFormatterResult",
-    "AnswerFormattingError",
-    "AnswerValidationResult",
-    "DEFAULT_SCHEMA_CATALOG",
-    "EvidenceBoundAnswerFormatter",
-    "QuestionAnalysisError",
-    "QuestionAnalysisPayload",
-    "QuestionAnalysisResult",
-    "QuestionAnalyzerConfig",
-    "RAG_SQL_ANALYSIS_SCHEMA_VERSION",
-    "RAG_SQL_GRAPH_VERSION",
-    "RAG_SQL_ENGINE_VERSION",
-    "RAG_SQL_PLAN_SCHEMA_VERSION",
-    "ReadOnlySqlExecutor",
-    "ReadOnlySqlExecutorConfig",
-    "RagSqlEngine",
-    "RagSqlGraphConfig",
-    "RagSqlGraphState",
-    "RagSqlRetrievalError",
-    "RagSqlPlanPayload",
-    "RagSqlPlanResult",
-    "RagSqlPlanner",
-    "RagSqlPlannerConfig",
-    "RagSqlPlanningError",
-    "RagSqlRuntime",
-    "RagSqlQuestionAnalyzer",
-    "RagSqlResponse",
-    "RagSqlRuntimeConfig",
-    "ResolvedSemanticEntity",
-    "SCHEMA_CATALOG_VERSION",
-    "SemanticEntity",
-    "SqlExecutionError",
-    "SqlExecutionResult",
-    "SqlValidationError",
-    "SqlValidatorConfig",
-    "StaticSchemaCatalog",
-    "ValidatedSqlPlan",
-    "RagSqlValidator",
-    "build_protected_item_parameters",
-    "build_rag_sql_runtime_from_settings",
-    "render_validated_answer",
-    "validate_answer_formatter_result",
-]
+from __future__ import annotations
+
+from importlib import import_module
+from typing import Any
+
+_EXPORTS: dict[str, str] = {
+    "ANSWER_FORMAT_SCHEMA_VERSION": "receipt_intelligence.rag_sql.answer_formatter",
+    "AnswerFormatterConfig": "receipt_intelligence.rag_sql.answer_formatter",
+    "AnswerFormatterPayload": "receipt_intelligence.rag_sql.answer_formatter",
+    "AnswerFormatterResult": "receipt_intelligence.rag_sql.answer_formatter",
+    "AnswerFormattingError": "receipt_intelligence.rag_sql.answer_formatter",
+    "AnswerValidationResult": "receipt_intelligence.rag_sql.answer_formatter",
+    "EvidenceBoundAnswerFormatter": "receipt_intelligence.rag_sql.answer_formatter",
+    "render_validated_answer": "receipt_intelligence.rag_sql.answer_formatter",
+    "validate_answer_formatter_result": "receipt_intelligence.rag_sql.answer_formatter",
+    "RagSqlEngine": "receipt_intelligence.rag_sql.engine",
+    "RagSqlRetrievalError": "receipt_intelligence.rag_sql.engine",
+    "ReadOnlySqlExecutor": "receipt_intelligence.rag_sql.executor",
+    "ReadOnlySqlExecutorConfig": "receipt_intelligence.rag_sql.executor",
+    "SqlExecutionError": "receipt_intelligence.rag_sql.executor",
+    "RAG_SQL_GRAPH_VERSION": "receipt_intelligence.rag_sql.graph",
+    "RagSqlGraphConfig": "receipt_intelligence.rag_sql.graph_state",
+    "RagSqlGraphState": "receipt_intelligence.rag_sql.graph_state",
+    "RAG_SQL_ANALYSIS_SCHEMA_VERSION": "receipt_intelligence.rag_sql.models",
+    "RAG_SQL_ENGINE_VERSION": "receipt_intelligence.rag_sql.models",
+    "RAG_SQL_PLAN_SCHEMA_VERSION": "receipt_intelligence.rag_sql.models",
+    "QuestionAnalysisPayload": "receipt_intelligence.rag_sql.models",
+    "QuestionAnalysisResult": "receipt_intelligence.rag_sql.models",
+    "RagSqlPlanPayload": "receipt_intelligence.rag_sql.models",
+    "RagSqlPlanResult": "receipt_intelligence.rag_sql.models",
+    "RagSqlResponse": "receipt_intelligence.rag_sql.models",
+    "ResolvedSemanticEntity": "receipt_intelligence.rag_sql.models",
+    "SemanticEntity": "receipt_intelligence.rag_sql.models",
+    "SqlExecutionResult": "receipt_intelligence.rag_sql.models",
+    "ValidatedSqlPlan": "receipt_intelligence.rag_sql.models",
+    "RagSqlPlanner": "receipt_intelligence.rag_sql.planner",
+    "RagSqlPlannerConfig": "receipt_intelligence.rag_sql.planner",
+    "RagSqlPlanningError": "receipt_intelligence.rag_sql.planner",
+    "build_protected_item_parameters": "receipt_intelligence.rag_sql.planner",
+    "QuestionAnalysisError": "receipt_intelligence.rag_sql.question_analyzer",
+    "QuestionAnalyzerConfig": "receipt_intelligence.rag_sql.question_analyzer",
+    "RagSqlQuestionAnalyzer": "receipt_intelligence.rag_sql.question_analyzer",
+    "RagSqlRuntime": "receipt_intelligence.rag_sql.runtime",
+    "RagSqlRuntimeConfig": "receipt_intelligence.rag_sql.runtime",
+    "build_rag_sql_runtime_from_settings": "receipt_intelligence.rag_sql.runtime",
+    "DEFAULT_SCHEMA_CATALOG": "receipt_intelligence.rag_sql.schema_catalog",
+    "SCHEMA_CATALOG_VERSION": "receipt_intelligence.rag_sql.schema_catalog",
+    "StaticSchemaCatalog": "receipt_intelligence.rag_sql.schema_catalog",
+    "RagSqlValidator": "receipt_intelligence.rag_sql.validator",
+    "SqlValidationError": "receipt_intelligence.rag_sql.validator",
+    "SqlValidatorConfig": "receipt_intelligence.rag_sql.validator",
+}
+
+__all__ = sorted(_EXPORTS)
+
+
+def __getattr__(name: str) -> Any:
+    module_name = _EXPORTS.get(name)
+    if module_name is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(import_module(module_name), name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted({*globals(), *__all__})

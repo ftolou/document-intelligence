@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Protocol
 
 import numpy as np
@@ -24,9 +22,7 @@ from receipt_intelligence.rag.models import (
     SemanticItemMatch,
     SemanticItemSearchResult,
 )
-from receipt_intelligence.rag.vector_codec import blob_to_vector
-
-_PURCHASE_ITEM_TYPES = ("item", "product", "purchase_item", "purchased_product")
+from receipt_intelligence.rag.ports import SemanticSearchCandidate, SemanticSearchRepository
 
 
 class EmbeddingClient(Protocol):
@@ -37,7 +33,7 @@ class EmbeddingClient(Protocol):
 
 @dataclass
 class _Candidate:
-    row: sqlite3.Row
+    row: SemanticSearchCandidate
     vector_similarity: float
     lexical_score: float
     fts_rank: int | None
@@ -68,7 +64,7 @@ class ItemSemanticRetriever:
     def __init__(
         self,
         *,
-        database_path: Path | str,
+        repository: SemanticSearchRepository,
         embedding_client: EmbeddingClient,
         maximum_limit: int = 100,
         approved_only: bool = True,
@@ -86,7 +82,7 @@ class ItemSemanticRetriever:
         if vector_weight == 0 and lexical_weight == 0:
             raise ValueError("at least one retrieval weight must be positive.")
 
-        self.database_path = Path(database_path)
+        self.repository = repository
         self.embedding_client = embedding_client
         self.maximum_limit = int(maximum_limit)
         self.approved_only = bool(approved_only)
@@ -142,24 +138,20 @@ class ItemSemanticRetriever:
         candidates: list[_Candidate] = []
         skipped_candidates = 0
         for row in rows:
-            if not is_indexable_description(row["description"]):
+            if not is_indexable_description(row.description):
                 skipped_candidates += 1
                 continue
-            dimension = int(row["embedding_dimension"])
+            dimension = int(row.embedding_dimension)
             if dimension != query_result.dimension:
                 raise ValueError(
                     "Stored embedding dimension does not match query embedding: "
                     f"stored={dimension}, query={query_result.dimension}."
                 )
 
-            try:
-                vector = np.asarray(
-                    blob_to_vector(bytes(row["embedding"]), dimension=dimension),
-                    dtype=np.float32,
-                )
-            except (TypeError, ValueError):
+            if row.vector is None:
                 skipped_candidates += 1
                 continue
+            vector = np.asarray(row.vector, dtype=np.float32)
 
             vector_norm = float(np.linalg.norm(vector))
             if not np.isfinite(vector_norm) or vector_norm <= 0:
@@ -170,10 +162,10 @@ class ItemSemanticRetriever:
             similarity = max(-1.0, min(1.0, similarity))
             lexical_score = lexical_relevance(
                 normalized_query,
-                str(row["description"] or ""),
-                str(row["normalized_description"] or "") or None,
+                str(row.description or ""),
+                str(row.normalized_description or "") or None,
             )
-            item_id = int(row["item_id"])
+            item_id = int(row.item_id)
             fts_rank = fts_ranks.get(item_id)
             if fts_rank is not None:
                 lexical_score += 1.0 / fts_rank
@@ -200,7 +192,7 @@ class ItemSemanticRetriever:
                 -group.fusion_score,
                 -group.lexical_score,
                 -group.vector_similarity,
-                group.representative.row["item_id"],
+                group.representative.row.item_id,
             )
         )
 
@@ -235,11 +227,11 @@ class ItemSemanticRetriever:
     ) -> list[_IdentityGroup]:
         grouped: dict[str, list[_Candidate]] = defaultdict(list)
         for candidate in candidates:
-            item_id = int(candidate.row["item_id"])
+            item_id = int(candidate.row.item_id)
             key = (
                 product_identity_key(
-                    str(candidate.row["description"] or ""),
-                    str(candidate.row["normalized_description"] or "") or None,
+                    str(candidate.row.description or ""),
+                    str(candidate.row.normalized_description or "") or None,
                     fallback_item_id=item_id,
                 )
                 if deduplicate
@@ -254,7 +246,7 @@ class ItemSemanticRetriever:
                 key=lambda candidate: (
                     candidate.lexical_score,
                     candidate.vector_similarity,
-                    -int(candidate.row["item_id"]),
+                    -int(candidate.row.item_id),
                 ),
             )
             output.append(
@@ -262,7 +254,7 @@ class ItemSemanticRetriever:
                     key=key,
                     members=members,
                     representative=representative,
-                    item_ids=sorted(int(member.row["item_id"]) for member in members),
+                    item_ids=sorted(int(member.row.item_id) for member in members),
                     vector_similarity=max(member.vector_similarity for member in members),
                     lexical_score=max(member.lexical_score for member in members),
                 )
@@ -300,25 +292,25 @@ class ItemSemanticRetriever:
         row = group.representative.row
         return SemanticItemMatch(
             rank=rank,
-            item_id=int(row["item_id"]),
+            item_id=int(row.item_id),
             item_ids=group.item_ids,
             occurrence_count=len(group.item_ids),
-            receipt_id=int(row["receipt_id"]),
-            description=str(row["description"] or ""),
+            receipt_id=int(row.receipt_id),
+            description=str(row.description or ""),
             normalized_description=(
-                str(row["normalized_description"]) if row["normalized_description"] else None
+                str(row.normalized_description) if row.normalized_description else None
             ),
             category=_reviewed_category_from_raw_json(
-                row["item_raw_json"],
-                fallback=str(row["category"]) if row["category"] else None,
+                row.item_raw_json,
+                fallback=str(row.category) if row.category else None,
             ),
-            semantic_description=_semantic_description_from_raw_json(row["item_raw_json"]),
-            merchant=str(row["merchant"]) if row["merchant"] else None,
-            parser_item_type=(str(row["parser_item_type"]) if row["parser_item_type"] else None),
-            line_total=float(row["line_total"]) if row["line_total"] is not None else None,
-            unit_price=float(row["unit_price"]) if row["unit_price"] is not None else None,
-            receipt_date=str(row["receipt_date"]) if row["receipt_date"] else None,
-            currency=str(row["currency"]) if row["currency"] else None,
+            semantic_description=_semantic_description_from_raw_json(row.item_raw_json),
+            merchant=str(row.merchant) if row.merchant else None,
+            parser_item_type=(str(row.parser_item_type) if row.parser_item_type else None),
+            line_total=float(row.line_total) if row.line_total is not None else None,
+            unit_price=float(row.unit_price) if row.unit_price is not None else None,
+            receipt_date=str(row.receipt_date) if row.receipt_date else None,
+            currency=str(row.currency) if row.currency else None,
             similarity=group.vector_similarity,
             vector_rank=group.vector_rank,
             lexical_rank=group.lexical_rank,
@@ -333,40 +325,14 @@ class ItemSemanticRetriever:
         merchant: str | None,
         category: str | None,
         item_ids: Iterable[int] | None,
-    ) -> list[sqlite3.Row]:
-        clauses, parameters = self._structured_filters(
+    ) -> list[SemanticSearchCandidate]:
+        return self.repository.load_candidates(
+            embedding_model=self.embedding_client.model,
+            approved_only=self.approved_only,
             merchant=merchant,
             category=category,
-            item_ids=item_ids,
-            embedding_model=True,
+            item_ids=self._selected_item_ids(item_ids),
         )
-        sql = f"""
-            SELECT
-                e.item_id,
-                e.embedding_dimension,
-                e.embedding,
-                i.receipt_id,
-                i.raw_name AS description,
-                i.normalized_name AS normalized_description,
-                COALESCE(i.category, i.category_key, i.category_group) AS category,
-                i.raw_json AS item_raw_json,
-                i.parser_item_type,
-                i.line_total,
-                i.unit_price,
-                r.merchant_name AS merchant,
-                r.receipt_date,
-                r.currency
-            FROM rag_item_embeddings AS e
-            JOIN receipt_items AS i ON i.id = e.item_id
-            JOIN receipts AS r ON r.id = i.receipt_id
-            WHERE {" AND ".join(clauses)}
-            ORDER BY e.item_id
-        """
-        connection = self._open_read_only()
-        try:
-            return connection.execute(sql, parameters).fetchall()
-        finally:
-            connection.close()
 
     def _load_fts_ranks(
         self,
@@ -379,99 +345,19 @@ class ItemSemanticRetriever:
         fts_query = build_fts_query(query)
         if not fts_query:
             return {}
+        return self.repository.load_fts_ranks(
+            fts_query=fts_query,
+            approved_only=self.approved_only,
+            merchant=merchant,
+            category=category,
+            item_ids=self._selected_item_ids(item_ids),
+            maximum_results=max(self.maximum_limit * 10, 200),
+        )
 
-        connection = self._open_read_only()
-        try:
-            available = connection.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='receipt_item_fts'"
-            ).fetchone()
-            if not available:
-                return {}
-
-            clauses, parameters = self._structured_filters(
-                merchant=merchant,
-                category=category,
-                item_ids=item_ids,
-                embedding_model=False,
-            )
-            sql = f"""
-                SELECT receipt_item_fts.item_id,
-                       bm25(receipt_item_fts, 0.0, 0.0, 0.0, 0.0, 10.0, 12.0, 0.0, 0.0)
-                           AS lexical_bm25
-                FROM receipt_item_fts
-                JOIN receipt_items AS i ON i.id = receipt_item_fts.item_id
-                JOIN receipts AS r ON r.id = i.receipt_id
-                WHERE receipt_item_fts MATCH ?
-                  AND {" AND ".join(clauses)}
-                ORDER BY lexical_bm25 ASC, receipt_item_fts.item_id ASC
-                LIMIT ?
-            """
-            rows = connection.execute(
-                sql,
-                [fts_query, *parameters, max(self.maximum_limit * 10, 200)],
-            ).fetchall()
-            return {int(row["item_id"]): rank for rank, row in enumerate(rows, start=1)}
-        except sqlite3.OperationalError:
-            return {}
-        finally:
-            connection.close()
-
-    def _structured_filters(
-        self,
-        *,
-        merchant: str | None,
-        category: str | None,
-        item_ids: Iterable[int] | None,
-        embedding_model: bool,
-    ) -> tuple[list[str], list[object]]:
-        clauses: list[str] = []
-        parameters: list[object] = []
-        if embedding_model:
-            clauses.append("e.embedding_model = ?")
-            parameters.append(self.embedding_client.model)
-
-        clauses.append("lower(COALESCE(i.parser_item_type, 'item')) IN (?, ?, ?, ?)")
-        parameters.extend(_PURCHASE_ITEM_TYPES)
-
-        if self.approved_only:
-            clauses.append(
-                "(r.approved_receipt_path IS NOT NULL OR "
-                "lower(COALESCE(r.review_status, '')) IN "
-                "('approved', 'accepted', 'saved', 'complete', 'completed'))"
-            )
-
-        normalized_merchant = " ".join(str(merchant or "").split()).strip()
-        if normalized_merchant:
-            clauses.append(
-                "(lower(COALESCE(r.merchant_normalized, '')) = lower(?) OR "
-                "lower(COALESCE(r.merchant_name, '')) = lower(?))"
-            )
-            parameters.extend([normalized_merchant, normalized_merchant])
-
-        normalized_category = " ".join(str(category or "").split()).strip()
-        if normalized_category:
-            clauses.append(
-                "lower(COALESCE(i.category_key, i.category_group, i.category, '')) = lower(?)"
-            )
-            parameters.append(normalized_category)
-
-        selected_ids = sorted({int(item_id) for item_id in item_ids or [] if int(item_id) > 0})
-        if selected_ids:
-            placeholders = ", ".join("?" for _ in selected_ids)
-            clauses.append(f"i.id IN ({placeholders})")
-            parameters.extend(selected_ids)
-
-        return clauses, parameters
-
-    def _open_read_only(self) -> sqlite3.Connection:
-        if not self.database_path.exists():
-            raise FileNotFoundError(f"Receipt database does not exist: {self.database_path}")
-
-        uri = f"{self.database_path.resolve().as_uri()}?mode=ro"
-        connection = sqlite3.connect(uri, uri=True)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA query_only = ON")
-        return connection
+    @staticmethod
+    def _selected_item_ids(item_ids: Iterable[int] | None) -> list[int] | None:
+        selected = sorted({int(item_id) for item_id in item_ids or () if int(item_id) > 0})
+        return selected or None
 
 
 def _raw_item_payload(value: object) -> dict[str, object]:

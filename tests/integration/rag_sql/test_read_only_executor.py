@@ -4,6 +4,9 @@ from pathlib import Path
 
 import pytest
 
+from receipt_intelligence.adapters.storage.sqlite.analytical_query import (
+    SQLiteAnalyticalQueryRepository,
+)
 from receipt_intelligence.rag_sql.executor import ReadOnlySqlExecutor, SqlExecutionError
 from receipt_intelligence.rag_sql.models import ValidatedSqlPlan
 from receipt_intelligence.storage.receipt_db import ReceiptDatabase
@@ -108,7 +111,7 @@ def test_executor_reads_only_approved_purchase_view(tmp_path: Path) -> None:
         parser_item_type="discount",
     )
 
-    result = ReadOnlySqlExecutor(db.db_path).execute(
+    result = ReadOnlySqlExecutor(SQLiteAnalyticalQueryRepository(db.db_path)).execute(
         _plan(
             "SELECT ROUND(SUM(line_total), 2) AS value, currency "
             "FROM analytics_purchase_items WHERE item_id = :item_id GROUP BY currency",
@@ -142,4 +145,13 @@ def test_executor_authorizer_denies_direct_storage_table_access(tmp_path: Path) 
     )
 
     with pytest.raises(SqlExecutionError, match="not authorized|denied"):
-        ReadOnlySqlExecutor(db.db_path).execute(unsafe)
+        ReadOnlySqlExecutor(SQLiteAnalyticalQueryRepository(db.db_path)).execute(unsafe)
+
+
+def test_executor_reports_missing_database_through_query_boundary(tmp_path: Path) -> None:
+    executor = ReadOnlySqlExecutor(
+        SQLiteAnalyticalQueryRepository(tmp_path / "missing.db")
+    )
+
+    with pytest.raises(SqlExecutionError, match="does not exist"):
+        executor.execute(_plan("SELECT 1 AS value", {}))

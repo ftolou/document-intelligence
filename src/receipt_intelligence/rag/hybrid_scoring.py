@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from receipt_intelligence.storage.normalization import normalize_text
+from receipt_intelligence.utils.text import normalize_text
 
 
 def product_identity_key(

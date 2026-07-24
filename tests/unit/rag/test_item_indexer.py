@@ -5,6 +5,9 @@ from pathlib import Path
 
 import pytest
 
+from receipt_intelligence.adapters.storage.sqlite.semantic_index import (
+    SQLiteSemanticIndexRepository,
+)
 from receipt_intelligence.rag.item_indexer import ItemEmbeddingIndexer
 from receipt_intelligence.rag.models import EmbeddingBatchResult
 from receipt_intelligence.rag.vector_codec import blob_to_vector, vector_to_blob
@@ -74,7 +77,7 @@ def test_incremental_indexer_embeds_only_approved_purchase_items(tmp_path: Path)
     database = _database(tmp_path)
     client = FakeEmbeddingClient()
     report = ItemEmbeddingIndexer(
-        database_path=database,
+        repository=SQLiteSemanticIndexRepository(database),
         embedding_client=client,
         batch_size=1,
     ).rebuild()
@@ -96,7 +99,10 @@ def test_incremental_indexer_embeds_only_approved_purchase_items(tmp_path: Path)
 def test_unchanged_hashes_are_skipped_and_changed_documents_are_reembedded(tmp_path: Path) -> None:
     database = _database(tmp_path)
     first_client = FakeEmbeddingClient()
-    indexer = ItemEmbeddingIndexer(database_path=database, embedding_client=first_client)
+    indexer = ItemEmbeddingIndexer(
+        repository=SQLiteSemanticIndexRepository(database),
+        embedding_client=first_client,
+    )
     first = indexer.rebuild()
     second = indexer.rebuild()
 
@@ -120,7 +126,10 @@ def test_category_or_reviewed_reason_changes_reembed_but_merchant_does_not(
 ) -> None:
     database = _database(tmp_path)
     client = FakeEmbeddingClient()
-    indexer = ItemEmbeddingIndexer(database_path=database, embedding_client=client)
+    indexer = ItemEmbeddingIndexer(
+        repository=SQLiteSemanticIndexRepository(database),
+        embedding_client=client,
+    )
     first = indexer.rebuild()
 
     with sqlite3.connect(database) as connection:
@@ -151,7 +160,10 @@ def test_category_or_reviewed_reason_changes_reembed_but_merchant_does_not(
 def test_force_reembeds_all_eligible_rows(tmp_path: Path) -> None:
     database = _database(tmp_path)
     client = FakeEmbeddingClient()
-    indexer = ItemEmbeddingIndexer(database_path=database, embedding_client=client)
+    indexer = ItemEmbeddingIndexer(
+        repository=SQLiteSemanticIndexRepository(database),
+        embedding_client=client,
+    )
     indexer.rebuild()
     report = indexer.rebuild(force=True)
     assert report.embedded == 2
@@ -162,7 +174,7 @@ def test_batch_failure_is_recorded_and_later_batches_continue(tmp_path: Path) ->
     database = _database(tmp_path)
     client = FakeEmbeddingClient(fail_on_call=1)
     report = ItemEmbeddingIndexer(
-        database_path=database,
+        repository=SQLiteSemanticIndexRepository(database),
         embedding_client=client,
         batch_size=1,
     ).rebuild()
@@ -183,7 +195,7 @@ def test_index_item_ids_limits_scope(tmp_path: Path) -> None:
     database = _database(tmp_path)
     client = FakeEmbeddingClient()
     report = ItemEmbeddingIndexer(
-        database_path=database,
+        repository=SQLiteSemanticIndexRepository(database),
         embedding_client=client,
     ).index_item_ids([3])
     assert report.eligible_items == 1
@@ -211,7 +223,7 @@ def test_rebuild_prunes_previously_indexed_placeholder_rows(tmp_path: Path) -> N
         connection.commit()
 
     report = ItemEmbeddingIndexer(
-        database_path=database,
+        repository=SQLiteSemanticIndexRepository(database),
         embedding_client=FakeEmbeddingClient(),
     ).rebuild()
 

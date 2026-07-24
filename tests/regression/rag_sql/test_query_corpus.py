@@ -6,6 +6,9 @@ from typing import Any
 
 import pytest
 
+from receipt_intelligence.adapters.storage.sqlite.analytical_query import (
+    SQLiteAnalyticalQueryRepository,
+)
 from receipt_intelligence.rag.candidate_models import CandidateResolutionResult
 from receipt_intelligence.rag.models import SemanticItemMatch, SemanticItemSearchResult
 from receipt_intelligence.rag_sql.engine import RagSqlEngine
@@ -315,7 +318,7 @@ def test_rag_sql_langgraph_query_corpus(tmp_path: Path) -> None:
             resolver=resolver,  # type: ignore[arg-type]
             planner=_Planner(case["plan"]),  # type: ignore[arg-type]
             validator=RagSqlValidator(),
-            executor=ReadOnlySqlExecutor(db.db_path),
+            executor=ReadOnlySqlExecutor(SQLiteAnalyticalQueryRepository(db.db_path)),
         )
 
         response = engine.execute(case["question"])

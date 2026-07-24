@@ -13,6 +13,9 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from receipt_intelligence import settings  # noqa: E402
+from receipt_intelligence.adapters.storage.sqlite.semantic_search import (  # noqa: E402
+    SQLiteSemanticSearchRepository,
+)
 from receipt_intelligence.rag.embedding_client import OllamaEmbeddingClient  # noqa: E402
 from receipt_intelligence.rag.item_retriever import ItemSemanticRetriever  # noqa: E402
 
@@ -54,7 +57,7 @@ def main() -> int:
         keep_alive=args.keep_alive or None,
     ) as client:
         result = ItemSemanticRetriever(
-            database_path=args.db,
+            repository=SQLiteSemanticSearchRepository(args.db),
             embedding_client=client,
             maximum_limit=settings.RAG_RETRIEVAL_MAX_LIMIT,
             deduplicate=settings.RAG_RETRIEVAL_DEDUPLICATE,

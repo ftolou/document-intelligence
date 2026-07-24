@@ -5,10 +5,10 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 from urllib.parse import unquote, urlparse
 
-from receipt_intelligence.services.artifact_service import artifact_url
+from receipt_intelligence.services.artifact_service import artifact_resource
 from receipt_intelligence.storage.job_store import JobStore
 from receipt_intelligence.storage.receipt_db import ReceiptDatabase
 
@@ -196,14 +196,24 @@ class ReviewService:
         self.store = store
         self.receipt_db = receipt_db
 
-    def artifact_path_from_url(self, job_id: str, artifact_value: str | None) -> Path | None:
+    def artifact_path_from_url(
+        self,
+        job_id: str,
+        artifact_value: Mapping[str, Any] | str | None,
+    ) -> Path | None:
         if not artifact_value:
             return None
-        try:
-            parsed = urlparse(str(artifact_value))
-            filename = Path(unquote(parsed.path)).name
-        except Exception:
-            filename = Path(str(artifact_value)).name
+        if isinstance(artifact_value, Mapping):
+            reference_job_id = str(artifact_value.get("job_id") or job_id).strip()
+            if reference_job_id != job_id:
+                return None
+            filename = Path(str(artifact_value.get("filename") or "")).name
+        else:
+            try:
+                parsed = urlparse(str(artifact_value))
+                filename = Path(unquote(parsed.path)).name
+            except Exception:
+                filename = Path(str(artifact_value)).name
         if not filename:
             return None
         job_dir = self.store.job_dir(job_id).resolve()
@@ -320,12 +330,12 @@ class ReviewService:
         human_review = receipt.get("human_review") if isinstance(receipt, dict) else None
         return dict(human_review) if isinstance(human_review, dict) else None
 
-    def database_image_url(self, record: dict[str, Any]) -> str | None:
+    def database_image_reference(self, record: dict[str, Any]) -> dict[str, str] | None:
         job_id = str(record.get("job_id") or "").strip()
         path = self.safe_job_artifact_path(job_id, record.get("image_path"))
         if path is None:
-            return self.review_image_url(job_id) if job_id else None
-        return artifact_url(job_id, path)
+            return self.review_image_reference(job_id) if job_id else None
+        return artifact_resource(job_id, path)
 
     def job_image_path(self, job_id: str) -> Path | None:
         job = self.store.get(job_id) or {}
@@ -335,7 +345,7 @@ class ReviewService:
         path = Path(str(image_path))
         return path if path.exists() else None
 
-    def review_image_url(self, job_id: str) -> str | None:
+    def review_image_reference(self, job_id: str) -> dict[str, str] | None:
         image_path = self.job_image_path(job_id)
         if image_path is None:
             return None
@@ -344,7 +354,7 @@ class ReviewService:
             image_path.resolve().relative_to(job_dir)
         except ValueError:
             return None
-        return artifact_url(job_id, image_path)
+        return artifact_resource(job_id, image_path)
 
     def import_reviewed_receipt(
         self,

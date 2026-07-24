@@ -8,6 +8,9 @@ from pathlib import Path
 from typing import Any
 
 import receipt_intelligence.settings as settings
+from receipt_intelligence.adapters.storage.sqlite.semantic_index import (
+    SQLiteSemanticIndexRepository,
+)
 from receipt_intelligence.rag.embedding_client import OllamaEmbeddingClient
 from receipt_intelligence.rag.item_indexer import ItemEmbeddingIndexer
 from receipt_intelligence.services.review_service import ReviewService, apply_human_review
@@ -40,8 +43,10 @@ class DatabaseReceiptEditor:
             raise KeyError("receipt not found")
         record = self.receipt_db.get_receipt_review_record(receipt_id) or {}
         job_id = str(record.get("job_id") or "").strip()
-        image_url = self.review_service.database_image_url(record) if job_id else None
-        artifacts = {"receipt_image": image_url} if image_url else {}
+        image_reference = (
+            self.review_service.database_image_reference(record) if job_id else None
+        )
+        artifacts = {"receipt_image": image_reference} if image_reference else {}
         review = (
             receipt.get("human_review") if isinstance(receipt.get("human_review"), dict) else None
         )
@@ -52,11 +57,9 @@ class DatabaseReceiptEditor:
             "receipt": receipt,
             "review": review,
             "artifacts": artifacts,
-            "receipt_image": image_url,
+            "receipt_image": image_reference,
             "source": "database",
             "editable": True,
-            "save_url": f"/api/receipt-db/receipts/{int(receipt_id)}/review",
-            "save_method": "PUT",
             "read_only_reason": None,
         }
 
@@ -146,7 +149,7 @@ class DatabaseReceiptEditor:
                 keep_alive=settings.RAG_EMBEDDING_KEEP_ALIVE,
             ) as embedding_client:
                 report = ItemEmbeddingIndexer(
-                    database_path=self.receipt_db.db_path,
+                    repository=SQLiteSemanticIndexRepository(self.receipt_db.db_path),
                     embedding_client=embedding_client,
                     batch_size=settings.RAG_EMBEDDING_BATCH_SIZE,
                 ).index_item_ids(item_ids)

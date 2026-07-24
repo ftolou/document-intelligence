@@ -6,6 +6,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from receipt_intelligence.adapters.llm import OllamaGateway
+from receipt_intelligence.adapters.storage.sqlite.analytical_query import (
+    SQLiteAnalyticalQueryRepository,
+)
+from receipt_intelligence.adapters.storage.sqlite.semantic_search import (
+    SQLiteSemanticSearchRepository,
+)
 from receipt_intelligence.rag.candidate_resolver import CandidateResolver, CandidateResolverConfig
 from receipt_intelligence.rag.embedding_client import OllamaEmbeddingClient
 from receipt_intelligence.rag.item_retriever import ItemSemanticRetriever
@@ -26,8 +32,6 @@ from receipt_intelligence.rag_sql.question_analyzer import (
     RagSqlQuestionAnalyzer,
 )
 from receipt_intelligence.rag_sql.validator import RagSqlValidator, SqlValidatorConfig
-from receipt_intelligence.storage.connection import SQLiteConnectionFactory
-from receipt_intelligence.storage.migrations import MigrationRunner
 
 
 @dataclass(frozen=True)
@@ -74,7 +78,6 @@ class RagSqlRuntime:
         self.config = config
 
     def execute(self, question: str) -> RagSqlResponse:
-        MigrationRunner(SQLiteConnectionFactory(self.config.database_path)).migrate()
         llm_gateway = OllamaGateway(self.config.ollama_url)
         with OllamaEmbeddingClient(
             base_url=self.config.ollama_url,
@@ -83,7 +86,7 @@ class RagSqlRuntime:
             keep_alive=self.config.embedding_keep_alive,
         ) as embedding_client:
             retriever = ItemSemanticRetriever(
-                database_path=self.config.database_path,
+                repository=SQLiteSemanticSearchRepository(self.config.database_path),
                 embedding_client=embedding_client,
                 maximum_limit=self.config.retrieval_maximum_limit,
                 deduplicate=True,
@@ -105,7 +108,7 @@ class RagSqlRuntime:
                     SqlValidatorConfig(maximum_rows=self.config.maximum_rows)
                 ),
                 executor=ReadOnlySqlExecutor(
-                    self.config.database_path,
+                    SQLiteAnalyticalQueryRepository(self.config.database_path),
                     ReadOnlySqlExecutorConfig(
                         maximum_rows=self.config.maximum_rows,
                         timeout_seconds=self.config.execution_timeout_seconds,

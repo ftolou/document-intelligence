@@ -13,8 +13,12 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from receipt_intelligence import settings  # noqa: E402
+from receipt_intelligence.adapters.storage.sqlite.semantic_index import (  # noqa: E402
+    SQLiteSemanticIndexRepository,
+)
 from receipt_intelligence.rag.embedding_client import OllamaEmbeddingClient  # noqa: E402
 from receipt_intelligence.rag.item_indexer import ItemEmbeddingIndexer  # noqa: E402
+from receipt_intelligence.storage.bootstrap import initialize_database  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -40,6 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = build_parser().parse_args()
+    initialize_database(args.db)
     with OllamaEmbeddingClient(
         base_url=args.ollama_url,
         model=args.model,
@@ -47,7 +52,7 @@ def main() -> int:
         keep_alive=args.keep_alive or None,
     ) as client:
         report = ItemEmbeddingIndexer(
-            database_path=args.db,
+            repository=SQLiteSemanticIndexRepository(args.db),
             embedding_client=client,
             batch_size=args.batch_size,
             approved_only=not args.include_unapproved,

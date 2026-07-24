@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import sqlite3
 from collections.abc import Iterable
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Protocol
 
 from receipt_intelligence.rag.item_documents import (
@@ -17,11 +15,12 @@ from receipt_intelligence.rag.models import (
     ItemEmbeddingDocument,
     ItemEmbeddingIndexReport,
 )
-from receipt_intelligence.rag.vector_codec import vector_to_blob
-from receipt_intelligence.storage.connection import SQLiteConnectionFactory
-from receipt_intelligence.storage.migrations import MigrationRunner
+from receipt_intelligence.rag.ports import (
+    SemanticIndexRepository,
+    SemanticIndexState,
+    StoredItemEmbedding,
+)
 
-_PURCHASE_ITEM_TYPES = ("item", "product", "purchase_item", "purchased_product")
 _DEFAULT_INDEX_NAME = "approved_purchase_items"
 
 
@@ -42,7 +41,7 @@ class ItemEmbeddingIndexer:
     def __init__(
         self,
         *,
-        database_path: Path | str,
+        repository: SemanticIndexRepository,
         embedding_client: EmbeddingClient,
         batch_size: int = 32,
         index_name: str = _DEFAULT_INDEX_NAME,
@@ -54,13 +53,11 @@ class ItemEmbeddingIndexer:
         if not normalized_name:
             raise ValueError("index_name must not be empty.")
 
-        self.database_path = Path(database_path)
+        self.repository = repository
         self.embedding_client = embedding_client
         self.batch_size = int(batch_size)
         self.index_name = normalized_name
         self.approved_only = bool(approved_only)
-        self.connections = SQLiteConnectionFactory(self.database_path)
-        self.migrations = MigrationRunner(self.connections)
 
     def rebuild(self, *, force: bool = False) -> ItemEmbeddingIndexReport:
         """Incrementally index all eligible rows.
@@ -69,7 +66,6 @@ class ItemEmbeddingIndexer:
         Otherwise unchanged ``content_hash`` values are skipped.
         """
 
-        self.migrations.migrate()
         documents = self._load_documents()
         pruned = self._prune_embeddings(
             eligible_item_ids={document.item_id for document in documents}
@@ -173,7 +169,6 @@ class ItemEmbeddingIndexer:
                 batches=0,
             )
 
-        self.migrations.migrate()
         documents = self._load_documents(item_ids=selected)
         pruned = self._prune_embeddings(
             eligible_item_ids={document.item_id for document in documents},
@@ -229,49 +224,14 @@ class ItemEmbeddingIndexer:
         )
 
     def _load_documents(self, item_ids: list[int] | None = None) -> list[ItemEmbeddingDocument]:
-        clauses = [
-            "trim(COALESCE(i.raw_name, '')) <> ''",
-            "lower(COALESCE(i.parser_item_type, 'item')) IN (?, ?, ?, ?)",
-        ]
-        parameters: list[object] = list(_PURCHASE_ITEM_TYPES)
-
-        if self.approved_only:
-            clauses.append(
-                "(r.approved_receipt_path IS NOT NULL OR "
-                "lower(COALESCE(r.review_status, '')) IN "
-                "('approved', 'accepted', 'saved', 'complete', 'completed'))"
-            )
-        if item_ids:
-            placeholders = ", ".join("?" for _ in item_ids)
-            clauses.append(f"i.id IN ({placeholders})")
-            parameters.extend(item_ids)
-
-        sql = f"""
-            SELECT
-                i.id AS item_id,
-                i.receipt_id,
-                i.raw_name AS description,
-                i.normalized_name AS description_normalized,
-                i.category AS category,
-                i.category_group AS category_group,
-                i.category_key AS category_key,
-                i.category_reason AS category_reason,
-                i.semantic_description AS semantic_description,
-                i.raw_json AS item_raw_json,
-                r.merchant_name AS merchant,
-                i.parser_item_type
-            FROM receipt_items AS i
-            JOIN receipts AS r ON r.id = i.receipt_id
-            WHERE {" AND ".join(clauses)}
-            ORDER BY i.id
-        """
-        with self.connections.connect() as connection:
-            rows = connection.execute(sql, parameters).fetchall()
-
+        sources = self.repository.load_indexable_items(
+            approved_only=self.approved_only,
+            item_ids=item_ids,
+        )
         documents: list[ItemEmbeddingDocument] = []
-        for row in rows:
+        for source in sources:
             try:
-                documents.append(build_item_embedding_document(dict(row)))
+                documents.append(build_item_embedding_document(source.as_mapping()))
             except UnindexableItemDescriptionError:
                 continue
         return documents
@@ -282,59 +242,20 @@ class ItemEmbeddingIndexer:
         eligible_item_ids: set[int],
         scope_item_ids: set[int] | None = None,
     ) -> int:
-        """Delete stale embeddings for rows no longer eligible for this index."""
-
-        with self.connections.connect() as connection:
-            rows = connection.execute(
-                "SELECT item_id FROM rag_item_embeddings WHERE embedding_model = ?",
-                (self.embedding_client.model,),
-            ).fetchall()
-            existing_ids = {int(row["item_id"]) for row in rows}
-            if scope_item_ids is not None:
-                existing_ids &= scope_item_ids
-            stale_ids = sorted(existing_ids - eligible_item_ids)
-            if not stale_ids:
-                return 0
-            placeholders = ", ".join("?" for _ in stale_ids)
-            connection.execute(
-                f"DELETE FROM rag_item_embeddings "
-                f"WHERE embedding_model = ? AND item_id IN ({placeholders})",
-                [self.embedding_client.model, *stale_ids],
-            )
-            connection.commit()
-        return len(stale_ids)
+        return self.repository.prune_embeddings(
+            embedding_model=self.embedding_client.model,
+            eligible_item_ids=eligible_item_ids,
+            scope_item_ids=scope_item_ids,
+        )
 
     def _existing_hashes(self, item_ids: list[int] | None = None) -> dict[int, str]:
-        sql = """
-            SELECT item_id, content_hash
-            FROM rag_item_embeddings
-            WHERE embedding_model = ?
-        """
-        parameters: list[object] = [self.embedding_client.model]
-        if item_ids:
-            placeholders = ", ".join("?" for _ in item_ids)
-            sql += f" AND item_id IN ({placeholders})"
-            parameters.extend(item_ids)
-        with self.connections.connect() as connection:
-            rows = connection.execute(sql, parameters).fetchall()
-        return {int(row["item_id"]): str(row["content_hash"]) for row in rows}
+        return self.repository.existing_hashes(
+            embedding_model=self.embedding_client.model,
+            item_ids=item_ids,
+        )
 
     def _known_dimension(self) -> int | None:
-        with self.connections.connect() as connection:
-            rows = connection.execute(
-                """
-                SELECT DISTINCT embedding_dimension
-                FROM rag_item_embeddings
-                WHERE embedding_model = ?
-                """,
-                (self.embedding_client.model,),
-            ).fetchall()
-        dimensions = {int(row["embedding_dimension"]) for row in rows}
-        if len(dimensions) > 1:
-            raise ValueError(
-                f"Stored embeddings for {self.embedding_client.model!r} have mixed dimensions."
-            )
-        return next(iter(dimensions), None)
+        return self.repository.known_dimension(embedding_model=self.embedding_client.model)
 
     @staticmethod
     def _validate_dimension(result: EmbeddingBatchResult, *, expected: int | None) -> int:
@@ -352,35 +273,20 @@ class ItemEmbeddingIndexer:
         if result.count != len(documents):
             raise ValueError("Embedding result count does not match document batch.")
         now = datetime.now(timezone.utc).isoformat()
-        records = [
-            (
-                document.item_id,
-                self.embedding_client.model,
-                result.dimension,
-                document.text,
-                document.content_hash,
-                sqlite3.Binary(vector_to_blob(vector)),
-                now,
-            )
-            for document, vector in zip(documents, result.vectors, strict=True)
-        ]
-        with self.connections.connect() as connection:
-            connection.executemany(
-                """
-                INSERT INTO rag_item_embeddings(
-                    item_id, embedding_model, embedding_dimension,
-                    document_text, content_hash, embedding, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(item_id, embedding_model) DO UPDATE SET
-                    embedding_dimension = excluded.embedding_dimension,
-                    document_text = excluded.document_text,
-                    content_hash = excluded.content_hash,
-                    embedding = excluded.embedding,
-                    updated_at = excluded.updated_at
-                """,
-                records,
-            )
-            connection.commit()
+        self.repository.store_embeddings(
+            [
+                StoredItemEmbedding(
+                    item_id=document.item_id,
+                    embedding_model=self.embedding_client.model,
+                    embedding_dimension=result.dimension,
+                    document_text=document.text,
+                    content_hash=document.content_hash,
+                    vector=tuple(float(value) for value in vector),
+                    updated_at=now,
+                )
+                for document, vector in zip(documents, result.vectors, strict=True)
+            ]
+        )
 
     def _write_state(
         self,
@@ -391,35 +297,18 @@ class ItemEmbeddingIndexer:
         last_indexed_item_id: int | None,
         last_error: str | None,
     ) -> None:
-        with self.connections.connect() as connection:
-            connection.execute(
-                """
-                INSERT INTO rag_index_state(
-                    index_name, embedding_model, embedding_dimension,
-                    indexed_count, failed_count, last_indexed_item_id,
-                    last_completed_at, last_error
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(index_name) DO UPDATE SET
-                    embedding_model = excluded.embedding_model,
-                    embedding_dimension = excluded.embedding_dimension,
-                    indexed_count = excluded.indexed_count,
-                    failed_count = excluded.failed_count,
-                    last_indexed_item_id = excluded.last_indexed_item_id,
-                    last_completed_at = excluded.last_completed_at,
-                    last_error = excluded.last_error
-                """,
-                (
-                    self.index_name,
-                    self.embedding_client.model,
-                    dimension,
-                    indexed_count,
-                    failed_count,
-                    last_indexed_item_id,
-                    datetime.now(timezone.utc).isoformat(),
-                    last_error,
-                ),
+        self.repository.save_state(
+            SemanticIndexState(
+                index_name=self.index_name,
+                embedding_model=self.embedding_client.model,
+                embedding_dimension=dimension,
+                indexed_count=indexed_count,
+                failed_count=failed_count,
+                last_indexed_item_id=last_indexed_item_id,
+                last_completed_at=datetime.now(timezone.utc).isoformat(),
+                last_error=last_error,
             )
-            connection.commit()
+        )
 
     def _batches(
         self,

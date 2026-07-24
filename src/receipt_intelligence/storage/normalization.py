@@ -6,6 +6,8 @@ import re
 from datetime import datetime, timezone
 from typing import Any
 
+from receipt_intelligence.utils.text import normalize_text
+
 _WORD_RE = re.compile(r"[\wäöüÄÖÜß]+", re.UNICODE)
 
 CATEGORY_ALIASES: dict[str, list[str]] = {
@@ -114,22 +116,6 @@ PARSER_ITEM_TYPES = {
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
-
-
-def normalize_text(value: Any) -> str:
-    text = str(value or "").lower()
-    replacements = {
-        "ä": "ae",
-        "ö": "oe",
-        "ü": "ue",
-        "ß": "ss",
-        "&": " and ",
-        "+": " plus ",
-    }
-    for source, replacement in replacements.items():
-        text = text.replace(source, replacement)
-    text = re.sub(r"[^a-z0-9]+", " ", text)
-    return re.sub(r"\s+", " ", text).strip()
 
 
 def tokenize(value: Any) -> list[str]:

@@ -3,6 +3,7 @@
 ## Current architecture and operation
 
 - [Architecture](ARCHITECTURE.md)
+- [Application use-case boundary](APPLICATION_USE_CASES.md)
 - [Project structure](PROJECT_STRUCTURE.md)
 - [Development](DEVELOPMENT.md)
 - [Docker image design](DOCKER_IMAGE_DESIGN.md)

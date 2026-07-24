@@ -5,6 +5,9 @@ from pathlib import Path
 
 import pytest
 
+from receipt_intelligence.adapters.storage.sqlite.semantic_search import (
+    SQLiteSemanticSearchRepository,
+)
 from receipt_intelligence.rag.item_retriever import ItemSemanticRetriever
 from receipt_intelligence.rag.models import EmbeddingBatchResult
 from receipt_intelligence.rag.vector_codec import vector_to_blob
@@ -138,7 +141,7 @@ def test_hybrid_ranking_promotes_literal_product_match_over_category_contaminati
     client = StaticEmbeddingClient([1.0, 0.0])
 
     result = ItemSemanticRetriever(
-        database_path=database,
+        repository=SQLiteSemanticSearchRepository(database),
         embedding_client=client,
     ).search("Schuhe", limit=5)
 
@@ -155,7 +158,7 @@ def test_compound_word_lexical_signal_recovers_mineralwasser(tmp_path: Path) -> 
     database = _database(tmp_path)
     # Dense similarity intentionally favors the WC cleaner.
     result = ItemSemanticRetriever(
-        database_path=database,
+        repository=SQLiteSemanticSearchRepository(database),
         embedding_client=StaticEmbeddingClient([1.0, 0.0]),
     ).search("Wasser", limit=5)
 
@@ -169,7 +172,7 @@ def test_search_deduplicates_product_occurrences_and_retains_all_item_ids(
     tmp_path: Path,
 ) -> None:
     result = ItemSemanticRetriever(
-        database_path=_database(tmp_path),
+        repository=SQLiteSemanticSearchRepository(_database(tmp_path)),
         embedding_client=StaticEmbeddingClient([1.0, 0.0]),
     ).search("Krawatte", limit=10)
 
@@ -181,7 +184,7 @@ def test_search_deduplicates_product_occurrences_and_retains_all_item_ids(
 
 def test_search_can_disable_deduplication(tmp_path: Path) -> None:
     result = ItemSemanticRetriever(
-        database_path=_database(tmp_path),
+        repository=SQLiteSemanticSearchRepository(_database(tmp_path)),
         embedding_client=StaticEmbeddingClient([1.0, 0.0]),
     ).search("Krawatte", limit=10, deduplicate=False)
 
@@ -192,7 +195,7 @@ def test_search_can_disable_deduplication(tmp_path: Path) -> None:
 def test_search_supports_score_and_structured_filters(tmp_path: Path) -> None:
     database = _database(tmp_path)
     retriever = ItemSemanticRetriever(
-        database_path=database,
+        repository=SQLiteSemanticSearchRepository(database),
         embedding_client=StaticEmbeddingClient([0.0, 1.0]),
     )
 
@@ -211,7 +214,7 @@ def test_search_supports_score_and_structured_filters(tmp_path: Path) -> None:
 
 def test_search_can_limit_candidates_by_item_id(tmp_path: Path) -> None:
     result = ItemSemanticRetriever(
-        database_path=_database(tmp_path),
+        repository=SQLiteSemanticSearchRepository(_database(tmp_path)),
         embedding_client=StaticEmbeddingClient([1.0, 0.0]),
     ).search("anything", item_ids=[3], limit=10)
 
@@ -221,7 +224,7 @@ def test_search_can_limit_candidates_by_item_id(tmp_path: Path) -> None:
 def test_search_rejects_dimension_mismatch(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="dimension does not match"):
         ItemSemanticRetriever(
-            database_path=_database(tmp_path),
+            repository=SQLiteSemanticSearchRepository(_database(tmp_path)),
             embedding_client=StaticEmbeddingClient([1.0, 0.0, 0.0]),
         ).search("Schuhe")
 
@@ -240,7 +243,7 @@ def test_search_skips_corrupt_or_zero_vectors(tmp_path: Path) -> None:
         connection.commit()
 
     result = ItemSemanticRetriever(
-        database_path=database,
+        repository=SQLiteSemanticSearchRepository(database),
         embedding_client=StaticEmbeddingClient([1.0, 0.0]),
     ).search("Schuhe")
 
@@ -249,8 +252,9 @@ def test_search_skips_corrupt_or_zero_vectors(tmp_path: Path) -> None:
 
 
 def test_search_validates_query_limit_threshold_and_configuration(tmp_path: Path) -> None:
+    database = _database(tmp_path)
     retriever = ItemSemanticRetriever(
-        database_path=_database(tmp_path),
+        repository=SQLiteSemanticSearchRepository(database),
         embedding_client=StaticEmbeddingClient([1.0, 0.0]),
         maximum_limit=5,
     )
@@ -263,7 +267,7 @@ def test_search_validates_query_limit_threshold_and_configuration(tmp_path: Path
         retriever.search("shoe", limit=5, minimum_score=1.2)
     with pytest.raises(ValueError, match="at least one retrieval weight"):
         ItemSemanticRetriever(
-            database_path=retriever.database_path,
+            repository=SQLiteSemanticSearchRepository(database),
             embedding_client=StaticEmbeddingClient([1.0, 0.0]),
             vector_weight=0,
             lexical_weight=0,

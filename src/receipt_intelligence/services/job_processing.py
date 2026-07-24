@@ -9,16 +9,15 @@ import traceback
 from pathlib import Path
 from typing import Any
 
-from werkzeug.utils import secure_filename
-
 import receipt_intelligence.settings as settings
 from receipt_intelligence.application.ports import OcrEngine, OcrRequest
 from receipt_intelligence.extraction import ExtractionRequest
 from receipt_intelligence.pipeline.integrated_receipt_pipeline import run_receipt_extraction
-from receipt_intelligence.services.artifact_service import artifact_url
+from receipt_intelligence.services.artifact_service import artifact_resource
 from receipt_intelligence.services.review_service import ReviewService
 from receipt_intelligence.storage.job_store import JobStore
 from receipt_intelligence.storage.receipt_db import ReceiptDatabase
+from receipt_intelligence.utils.filenames import safe_filename
 
 
 class JobProcessingService:
@@ -193,7 +192,7 @@ class JobProcessingService:
         image_path: Path,
         ocr_json_path: Path,
         paths: dict[str, str],
-    ) -> dict[str, str]:
+    ) -> dict[str, Any]:
         final_path = self._final_result_path(paths)
 
         self.store.register_artifact(job_id, "receipt_image", image_path, category="input")
@@ -203,26 +202,26 @@ class JobProcessingService:
             if path.exists():
                 self.store.register_artifact(job_id, key, path)
 
-        def optional(name: str) -> str | None:
+        def optional(name: str) -> dict[str, str] | None:
             value = paths.get(name)
             if not value:
                 return None
             path = Path(value)
-            return artifact_url(job_id, path) if path.exists() else None
+            return artifact_resource(job_id, path) if path.exists() else None
 
         artifacts = {
-            "receipt_image": artifact_url(job_id, image_path) if image_path.exists() else None,
-            "ocr_json": artifact_url(job_id, ocr_json_path),
-            "final_receipt": artifact_url(job_id, final_path),
-            "final_receipt_reconciled": artifact_url(
+            "receipt_image": artifact_resource(job_id, image_path) if image_path.exists() else None,
+            "ocr_json": artifact_resource(job_id, ocr_json_path),
+            "final_receipt": artifact_resource(job_id, final_path),
+            "final_receipt_reconciled": artifact_resource(
                 job_id, Path(paths["receipt_final_reconciled"])
             ),
             "final_receipt_categorized": optional("receipt_final_categorized"),
-            "validation_report": artifact_url(job_id, Path(paths["validation_report"])),
-            "llm_prompt": artifact_url(job_id, Path(paths["llm_main_prompt"])),
-            "llm_raw": artifact_url(job_id, Path(paths["llm_main_raw"])),
-            "ocr_context": artifact_url(job_id, Path(paths["ocr_context"])),
-            "pipeline_meta": artifact_url(job_id, Path(paths["pipeline_meta"])),
+            "validation_report": artifact_resource(job_id, Path(paths["validation_report"])),
+            "llm_prompt": artifact_resource(job_id, Path(paths["llm_main_prompt"])),
+            "llm_raw": artifact_resource(job_id, Path(paths["llm_main_raw"])),
+            "ocr_context": artifact_resource(job_id, Path(paths["ocr_context"])),
+            "pipeline_meta": artifact_resource(job_id, Path(paths["pipeline_meta"])),
             "visual_evidence": optional("visual_evidence"),
             "table_interpretation": optional("table_interpretation"),
             "table_interpretation_prompt": optional("table_interpretation_prompt"),
@@ -298,7 +297,7 @@ class JobProcessingService:
         self,
         batch_id: str,
         items: list[dict[str, Any]],
-    ) -> dict[str, str]:
+    ) -> dict[str, Any]:
         batch_dir = self.store.job_dir(batch_id)
         summary_json = batch_dir / "batch_summary.json"
         summary_csv = batch_dir / "batch_summary.csv"
@@ -327,8 +326,8 @@ class JobProcessingService:
         self.store.register_artifact(batch_id, "batch_summary_json", summary_json, category="batch")
         self.store.register_artifact(batch_id, "batch_summary_csv", summary_csv, category="batch")
         return {
-            "batch_summary_json": artifact_url(batch_id, summary_json),
-            "batch_summary_csv": artifact_url(batch_id, summary_csv),
+            "batch_summary_json": artifact_resource(batch_id, summary_json),
+            "batch_summary_csv": artifact_resource(batch_id, summary_csv),
         }
 
     def run_batch_job(
@@ -360,7 +359,9 @@ class JobProcessingService:
                 child_id = f"{batch_id}_{index:03d}"
                 child_dir = self.store.job_dir(child_id)
                 child_dir.mkdir(parents=True, exist_ok=True)
-                safe_name = secure_filename(source_path.name) or f"receipt_{index:03d}.jpg"
+                safe_name = safe_filename(
+                    source_path.name, fallback=f"receipt_{index:03d}.jpg"
+                )
                 image_copy = child_dir / safe_name
                 shutil.copy2(source_path, image_copy)
                 self.store.add_event(

@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-from receipt_intelligence.rag_sql.application import ReceiptQueryService
+from receipt_intelligence.application.use_cases.query import ReceiptQueryExecutor
 from receipt_intelligence.runtime.paths import RuntimePaths
 from receipt_intelligence.storage.job_store import JobStore
 from receipt_intelligence.storage.receipt_db import ReceiptDatabase
@@ -59,7 +59,7 @@ class _StubQueryService:
         )
 
 
-def _test_app(tmp_path: Path, *, receipt_query_service: ReceiptQueryService | None = None):
+def _test_app(tmp_path: Path, *, receipt_query_service: ReceiptQueryExecutor | None = None):
     runtime_paths = RuntimePaths.from_environment(tmp_path, environ={})
     runtime_paths.ensure_directories()
     store = JobStore(runtime_paths.jobs_dir)
@@ -69,23 +69,24 @@ def _test_app(tmp_path: Path, *, receipt_query_service: ReceiptQueryService | No
             job_store=store,
             receipt_db=database,
             runtime_paths=runtime_paths,
-            receipt_query_service=receipt_query_service,
+            receipt_query_service=receipt_query_service or _StubQueryService(),
             testing=True,
         ),
         database,
+        store,
     )
 
 
 def test_factory_registers_existing_api_routes() -> None:
     with tempfile.TemporaryDirectory() as directory:
-        app, _ = _test_app(Path(directory))
+        app, _, _ = _test_app(Path(directory))
         rules = {rule.rule for rule in app.url_map.iter_rules() if rule.rule.startswith("/api/")}
         assert rules == EXPECTED_API_RULES
 
 
 def test_health_config_and_database_summary_are_available() -> None:
     with tempfile.TemporaryDirectory() as directory:
-        app, _ = _test_app(Path(directory))
+        app, _, _ = _test_app(Path(directory))
         client = app.test_client()
 
         health = client.get("/health")
@@ -102,8 +103,16 @@ def test_health_config_and_database_summary_are_available() -> None:
         }
 
         with (
-            patch("receipt_intelligence.web.routes.core.settings.READINESS_PROBE_OLLAMA", False),
-            patch("receipt_intelligence.web.routes.core.settings.READINESS_PROBE_VLM", False),
+            patch(
+                "receipt_intelligence.services.runtime_information.settings."
+                "READINESS_PROBE_OLLAMA",
+                False,
+            ),
+            patch(
+                "receipt_intelligence.services.runtime_information.settings."
+                "READINESS_PROBE_VLM",
+                False,
+            ),
         ):
             readiness = client.get("/api/readiness")
         assert readiness.status_code == 200
@@ -125,7 +134,7 @@ def test_query_route_uses_rag_sql_service_and_clamps_limit() -> None:
                 "answer": "Result: 20.00 EUR.",
             }
         )
-        app, _ = _test_app(
+        app, _, _ = _test_app(
             Path(directory),
             receipt_query_service=service,  # type: ignore[arg-type]
         )
@@ -146,7 +155,7 @@ def test_query_route_uses_rag_sql_service_and_clamps_limit() -> None:
 def test_query_route_rejects_removed_request_fields() -> None:
     with tempfile.TemporaryDirectory() as directory:
         service = _StubQueryService()
-        app, _ = _test_app(
+        app, _, _ = _test_app(
             Path(directory),
             receipt_query_service=service,  # type: ignore[arg-type]
         )
@@ -164,7 +173,7 @@ def test_query_route_rejects_removed_request_fields() -> None:
 def test_query_route_returns_single_engine_failure() -> None:
     with tempfile.TemporaryDirectory() as directory:
         service = _StubQueryService(error=RuntimeError("RAG-SQL failed"))
-        app, _ = _test_app(
+        app, _, _ = _test_app(
             Path(directory),
             receipt_query_service=service,  # type: ignore[arg-type]
         )
@@ -183,7 +192,7 @@ def test_query_route_returns_single_engine_failure() -> None:
 
 def test_query_route_rejects_empty_question() -> None:
     with tempfile.TemporaryDirectory() as directory:
-        app, _ = _test_app(Path(directory))
+        app, _, _ = _test_app(Path(directory))
         response = app.test_client().post("/api/ask-receipts", json={"question": "  "})
         assert response.status_code == 400
         payload = response.get_json()
@@ -195,7 +204,7 @@ def test_query_route_rejects_empty_question() -> None:
 
 def test_receipt_navigation_endpoint_returns_safe_job_metadata() -> None:
     with tempfile.TemporaryDirectory() as directory:
-        app, database = _test_app(Path(directory))
+        app, database, _ = _test_app(Path(directory))
         imported = database.import_receipt(
             job_id="receipt-job-1",
             receipt={
@@ -223,7 +232,7 @@ def test_receipt_navigation_endpoint_returns_safe_job_metadata() -> None:
 
 def test_receipt_navigation_endpoint_returns_404_for_missing_receipt() -> None:
     with tempfile.TemporaryDirectory() as directory:
-        app, _ = _test_app(Path(directory))
+        app, _, _ = _test_app(Path(directory))
         response = app.test_client().get("/api/receipt-db/receipts/99999")
         assert response.status_code == 404
         assert response.get_json() == {"error": "receipt not found"}
@@ -232,8 +241,7 @@ def test_receipt_navigation_endpoint_returns_404_for_missing_receipt() -> None:
 def test_database_review_endpoint_uses_authoritative_database_even_with_artifact() -> None:
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
-        app, database = _test_app(root)
-        store = app.extensions["receipt_intelligence.services"].job_store
+        app, database, store = _test_app(root)
         job_dir = store.job_dir("approved-job")
         job_dir.mkdir(parents=True, exist_ok=True)
         approved_path = job_dir / "approved_receipt.json"
@@ -268,7 +276,7 @@ def test_database_review_endpoint_uses_authoritative_database_even_with_artifact
 
 def test_database_review_endpoint_is_editable_without_any_job_artifact() -> None:
     with tempfile.TemporaryDirectory() as directory:
-        app, database = _test_app(Path(directory))
+        app, database, _ = _test_app(Path(directory))
         imported = database.import_receipt(
             job_id="snapshot-only-job",
             receipt={
@@ -296,7 +304,7 @@ def test_database_review_endpoint_is_editable_without_any_job_artifact() -> None
 
 def test_database_review_put_updates_sqlite_without_artifacts() -> None:
     with tempfile.TemporaryDirectory() as directory:
-        app, database = _test_app(Path(directory))
+        app, database, _ = _test_app(Path(directory))
         imported = database.import_receipt(
             job_id="database-edit-job",
             receipt={
@@ -353,8 +361,7 @@ def test_database_review_put_updates_sqlite_without_artifacts() -> None:
 def test_job_review_prefers_and_can_update_approved_data_without_job_status() -> None:
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
-        app, database = _test_app(root)
-        store = app.extensions["receipt_intelligence.services"].job_store
+        app, database, store = _test_app(root)
         job_dir = store.job_dir("durable-job")
         job_dir.mkdir(parents=True, exist_ok=True)
         (job_dir / "receipt_final.json").write_text(
@@ -402,8 +409,7 @@ def test_job_review_prefers_and_can_update_approved_data_without_job_status() ->
 def test_job_manifest_endpoint_returns_generated_manifest() -> None:
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
-        app, _ = _test_app(root)
-        store = app.extensions["receipt_intelligence.services"].job_store
+        app, _, store = _test_app(root)
         image = store.job_dir("job1") / "receipt.jpg"
         image.parent.mkdir(parents=True, exist_ok=True)
         image.write_bytes(b"image")

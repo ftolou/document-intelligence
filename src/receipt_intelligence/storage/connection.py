@@ -22,3 +22,15 @@ class SQLiteConnectionFactory:
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
         return connection
+
+    def connect_read_only(self, *, timeout_seconds: float = 5.0) -> sqlite3.Connection:
+        """Open an existing database using SQLite's read-only URI mode."""
+
+        database_path = self.database_path.resolve()
+        if not database_path.exists():
+            raise FileNotFoundError(f"Receipt database does not exist: {database_path}")
+        uri = f"{database_path.as_uri()}?mode=ro"
+        connection = sqlite3.connect(uri, uri=True, timeout=timeout_seconds)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA query_only = ON")
+        return connection

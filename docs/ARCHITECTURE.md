@@ -34,6 +34,15 @@ flowchart TD
     H --> R
 ```
 
+
+## HTTP and application boundary
+
+Flask blueprints are thin transport adapters. They parse requests, call explicit
+application use cases, and convert transport-neutral resource references into
+HTTP links. Job, receipt, review, query, and runtime orchestration lives under
+`application/use_cases/`; concrete stores and processing services are assembled
+only in the composition boundary. See [Application use-case boundary](APPLICATION_USE_CASES.md).
+
 ## Query architecture
 
 RAG-SQL is the only application query engine. LangGraph is the orchestration

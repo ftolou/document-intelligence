@@ -51,6 +51,8 @@ TARGETS = [
     "scripts/check_model_boundaries.py",
     "scripts/check_vlm_architecture.py",
     "scripts/check_extraction_state_boundaries.py",
+    "scripts/check_persistence_boundaries.py",
+    "scripts/check_application_boundaries.py",
     "scripts/run_quality_checks.py",
     "scripts/verify_runtime_layout.py",
 ]
@@ -64,6 +66,8 @@ commands = [
     [sys.executable, "scripts/check_model_boundaries.py"],
     [sys.executable, "scripts/check_vlm_architecture.py"],
     [sys.executable, "scripts/check_extraction_state_boundaries.py"],
+    [sys.executable, "scripts/check_persistence_boundaries.py"],
+    [sys.executable, "scripts/check_application_boundaries.py"],
     [sys.executable, "-m", "ruff", "check", *TARGETS],
     [sys.executable, "-m", "ruff", "format", "--check", *TARGETS],
 ]
