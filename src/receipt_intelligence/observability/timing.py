@@ -1,4 +1,4 @@
-﻿"""Small monotonic timing and UTC timestamp helpers."""
+"""Small monotonic timing and UTC timestamp helpers."""
 
 from __future__ import annotations
 

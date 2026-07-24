@@ -1,4 +1,4 @@
-﻿"""Human-review application service and approved-receipt import workflow."""
+"""Human-review application service and approved-receipt import workflow."""
 
 from __future__ import annotations
 

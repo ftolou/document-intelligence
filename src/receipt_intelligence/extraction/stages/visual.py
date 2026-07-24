@@ -21,12 +21,16 @@ from receipt_intelligence.extraction.repair.region_reocr import (
     merge_region_reocr_into_visual_evidence,
     run_vlm_region_reocr,
 )
+from receipt_intelligence.extraction.state import ExtractionPhase
 
 
 class VisualEvidenceStage:
     name = "visual_evidence"
+    input_phase = ExtractionPhase.PREPARED
+    output_phase = ExtractionPhase.VISUAL_READY
 
     def run(self, context: ExtractionContext) -> ExtractionContext:
+        context.begin_visual_stage()
         config = context.config
         paths = context.paths
         emit = context.emit
@@ -105,8 +109,8 @@ class VisualEvidenceStage:
             )
             context.region_reocr_result = run_vlm_region_reocr(
                 source_image_path=config.source_image_path,
-                vlm_result=context.require("visual_result"),
-                visual_evidence=context.require("visual_evidence"),
+                vlm_result=context.visual_result,
+                visual_evidence=context.visual_evidence,
                 result_dir=config.result_dir,
                 run_id=config.run_id,
                 lang=config.ocr_lang,

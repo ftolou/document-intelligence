@@ -8,6 +8,7 @@ from collections.abc import Iterable
 from receipt_intelligence.extraction.artifacts import copy_alias, save_json
 from receipt_intelligence.extraction.context import ExtractionContext
 from receipt_intelligence.extraction.stages.base import ExtractionStage
+from receipt_intelligence.extraction.state import ExtractionPhase
 from receipt_intelligence.observability.extraction import build_extraction_metrics
 from receipt_intelligence.observability.timing import elapsed_ms, utc_now_iso
 
@@ -21,17 +22,26 @@ class ReceiptExtractionWorkflow:
 
     def run(self, context: ExtractionContext) -> ExtractionContext:
         for stage in self.stages:
+            input_phase = getattr(stage, "input_phase", None)
+            output_phase = getattr(stage, "output_phase", None)
+            if input_phase is not None:
+                context.assert_phase(input_phase, stage.name)
+
             started = time.perf_counter()
             trace = {
                 "stage": stage.name,
                 "status": "running",
                 "started_at": utc_now_iso(),
+                "input_phase": _phase_value(input_phase),
+                "output_phase": _phase_value(output_phase),
             }
             context.stage_trace.append(trace)
             try:
                 updated = stage.run(context)
                 if updated is not context:
                     context = updated
+                if input_phase is not None and output_phase is not None:
+                    context.advance_phase(input_phase, output_phase, stage.name)
                 trace.update(
                     status="done",
                     finished_at=utc_now_iso(),
@@ -59,13 +69,14 @@ class ReceiptExtractionWorkflow:
         status: str,
         error: str | None = None,
     ) -> None:
-        stage_trace_path = context.paths.get("stage_trace")
+        paths = context.available_paths
+        stage_trace_path = paths.get("stage_trace")
         if stage_trace_path:
             save_json(stage_trace_path, context.stage_trace)
             stage_trace_alias = context.config.result_dir / "latest_extraction_stage_trace.json"
             copy_alias(stage_trace_path, stage_trace_alias)
-            context.paths["latest_extraction_stage_trace"] = stage_trace_alias
-        metrics_path = context.paths.get("extraction_metrics")
+            paths["latest_extraction_stage_trace"] = stage_trace_alias
+        metrics_path = paths.get("extraction_metrics")
         if metrics_path:
             save_json(
                 metrics_path,
@@ -73,4 +84,8 @@ class ReceiptExtractionWorkflow:
             )
             metrics_alias = context.config.result_dir / "latest_extraction_metrics.json"
             copy_alias(metrics_path, metrics_alias)
-            context.paths["latest_extraction_metrics"] = metrics_alias
+            paths["latest_extraction_metrics"] = metrics_alias
+
+
+def _phase_value(phase: ExtractionPhase | None) -> str | None:
+    return phase.value if phase is not None else None

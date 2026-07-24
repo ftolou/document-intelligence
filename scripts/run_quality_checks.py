@@ -29,6 +29,7 @@ TARGETS = [
     "src/receipt_intelligence/extraction/config.py",
     "src/receipt_intelligence/extraction/compatibility.py",
     "src/receipt_intelligence/extraction/context.py",
+    "src/receipt_intelligence/extraction/state.py",
     "src/receipt_intelligence/extraction/factory.py",
     "src/receipt_intelligence/extraction/stages",
     "src/receipt_intelligence/extraction/support.py",
@@ -49,6 +50,7 @@ TARGETS = [
     "scripts/check_configuration_contracts.py",
     "scripts/check_model_boundaries.py",
     "scripts/check_vlm_architecture.py",
+    "scripts/check_extraction_state_boundaries.py",
     "scripts/run_quality_checks.py",
     "scripts/verify_runtime_layout.py",
 ]
@@ -61,6 +63,7 @@ commands = [
     [sys.executable, "scripts/check_configuration_contracts.py"],
     [sys.executable, "scripts/check_model_boundaries.py"],
     [sys.executable, "scripts/check_vlm_architecture.py"],
+    [sys.executable, "scripts/check_extraction_state_boundaries.py"],
     [sys.executable, "-m", "ruff", "check", *TARGETS],
     [sys.executable, "-m", "ruff", "format", "--check", *TARGETS],
 ]

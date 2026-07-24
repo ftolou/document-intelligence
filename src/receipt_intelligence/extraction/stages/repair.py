@@ -25,6 +25,7 @@ from receipt_intelligence.extraction.repair.right_column import (
 from receipt_intelligence.extraction.repair.vertical_price_stack import (
     run_vertical_price_stack_recovery,
 )
+from receipt_intelligence.extraction.state import ExtractionPhase
 from receipt_intelligence.extraction.support import (
     merge_visual_evidence,
     report_score,
@@ -38,11 +39,14 @@ from receipt_intelligence.extraction.validation.receipt import validate_receipt
 
 class RepairAndCorrectionStage:
     name = "repair_and_correction"
+    input_phase = ExtractionPhase.PARSED
+    output_phase = ExtractionPhase.REPAIRED
 
     def run(self, context: ExtractionContext) -> ExtractionContext:
+        context.begin_repair_stage()
         config = context.config
-        report = context.require("report")
-        llm_result = context.require("llm_result")
+        report = context.report
+        llm_result = context.llm_result
 
         if (
             config.correction_enabled
@@ -80,12 +84,12 @@ class RepairAndCorrectionStage:
                 "Validation did not pass cleanly; running bounded right-column re-OCR "
                 "evidence pass before optional VLM."
             ),
-            decision=context.require("report").get("import_decision"),
+            decision=context.report.get("import_decision"),
         )
         context.reocr_result = run_bounded_right_column_reocr(
             image_path=config.source_image_path,
-            ocr_context=context.require("ocr_context"),
-            validation_report=context.require("report"),
+            ocr_context=context.ocr_context,
+            validation_report=context.report,
             result_dir=config.result_dir,
             run_id=config.run_id,
             enabled=True,
@@ -99,7 +103,7 @@ class RepairAndCorrectionStage:
         if context.reocr_result.get("status") == "ok":
             reocr_evidence = reocr_evidence_to_visual_evidence(
                 context.reocr_result,
-                context.require("report"),
+                context.report,
             )
             context.visual_evidence = merge_visual_evidence(
                 context.visual_evidence,
@@ -123,9 +127,9 @@ class RepairAndCorrectionStage:
             ),
         )
         context.right_column_recovery_result = run_right_column_recovery(
-            receipt=context.require("receipt"),
-            validation_report=context.require("report"),
-            ocr_context=context.require("ocr_context"),
+            receipt=context.receipt,
+            validation_report=context.report,
+            ocr_context=context.ocr_context,
             reocr_result=context.reocr_result,
             table_arbitration=context.table_arbitration_result,
             tolerance=config.tolerance,
@@ -140,14 +144,14 @@ class RepairAndCorrectionStage:
             save_json(context.paths["receipt_right_column_recovered"], recovered_receipt)
             recovered_report = validate_receipt(
                 recovered_receipt,
-                context.require("ocr_context"),
+                context.ocr_context,
                 tolerance=config.tolerance,
             )
             save_json(
                 context.paths["validation_report_right_column_recovered"],
                 recovered_report,
             )
-            if report_score(recovered_report) > report_score(context.require("report")):
+            if report_score(recovered_report) > report_score(context.report):
                 self._select_candidate(context, recovered_receipt, recovered_report)
                 context.emit(
                     "right_column_recovery",
@@ -178,7 +182,7 @@ class RepairAndCorrectionStage:
             )
 
     def _run_vertical_price_stack_recovery(self, context: ExtractionContext) -> None:
-        if not should_run_visual_layer(context.require("report")):
+        if not should_run_visual_layer(context.report):
             return
         config = context.config
         context.emit(
@@ -190,9 +194,9 @@ class RepairAndCorrectionStage:
             ),
         )
         context.vertical_price_stack_recovery_result = run_vertical_price_stack_recovery(
-            receipt=context.require("receipt"),
-            validation_report=context.require("report"),
-            ocr_context=context.require("ocr_context"),
+            receipt=context.receipt,
+            validation_report=context.report,
+            ocr_context=context.ocr_context,
             image_path=config.source_image_path,
             result_dir=config.result_dir,
             run_id=config.run_id,
@@ -214,14 +218,14 @@ class RepairAndCorrectionStage:
             save_json(context.paths["receipt_vertical_price_stack_recovered"], recovered_receipt)
             recovered_report = validate_receipt(
                 recovered_receipt,
-                context.require("ocr_context"),
+                context.ocr_context,
                 tolerance=config.tolerance,
             )
             save_json(
                 context.paths["validation_report_vertical_price_stack_recovered"],
                 recovered_report,
             )
-            if report_score(recovered_report) > report_score(context.require("report")):
+            if report_score(recovered_report) > report_score(context.report):
                 self._select_candidate(context, recovered_receipt, recovered_report)
                 context.emit(
                     "vertical_price_stack_recovery",
@@ -258,7 +262,7 @@ class RepairAndCorrectionStage:
                 "visual_evidence",
                 "running",
                 "Validation did not pass cleanly; running optional VLM visual evidence layer.",
-                decision=context.require("report").get("import_decision"),
+                decision=context.report.get("import_decision"),
             )
             context.visual_result = context.dependencies.vlm_engine.analyze(
                 VlmRequest(
@@ -275,7 +279,7 @@ class RepairAndCorrectionStage:
             if context.visual_result.get("status") == "ok":
                 vlm_evidence = build_visual_evidence(
                     context.visual_result,
-                    context.require("report"),
+                    context.report,
                     max_chars=config.vlm_max_chars,
                 )
                 context.visual_evidence = merge_visual_evidence(
@@ -347,8 +351,8 @@ class RepairAndCorrectionStage:
             "Running compact patch-only LLM correction; full receipt rewrite is disabled.",
         )
         context.patch_correction_result = run_patch_correction_pass(
-            previous_receipt=context.require("receipt"),
-            validation_report=context.require("report"),
+            previous_receipt=context.receipt,
+            validation_report=context.report,
             visual_evidence=evidence,
             ollama_url=config.ollama_url,
             model=config.model,
@@ -372,31 +376,31 @@ class RepairAndCorrectionStage:
         patch_postprocess_actions: list[dict[str, Any]] = []
         if result.get("status") == "ok" and result.get("patches"):
             patch_receipt, patch_actions = apply_correction_patches(
-                context.require("receipt"),
+                context.receipt,
                 result,
             )
             patch_receipt, patch_postprocess_actions = apply_consistency_postprocess(
                 patch_receipt,
                 context.visual_evidence,
-                context.require("ocr_context"),
+                context.ocr_context,
                 tolerance=max(config.tolerance, 0.05),
             )
             save_json(context.paths["receipt_patch_corrected"], patch_receipt)
             patch_report = validate_receipt(
                 patch_receipt,
-                context.require("ocr_context"),
+                context.ocr_context,
                 tolerance=config.tolerance,
             )
             save_json(context.paths["validation_report_patch_corrected"], patch_report)
             context.corrected_report = patch_report
-            if report_score(patch_report) > report_score(context.require("report")):
+            if report_score(patch_report) > report_score(context.report):
                 self._select_candidate(context, patch_receipt, patch_report)
                 selected = True
                 context.emit(
                     "llm_patch_correction",
                     "done",
                     "Patch correction improved validation and was selected.",
-                    before=context.require("report").get("import_decision"),
+                    before=context.report.get("import_decision"),
                     after=patch_report.get("import_decision"),
                     applied_patch_count=len(patch_actions),
                     postprocess_action_count=len(patch_postprocess_actions),
@@ -409,7 +413,7 @@ class RepairAndCorrectionStage:
                         "Patch correction did not improve validation; original receipt kept. "
                         "Full receipt rewrite is disabled."
                     ),
-                    before=context.require("report").get("import_decision"),
+                    before=context.report.get("import_decision"),
                     after=patch_report.get("import_decision"),
                     applied_patch_count=len(patch_actions),
                 )

@@ -14,6 +14,7 @@ from receipt_intelligence.extraction.categorization.items import (
     write_categorization_artifacts,
 )
 from receipt_intelligence.extraction.context import ExtractionContext
+from receipt_intelligence.extraction.state import ExtractionPhase
 from receipt_intelligence.extraction.validation.consistency import (
     sanitize_model_warnings,
 )
@@ -21,12 +22,15 @@ from receipt_intelligence.extraction.validation.consistency import (
 
 class FinalizationStage:
     name = "finalize"
+    input_phase = ExtractionPhase.REPAIRED
+    output_phase = ExtractionPhase.FINALIZED
 
     def run(self, context: ExtractionContext) -> ExtractionContext:
+        context.begin_finalization_stage()
         config = context.config
         paths = context.paths
-        final_receipt = context.require("final_receipt")
-        final_report = context.require("final_report")
+        final_receipt = context.final_receipt
+        final_report = context.final_report
 
         final_receipt, warning_actions = sanitize_model_warnings(final_receipt, final_report)
         context.final_receipt = final_receipt
@@ -46,7 +50,7 @@ class FinalizationStage:
         save_json(paths["validation_report"], final_report)
         save_json(paths["reconciliation_report"], final_report)
 
-        llm_result = context.require("llm_result")
+        llm_result = context.llm_result
         context.output_receipt = dict(final_receipt)
         context.output_receipt["validation"] = final_report
         context.output_receipt["pipeline"] = {
@@ -81,7 +85,7 @@ class FinalizationStage:
             "pipeline",
             "done",
             f"{get_app_version()} staged pipeline finished.",
-            initial_decision=context.require("initial_report").get("import_decision"),
+            initial_decision=context.initial_report.get("import_decision"),
             final_decision=final_report.get("import_decision"),
             correction_used=context.correction_used,
             balanced=final_report.get("balanced"),
@@ -94,7 +98,7 @@ class FinalizationStage:
 
     def _categorize(self, context: ExtractionContext) -> None:
         config = context.config
-        output_receipt = context.require("output_receipt")
+        output_receipt = context.output_receipt
         context.categorized_receipt = output_receipt
         if config.categorization_enabled:
             context.emit(
@@ -169,9 +173,9 @@ class FinalizationStage:
 
     def _build_pipeline_meta(self, context: ExtractionContext) -> dict[str, Any]:
         config = context.config
-        llm_result = context.require("llm_result")
-        initial_report = context.require("initial_report")
-        final_report = context.require("final_report")
+        llm_result = context.llm_result
+        initial_report = context.initial_report
+        final_report = context.final_report
         categorization = (
             context.categorized_receipt.get("categorization")
             if context.categorized_receipt

@@ -1,4 +1,4 @@
-﻿"""Incremental semantic indexer for approved purchase-item rows."""
+"""Incremental semantic indexer for approved purchase-item rows."""
 
 from __future__ import annotations
 

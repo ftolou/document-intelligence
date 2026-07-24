@@ -15,6 +15,7 @@ from receipt_intelligence.extraction.parsing.table_assembler import (
     compact_visual_evidence_for_main_parser,
     merge_authoritative_table_items,
 )
+from receipt_intelligence.extraction.state import ExtractionPhase
 from receipt_intelligence.extraction.validation.consistency import (
     apply_consistency_postprocess,
 )
@@ -23,8 +24,11 @@ from receipt_intelligence.extraction.validation.receipt import validate_receipt
 
 class MainParsingStage:
     name = "main_parsing"
+    input_phase = ExtractionPhase.VISUAL_READY
+    output_phase = ExtractionPhase.PARSED
 
     def run(self, context: ExtractionContext) -> ExtractionContext:
+        context.begin_parsing_stage()
         config = context.config
         paths = context.paths
         context.emit(
@@ -113,8 +117,8 @@ class MainParsingStage:
             "Running deterministic validation only; no semantic fallback or row reconstruction.",
         )
         context.report = validate_receipt(
-            context.require("receipt"),
-            context.require("ocr_context"),
+            context.receipt,
+            context.ocr_context,
             tolerance=config.tolerance,
         )
         save_json(paths["validation_report"], context.report)
@@ -126,8 +130,8 @@ class MainParsingStage:
     def _apply_table_assembly(self, context: ExtractionContext) -> None:
         if context.table_interpretation_result is None:
             return
-        llm_result = context.require("llm_result")
-        receipt = context.require("receipt")
+        llm_result = context.llm_result
+        receipt = context.receipt
         if llm_result.get("error"):
             recovered_error = llm_result.get("error")
             receipt = assemble_receipt_from_table_interpretation(
@@ -178,12 +182,12 @@ class MainParsingStage:
         save_json(context.paths["table_assembly_report"], context.table_assembly_report)
 
     def _apply_consistency_postprocess(self, context: ExtractionContext) -> None:
-        llm_result = context.require("llm_result")
+        llm_result = context.llm_result
         if not llm_result.get("error"):
             receipt, actions = apply_consistency_postprocess(
-                context.require("receipt"),
+                context.receipt,
                 context.visual_evidence,
-                context.require("ocr_context"),
+                context.ocr_context,
                 tolerance=max(context.config.tolerance, 0.05),
             )
             context.postprocess_actions = actions

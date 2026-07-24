@@ -8,15 +8,20 @@ from receipt_intelligence.app_version import get_app_version
 from receipt_intelligence.extraction.artifacts import build_artifact_paths
 from receipt_intelligence.extraction.context import ExtractionContext
 from receipt_intelligence.extraction.parsing.llm_parser import build_ocr_context
+from receipt_intelligence.extraction.state import ExtractionPhase, PreparedArtifacts
 
 
 class PreparationStage:
     name = "prepare"
+    input_phase = ExtractionPhase.CREATED
+    output_phase = ExtractionPhase.PREPARED
 
     def run(self, context: ExtractionContext) -> ExtractionContext:
         config = context.config
         config.result_dir.mkdir(parents=True, exist_ok=True)
-        context.paths = build_artifact_paths(config.result_dir, config.run_id)
+        context.prepared = PreparedArtifacts(
+            paths=build_artifact_paths(config.result_dir, config.run_id)
+        )
 
         context.emit(
             "pipeline",
