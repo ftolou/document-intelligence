@@ -12,7 +12,7 @@ from typing import Any
 from werkzeug.utils import secure_filename
 
 import receipt_intelligence.settings as settings
-from receipt_intelligence.engines.ocr_engine import run_paddleocr_image
+from receipt_intelligence.application.ports import OcrEngine, OcrRequest
 from receipt_intelligence.extraction import ExtractionRequest
 from receipt_intelligence.pipeline.integrated_receipt_pipeline import run_receipt_extraction
 from receipt_intelligence.services.artifact_service import artifact_url
@@ -22,10 +22,17 @@ from receipt_intelligence.storage.receipt_db import ReceiptDatabase
 
 
 class JobProcessingService:
-    def __init__(self, store: JobStore, receipt_db: ReceiptDatabase) -> None:
+    def __init__(
+        self,
+        store: JobStore,
+        receipt_db: ReceiptDatabase,
+        *,
+        ocr_engine: OcrEngine,
+    ) -> None:
         self.store = store
         self.receipt_db = receipt_db
         self.review_service = ReviewService(store, receipt_db)
+        self.ocr_engine = ocr_engine
 
     def allowed_file(self, filename: str) -> bool:
         return "." in filename and filename.rsplit(".", 1)[1].lower() in settings.ALLOWED_EXTENSIONS
@@ -51,16 +58,18 @@ class JobProcessingService:
             )
 
             ocr_json_path = job_dir / f"{job_id}_ocr_full_image.json"
-            ocr_json = run_paddleocr_image(
-                image_path=image_path,
-                out_json_path=ocr_json_path,
-                work_dir=job_dir,
-                lang=options["ocr_lang"],
-                device=options["ocr_device"],
-                max_side_limit=options["ocr_max_side_limit"],
-                use_angle_cls=options["ocr_use_angle_cls"],
-                det_limit_side_len=options["ocr_det_limit_side_len"],
-                progress_callback=progress,
+            ocr_json = self.ocr_engine.recognize(
+                OcrRequest(
+                    image_path=image_path,
+                    out_json_path=ocr_json_path,
+                    work_dir=job_dir,
+                    lang=options["ocr_lang"],
+                    device=options["ocr_device"],
+                    max_side_length=options["ocr_max_side_limit"],
+                    detect_orientation=options["ocr_use_angle_cls"],
+                    detection_max_side_length=options["ocr_det_limit_side_len"],
+                    progress_callback=progress,
+                )
             )
 
             extraction_request = ExtractionRequest(

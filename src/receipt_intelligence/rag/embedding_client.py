@@ -9,7 +9,7 @@ from typing import Any
 import requests
 from pydantic import ValidationError
 
-from receipt_intelligence.observability.ollama import OllamaCallMetrics
+from receipt_intelligence.adapters.llm import model_metrics_from_ollama_payload
 from receipt_intelligence.rag.models import EmbeddingBatchResult
 
 
@@ -80,7 +80,7 @@ class OllamaEmbeddingClient:
             raise EmbeddingClientError("Ollama embedding response must be a JSON object.")
 
         request_duration_ms = (time.perf_counter() - request_started) * 1000.0
-        ollama_metrics = OllamaCallMetrics.from_payload(
+        model_metrics = model_metrics_from_ollama_payload(
             response_payload,
             endpoint="embed",
             model=self.model,
@@ -122,7 +122,7 @@ class OllamaEmbeddingClient:
                     "prompt_eval_duration_ns": self._optional_nonnegative_int(
                         response_payload.get("prompt_eval_duration")
                     ),
-                    "ollama_calls": [ollama_metrics],
+                    "ollama_calls": [model_metrics],
                 }
             )
         except ValidationError as exc:

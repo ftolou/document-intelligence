@@ -65,6 +65,7 @@ class MainParsingStage:
             json_retry_count=config.json_retry_count,
             format_json=config.format_json,
             visual_evidence=main_parser_visual_evidence,
+            llm_gateway=context.dependencies.llm_gateway,
         )
 
         llm_result = context.llm_result

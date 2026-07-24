@@ -4,18 +4,20 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from receipt_intelligence.extraction.parsing.llm_parser import (
-    ollama_generate,
-    parse_json_from_llm,
+from receipt_intelligence.application.generation import (
+    LegacyGenerateFunction,
+    invoke_generation,
 )
-from receipt_intelligence.observability.ollama import (
-    OllamaCallMetrics,
-    get_ollama_metrics,
+from receipt_intelligence.application.llm_json import parse_json_from_llm
+from receipt_intelligence.application.ports.llm import (
+    GenerationRequest,
+    LlmGateway,
+    ModelCallMetrics,
 )
 from receipt_intelligence.prompts import render_prompt_template
 from receipt_intelligence.rag_sql.models import (
@@ -29,9 +31,6 @@ from receipt_intelligence.rag_sql.schema_catalog import (
     StaticSchemaCatalog,
 )
 
-GenerateFunction = Callable[..., str]
-
-
 class RagSqlPlanningError(RuntimeError):
     """Raised when the LLM cannot produce a valid structured SQL plan."""
 
@@ -39,7 +38,7 @@ class RagSqlPlanningError(RuntimeError):
         self,
         message: str,
         *,
-        ollama_calls: list[OllamaCallMetrics] | None = None,
+        ollama_calls: list[ModelCallMetrics] | None = None,
     ) -> None:
         super().__init__(message)
         self.ollama_calls = list(ollama_calls or [])
@@ -72,17 +71,18 @@ class RagSqlPlannerConfig:
         if self.maximum_rows <= 0 or self.maximum_rows > 1000:
             raise ValueError("maximum_rows must be between 1 and 1000.")
 
-
 class RagSqlPlanner:
     def __init__(
         self,
         config: RagSqlPlannerConfig,
         *,
         schema_catalog: StaticSchemaCatalog = DEFAULT_SCHEMA_CATALOG,
-        generate: GenerateFunction = ollama_generate,
+        llm_gateway: LlmGateway | None = None,
+        generate: LegacyGenerateFunction | None = None,
     ) -> None:
         self.config = config
         self.schema_catalog = schema_catalog
+        self.llm_gateway = llm_gateway
         self.generate = generate
 
     def plan(
@@ -128,7 +128,7 @@ class RagSqlPlanner:
         previous_error: str | None = None
         last_error: Exception | None = None
         attempts = max(1, self.config.retry_count + 1)
-        ollama_calls: list[OllamaCallMetrics] = []
+        ollama_calls: list[ModelCallMetrics] = []
         previous_raw_response: str | None = None
         validation_repair_block = ""
         if previous_plan is not None and validation_error is not None:
@@ -184,22 +184,25 @@ class RagSqlPlanner:
                 RETRY_BLOCK=retry_block,
             )
             try:
-                raw = self.generate(
-                    ollama_url=self.config.ollama_url,
-                    model=self.config.model,
-                    prompt=prompt,
-                    num_ctx=self.config.num_ctx,
-                    num_predict=self.config.num_predict,
-                    temperature=0.0,
-                    keep_alive=self.config.keep_alive,
-                    timeout=self.config.timeout_seconds,
-                    format_json=self.config.format_json,
+                generation = invoke_generation(
+                    request=GenerationRequest(
+                        model=self.config.model,
+                        prompt=prompt,
+                        num_ctx=self.config.num_ctx,
+                        num_predict=self.config.num_predict,
+                        temperature=0.0,
+                        keep_alive=self.config.keep_alive,
+                        timeout_seconds=self.config.timeout_seconds,
+                        format_json=self.config.format_json,
+                    ),
+                    gateway=self.llm_gateway,
+                    legacy_generate=self.generate,
+                    legacy_base_url=self.config.ollama_url,
                 )
-                call_metrics = get_ollama_metrics(raw)
-                if call_metrics is not None:
-                    ollama_calls.append(call_metrics)
-                previous_raw_response = str(raw)[:12000]
-                payload = RagSqlPlanPayload.model_validate(parse_json_from_llm(raw))
+                if generation.metrics is not None:
+                    ollama_calls.append(generation.metrics)
+                previous_raw_response = generation.text[:12000]
+                payload = RagSqlPlanPayload.model_validate(parse_json_from_llm(generation))
                 _validate_protected_parameters(payload, protected_parameters)
                 return RagSqlPlanResult(
                     **payload.model_dump(mode="python"),

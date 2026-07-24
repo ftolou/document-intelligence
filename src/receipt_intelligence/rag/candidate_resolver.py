@@ -10,16 +10,18 @@ raises ``CandidateResolutionError`` after the configured attempts.
 from __future__ import annotations
 
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 
-from receipt_intelligence.extraction.parsing.llm_parser import (
-    ollama_generate,
-    parse_json_from_llm,
+from receipt_intelligence.application.generation import (
+    LegacyGenerateFunction,
+    invoke_generation,
 )
-from receipt_intelligence.observability.ollama import (
-    OllamaCallMetrics,
-    get_ollama_metrics,
+from receipt_intelligence.application.llm_json import parse_json_from_llm
+from receipt_intelligence.application.ports.llm import (
+    GenerationRequest,
+    LlmGateway,
+    ModelCallMetrics,
 )
 from receipt_intelligence.rag.candidate_models import (
     CandidateRecord,
@@ -31,8 +33,6 @@ from receipt_intelligence.rag.candidate_prompt import build_candidate_resolution
 from receipt_intelligence.rag.item_documents import is_indexable_description
 from receipt_intelligence.rag.models import SemanticItemMatch, SemanticItemSearchResult
 
-GenerateFunction = Callable[..., str]
-
 
 class CandidateResolutionError(RuntimeError):
     """Raised when the LLM cannot produce a valid candidate resolution."""
@@ -41,7 +41,7 @@ class CandidateResolutionError(RuntimeError):
         self,
         message: str,
         *,
-        ollama_calls: list[OllamaCallMetrics] | None = None,
+        ollama_calls: list[ModelCallMetrics] | None = None,
     ) -> None:
         super().__init__(message)
         self.ollama_calls = list(ollama_calls or [])
@@ -82,9 +82,11 @@ class CandidateResolver:
         self,
         config: CandidateResolverConfig,
         *,
-        generate: GenerateFunction = ollama_generate,
+        llm_gateway: LlmGateway | None = None,
+        generate: LegacyGenerateFunction | None = None,
     ) -> None:
         self.config = config
+        self.llm_gateway = llm_gateway
         self.generate = generate
 
     def resolve(
@@ -133,7 +135,7 @@ class CandidateResolver:
         previous_error: str | None = None
         last_error: Exception | None = None
         attempts = max(1, self.config.retry_count + 1)
-        ollama_calls: list[OllamaCallMetrics] = []
+        ollama_calls: list[ModelCallMetrics] = []
 
         for attempt in range(1, attempts + 1):
             prompt = build_candidate_resolution_prompt(
@@ -143,21 +145,26 @@ class CandidateResolver:
                 previous_error=previous_error,
             )
             try:
-                raw = self.generate(
-                    ollama_url=self.config.ollama_url,
-                    model=self.config.model,
-                    prompt=prompt,
-                    num_ctx=self.config.num_ctx,
-                    num_predict=self.config.num_predict,
-                    temperature=0.0,
-                    keep_alive=self.config.keep_alive,
-                    timeout=self.config.timeout_seconds,
-                    format_json=self.config.format_json,
+                generation = invoke_generation(
+                    request=GenerationRequest(
+                        model=self.config.model,
+                        prompt=prompt,
+                        num_ctx=self.config.num_ctx,
+                        num_predict=self.config.num_predict,
+                        temperature=0.0,
+                        keep_alive=self.config.keep_alive,
+                        timeout_seconds=self.config.timeout_seconds,
+                        format_json=self.config.format_json,
+                    ),
+                    gateway=self.llm_gateway,
+                    legacy_generate=self.generate,
+                    legacy_base_url=self.config.ollama_url,
                 )
-                call_metrics = get_ollama_metrics(raw)
-                if call_metrics is not None:
-                    ollama_calls.append(call_metrics)
-                payload = CandidateResolutionPayload.model_validate(parse_json_from_llm(raw))
+                if generation.metrics is not None:
+                    ollama_calls.append(generation.metrics)
+                payload = CandidateResolutionPayload.model_validate(
+                    parse_json_from_llm(generation)
+                )
                 _validate_payload_against_candidates(payload, records, entity)
                 return _map_resolution(
                     payload,
@@ -273,7 +280,7 @@ def _map_resolution(
     model: str,
     attempts: int,
     duration_ms: float,
-    ollama_calls: list[OllamaCallMetrics],
+    ollama_calls: list[ModelCallMetrics],
 ) -> CandidateResolutionResult:
     by_id = {candidate.candidate_id: candidate for candidate in candidates}
     selected = [

@@ -25,25 +25,26 @@ import json
 import math
 import re
 import time
-import urllib.error
-import urllib.request
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from receipt_intelligence.extraction.evidence.layout import (
-    build_layout_context,
-    extract_ocr_amounts,
+from receipt_intelligence.application.llm_json import parse_json_from_llm
+from receipt_intelligence.application.ports.llm import (
+    GenerationRequest,
+    GenerationResult,
+    LlmGateway,
+    coerce_generation_result,
 )
 from receipt_intelligence.extraction.evidence.compact import (
     build_compact_evidence,
     compact_evidence_to_prompt_text,
 )
-from receipt_intelligence.extraction.evidence.visual import visual_evidence_to_prompt_text
-from receipt_intelligence.observability.ollama import (
-    OllamaCallMetrics,
-    OllamaTextResponse,
+from receipt_intelligence.extraction.evidence.layout import (
+    build_layout_context,
+    extract_ocr_amounts,
 )
+from receipt_intelligence.extraction.evidence.visual import visual_evidence_to_prompt_text
 from receipt_intelligence.prompts import render_prompt_template
 
 
@@ -864,25 +865,6 @@ def build_prompt(
     )
 
 
-def _http_json(
-    url: str, payload: dict[str, Any] | None = None, timeout: float = 180.0
-) -> dict[str, Any]:
-    data = None
-    headers = {"Accept": "application/json"}
-    if payload is not None:
-        data = json.dumps(payload).encode("utf-8")
-        headers["Content-Type"] = "application/json"
-    req = urllib.request.Request(
-        url, data=data, headers=headers, method="POST" if payload is not None else "GET"
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as response:  # nosec - local Ollama URL by user config
-        body = response.read().decode("utf-8", errors="replace")
-    obj = json.loads(body)
-    if not isinstance(obj, dict):
-        raise ValueError(f"Expected JSON object from {url}")
-    return obj
-
-
 def ollama_generate(
     *,
     ollama_url: str,
@@ -894,143 +876,22 @@ def ollama_generate(
     keep_alive: str | None = None,
     timeout: float = 240.0,
     format_json: bool = True,
-) -> str:
-    base = ollama_url.rstrip("/")
-    # Preflight gives a clearer failure reason than /api/generate timeout.
-    try:
-        _http_json(f"{base}/api/tags", timeout=min(timeout, 20.0))
-    except Exception as exc:
-        raise RuntimeError(
-            f"Ollama is not reachable at {base}: {type(exc).__name__}: {exc}"
-        ) from exc
+) -> GenerationResult:
+    """Compatibility entry point; new code injects ``LlmGateway`` directly."""
 
-    payload = {
-        "model": model,
-        "prompt": prompt,
-        "stream": False,
-        "options": {
-            "temperature": temperature,
-            "num_ctx": num_ctx,
-            "num_predict": num_predict,
-        },
-    }
-    # V14.10: do not pin the model in memory by default. Ollama's default
-    # behavior applies unless the caller explicitly provides a keep_alive value.
-    if keep_alive not in (None, ""):
-        payload["keep_alive"] = keep_alive
-    if format_json:
-        payload["format"] = "json"
-    request_started = time.perf_counter()
-    try:
-        obj = _http_json(f"{base}/api/generate", payload=payload, timeout=timeout)
-    except urllib.error.HTTPError as exc:
-        msg = exc.read().decode("utf-8", errors="replace")[:1000]
-        raise RuntimeError(f"Ollama HTTP error {exc.code}: {msg}") from exc
-    request_duration_ms = (time.perf_counter() - request_started) * 1000.0
-    text = str(obj.get("response") or "").strip()
-    if not text:
-        raise RuntimeError("Ollama returned an empty response")
-    metrics = OllamaCallMetrics.from_payload(
-        obj,
-        endpoint="generate",
-        model=model,
-        request_duration_ms=request_duration_ms,
-    )
-    return OllamaTextResponse(text, metrics=metrics)
+    from receipt_intelligence.adapters.llm import OllamaGateway
 
-
-class LLMJsonParseError(ValueError):
-    """Raised when the LLM answered but did not return usable JSON."""
-
-    def __init__(
-        self, message: str, *, raw_len: int = 0, raw_head: str = "", raw_tail: str = ""
-    ) -> None:
-        super().__init__(message)
-        self.raw_len = raw_len
-        self.raw_head = raw_head
-        self.raw_tail = raw_tail
-
-
-def _strip_code_fences(text: str) -> str:
-    text = (text or "").strip().lstrip("\ufeff")
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
-        text = re.sub(r"\s*```$", "", text).strip()
-    return text
-
-
-def _extract_first_json_object(text: str) -> str | None:
-    """Return the first balanced JSON object substring, respecting quoted strings."""
-    start = text.find("{")
-    if start < 0:
-        return None
-    depth = 0
-    in_string = False
-    escape = False
-    for i in range(start, len(text)):
-        ch = text[i]
-        if in_string:
-            if escape:
-                escape = False
-            elif ch == "\\":
-                escape = True
-            elif ch == '"':
-                in_string = False
-            continue
-        if ch == '"':
-            in_string = True
-        elif ch == "{":
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0:
-                return text[start : i + 1]
-    return None
-
-
-def parse_json_from_llm(raw: str) -> dict[str, Any]:
-    text = _strip_code_fences(raw)
-    raw_head = text[:240].replace("\n", " ")
-    raw_tail = text[-240:].replace("\n", " ")
-    if not text:
-        raise LLMJsonParseError("LLM returned empty text instead of JSON", raw_len=0)
-
-    candidates: list[str] = [text]
-    balanced = _extract_first_json_object(text)
-    if balanced and balanced != text:
-        candidates.append(balanced)
-    elif balanced:
-        candidates.append(balanced)
-
-    last_exc: Exception | None = None
-    for candidate in candidates:
-        try:
-            obj = json.loads(candidate)
-            if not isinstance(obj, dict):
-                raise LLMJsonParseError(
-                    "LLM JSON root must be an object",
-                    raw_len=len(text),
-                    raw_head=raw_head,
-                    raw_tail=raw_tail,
-                )
-            return obj
-        except json.JSONDecodeError as exc:
-            last_exc = exc
-
-    if isinstance(last_exc, json.JSONDecodeError):
-        msg = (
-            f"Invalid/incomplete JSON from LLM at line {last_exc.lineno}, "
-            f"column {last_exc.colno}: {last_exc.msg}. "
-            f"raw_len={len(text)}, head={raw_head!r}, tail={raw_tail!r}"
+    return OllamaGateway(ollama_url).generate(
+        GenerationRequest(
+            model=model,
+            prompt=prompt,
+            num_ctx=num_ctx,
+            num_predict=num_predict,
+            temperature=temperature,
+            keep_alive=keep_alive,
+            timeout_seconds=timeout,
+            format_json=format_json,
         )
-        raise LLMJsonParseError(
-            msg, raw_len=len(text), raw_head=raw_head, raw_tail=raw_tail
-        ) from last_exc
-    raise LLMJsonParseError(
-        f"Invalid LLM JSON. raw_len={len(text)}, head={raw_head!r}, tail={raw_tail!r}",
-        raw_len=len(text),
-        raw_head=raw_head,
-        raw_tail=raw_tail,
     )
 
 
@@ -1349,6 +1210,7 @@ def run_llm_main_parser(
     json_retry_count: int = 1,
     format_json: bool = True,
     visual_evidence: dict[str, Any] | None = None,
+    llm_gateway: LlmGateway | None = None,
 ) -> dict[str, Any]:
     started = time.perf_counter()
     ocr = load_json(ocr_json_path)
@@ -1403,17 +1265,34 @@ def run_llm_main_parser(
         attempt_error = None
         attempt_started = time.perf_counter()
         try:
-            raw_text = ollama_generate(
-                ollama_url=ollama_url,
-                model=model,
-                prompt=prompt,
-                num_ctx=num_ctx,
-                num_predict=int(spec["num_predict"]),
-                keep_alive=keep_alive,
-                timeout=timeout,
-                format_json=bool(spec["format_json"]),
+            generation = (
+                llm_gateway.generate(
+                    GenerationRequest(
+                        model=model,
+                        prompt=prompt,
+                        num_ctx=num_ctx,
+                        num_predict=int(spec["num_predict"]),
+                        keep_alive=keep_alive,
+                        timeout_seconds=timeout,
+                        format_json=bool(spec["format_json"]),
+                    )
+                )
+                if llm_gateway is not None
+                else coerce_generation_result(
+                    ollama_generate(
+                        ollama_url=ollama_url,
+                        model=model,
+                        prompt=prompt,
+                        num_ctx=num_ctx,
+                        num_predict=int(spec["num_predict"]),
+                        keep_alive=keep_alive,
+                        timeout=timeout,
+                        format_json=bool(spec["format_json"]),
+                    )
+                )
             )
-            parsed = parse_json_from_llm(raw_text)
+            raw_text = generation.text
+            parsed = parse_json_from_llm(generation)
             parsed = normalize_schema_version_alias(parsed)
             parsed = normalize_noncritical_schema_defaults(parsed)
             validate_llm_receipt_schema_object(parsed)

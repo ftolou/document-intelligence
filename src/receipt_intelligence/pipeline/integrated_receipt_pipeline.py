@@ -7,12 +7,14 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from receipt_intelligence.composition import build_extraction_dependencies
 from receipt_intelligence.extraction import (
     ExtractionContext,
     ExtractionRequest,
     build_default_extraction_workflow,
 )
 from receipt_intelligence.extraction.compatibility import extraction_request_from_mapping
+from receipt_intelligence.extraction.dependencies import ExtractionDependencies
 from receipt_intelligence.extraction.support import (
     merge_visual_evidence as _merge_visual_evidence,
 )
@@ -22,10 +24,17 @@ from receipt_intelligence.extraction.support import (
 )
 
 
-def run_receipt_extraction(request: ExtractionRequest) -> dict[str, Any]:
+def run_receipt_extraction(
+    request: ExtractionRequest,
+    *,
+    dependencies: ExtractionDependencies | None = None,
+) -> dict[str, Any]:
     """Run receipt extraction from an explicit immutable request contract."""
 
-    context = ExtractionContext(config=request)
+    context = ExtractionContext(
+        config=request,
+        dependencies=dependencies or build_extraction_dependencies(request),
+    )
     workflow = build_default_extraction_workflow()
     return workflow.run(context).as_result()
 

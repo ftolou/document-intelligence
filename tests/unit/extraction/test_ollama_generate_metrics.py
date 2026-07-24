@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from receipt_intelligence.extraction.parsing import llm_parser
-from receipt_intelligence.observability.ollama import get_ollama_metrics
+from receipt_intelligence.adapters.llm import ollama_gateway
 
 
 def test_ollama_generate_attaches_provider_metrics(monkeypatch) -> None:
@@ -21,7 +21,7 @@ def test_ollama_generate_attaches_provider_metrics(monkeypatch) -> None:
             },
         ]
     )
-    monkeypatch.setattr(llm_parser, "_http_json", lambda *args, **kwargs: next(responses))
+    monkeypatch.setattr(ollama_gateway, "_http_json", lambda *args, **kwargs: next(responses))
 
     result = llm_parser.ollama_generate(
         ollama_url="http://localhost:11434",
@@ -31,8 +31,8 @@ def test_ollama_generate_attaches_provider_metrics(monkeypatch) -> None:
         num_predict=32,
     )
 
-    metrics = get_ollama_metrics(result)
-    assert result == '{"status":"ok"}'
+    metrics = result.metrics
+    assert result.text == '{"status":"ok"}'
     assert metrics is not None
     assert metrics.model == "gemma4"
     assert metrics.load_duration_ns == 1_500_000_000
@@ -58,7 +58,7 @@ def test_ollama_generate_sends_residency_options(monkeypatch) -> None:
             "done_reason": "stop",
         }
 
-    monkeypatch.setattr(llm_parser, "_http_json", fake_http_json)
+    monkeypatch.setattr(ollama_gateway, "_http_json", fake_http_json)
 
     llm_parser.ollama_generate(
         ollama_url="http://localhost:11434",

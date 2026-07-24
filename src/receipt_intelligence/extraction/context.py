@@ -9,12 +9,14 @@ from typing import Any
 
 from receipt_intelligence.app_version import get_app_version
 from receipt_intelligence.extraction.config import ExtractionConfig
+from receipt_intelligence.extraction.dependencies import ExtractionDependencies
 from receipt_intelligence.observability.timing import utc_now_iso
 
 
 @dataclass(slots=True)
 class ExtractionContext:
     config: ExtractionConfig
+    dependencies: ExtractionDependencies
     started_at: float = field(default_factory=time.perf_counter)
     started_at_utc: str = field(default_factory=utc_now_iso)
     paths: dict[str, Path] = field(default_factory=dict)

@@ -7,7 +7,7 @@ from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from receipt_intelligence.observability.ollama import OllamaCallMetrics
+from receipt_intelligence.application.ports.llm import ModelCallMetrics
 
 RAG_SQL_ANALYSIS_SCHEMA_VERSION = "rag_sql_question_analysis_v2"
 RAG_SQL_PLAN_SCHEMA_VERSION = "rag_sql_plan_v2"
@@ -75,7 +75,7 @@ class QuestionAnalysisResult(QuestionAnalysisPayload):
     model: str | None = Field(default=None, max_length=200)
     attempts: int = Field(default=0, ge=0)
     duration_ms: float = Field(default=0.0, ge=0.0)
-    ollama_calls: list[OllamaCallMetrics] = Field(default_factory=list, max_length=20)
+    ollama_calls: list[ModelCallMetrics] = Field(default_factory=list, max_length=20)
 
 
 class ResolvedSemanticEntity(StrictModel):
@@ -215,7 +215,7 @@ class RagSqlPlanResult(RagSqlPlanPayload):
     model: str | None = Field(default=None, max_length=200)
     attempts: int = Field(default=0, ge=0)
     duration_ms: float = Field(default=0.0, ge=0.0)
-    ollama_calls: list[OllamaCallMetrics] = Field(default_factory=list, max_length=20)
+    ollama_calls: list[ModelCallMetrics] = Field(default_factory=list, max_length=20)
 
 
 class ValidatedSqlPlan(StrictModel):

@@ -5,8 +5,8 @@ from __future__ import annotations
 import time
 from typing import Protocol
 
-from receipt_intelligence.observability.ollama import (
-    OllamaCallMetrics,
+from receipt_intelligence.application.ports.llm import (
+    ModelCallMetrics,
     metrics_to_diagnostics,
 )
 from receipt_intelligence.rag.candidate_models import CandidateResolutionResult
@@ -82,7 +82,7 @@ def append_graph_trace(
 def ollama_details(calls: object) -> dict[str, object]:
     if not isinstance(calls, (list, tuple)):
         return {}
-    typed_calls = [call for call in calls if isinstance(call, OllamaCallMetrics)]
+    typed_calls = [call for call in calls if isinstance(call, ModelCallMetrics)]
     if not typed_calls:
         return {}
     return {"ollama_calls": metrics_to_diagnostics(typed_calls)}

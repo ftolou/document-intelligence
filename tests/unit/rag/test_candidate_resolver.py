@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from receipt_intelligence.application.ports.llm import GenerationRequest, GenerationResult
 from receipt_intelligence.rag.candidate_resolver import (
     CandidateResolutionError,
     CandidateResolver,
@@ -57,6 +58,16 @@ class FakeGenerate:
         return self.responses.pop(0)
 
 
+class FakeGateway:
+    def __init__(self, responses: list[str]) -> None:
+        self.responses = list(responses)
+        self.requests: list[GenerationRequest] = []
+
+    def generate(self, request: GenerationRequest) -> GenerationResult:
+        self.requests.append(request)
+        return GenerationResult(text=self.responses.pop(0))
+
+
 def _config(**changes: object) -> CandidateResolverConfig:
     values = {
         "enabled": True,
@@ -99,7 +110,7 @@ def test_candidate_records_preserve_reviewed_semantic_description() -> None:
 
 
 def test_resolver_maps_selected_identity_to_all_occurrence_ids() -> None:
-    generator = FakeGenerate(
+    gateway = FakeGateway(
         [
             json.dumps(
                 {
@@ -126,7 +137,7 @@ def test_resolver_maps_selected_identity_to_all_occurrence_ids() -> None:
             )
         ]
     )
-    resolver = CandidateResolver(_config(), generate=generator)
+    resolver = CandidateResolver(_config(), llm_gateway=gateway)
 
     result = resolver.resolve(
         "Schuhe",
@@ -142,7 +153,7 @@ def test_resolver_maps_selected_identity_to_all_occurrence_ids() -> None:
     assert result.decisions[0].evidence_strength == "explicit"
     assert result.rejected_item_ids == [20]
     assert result.attempts == 1
-    assert len(generator.calls) == 1
+    assert len(gateway.requests) == 1
 
 
 def test_resolver_classifies_ambiguous_description_as_uncertain() -> None:

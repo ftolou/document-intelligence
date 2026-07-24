@@ -15,7 +15,13 @@ import re
 import time
 from typing import Any
 
-from receipt_intelligence.extraction.parsing.llm_parser import ollama_generate, parse_json_from_llm
+from receipt_intelligence.application.llm_json import parse_json_from_llm
+from receipt_intelligence.application.ports.llm import (
+    GenerationRequest,
+    LlmGateway,
+    coerce_generation_result,
+)
+from receipt_intelligence.extraction.parsing.llm_parser import ollama_generate
 from receipt_intelligence.prompts import render_prompt_template
 
 SCHEMA_VERSION = "v14_18_correction_patch_1"
@@ -274,6 +280,7 @@ def run_patch_correction_pass(
     keep_alive: str | None = None,
     timeout: float = 180.0,
     format_json: bool = True,
+    llm_gateway: LlmGateway | None = None,
 ) -> dict[str, Any]:
     """Generate a compact patch plan and retry once only on malformed JSON.
 
@@ -295,19 +302,37 @@ def run_patch_correction_pass(
             )
         raw = ""
         try:
-            raw = ollama_generate(
-                ollama_url=ollama_url,
-                model=model,
-                prompt=attempt_prompt,
-                num_ctx=max(8192, min(num_ctx, 18432)),
-                num_predict=max(1024, min(num_predict, 2048)),
-                temperature=0.0,
-                keep_alive=keep_alive,
-                timeout=timeout,
-                format_json=format_json,
+            generation = (
+                llm_gateway.generate(
+                    GenerationRequest(
+                        model=model,
+                        prompt=attempt_prompt,
+                        num_ctx=max(8192, min(num_ctx, 18432)),
+                        num_predict=max(1024, min(num_predict, 2048)),
+                        temperature=0.0,
+                        keep_alive=keep_alive,
+                        timeout_seconds=timeout,
+                        format_json=format_json,
+                    )
+                )
+                if llm_gateway is not None
+                else coerce_generation_result(
+                    ollama_generate(
+                        ollama_url=ollama_url,
+                        model=model,
+                        prompt=attempt_prompt,
+                        num_ctx=max(8192, min(num_ctx, 18432)),
+                        num_predict=max(1024, min(num_predict, 2048)),
+                        temperature=0.0,
+                        keep_alive=keep_alive,
+                        timeout=timeout,
+                        format_json=format_json,
+                    )
+                )
             )
+            raw = generation.text
             raw_outputs.append(raw)
-            obj = _normalize_patch_obj(parse_json_from_llm(raw))
+            obj = _normalize_patch_obj(parse_json_from_llm(generation))
             obj.update(
                 {
                     "prompt": prompt,

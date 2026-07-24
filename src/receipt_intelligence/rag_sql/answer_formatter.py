@@ -10,17 +10,22 @@ from __future__ import annotations
 import json
 import re
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, Self
 
 from pydantic import Field, field_validator, model_validator
 
-from receipt_intelligence.extraction.parsing.llm_parser import (
-    ollama_generate,
-    parse_json_from_llm,
+from receipt_intelligence.application.generation import (
+    LegacyGenerateFunction,
+    invoke_generation,
 )
-from receipt_intelligence.observability.ollama import OllamaCallMetrics, get_ollama_metrics
+from receipt_intelligence.application.llm_json import parse_json_from_llm
+from receipt_intelligence.application.ports.llm import (
+    GenerationRequest,
+    LlmGateway,
+    ModelCallMetrics,
+)
 from receipt_intelligence.prompts import render_prompt_template
 from receipt_intelligence.rag_sql.formatter import (
     APPROVED_EVIDENCE_FIELDS,
@@ -28,7 +33,6 @@ from receipt_intelligence.rag_sql.formatter import (
 )
 from receipt_intelligence.rag_sql.models import StrictModel
 
-GenerateFunction = Callable[..., str]
 
 ANSWER_FORMAT_SCHEMA_VERSION = "rag_sql_answer_format_v1"
 _ALLOWED_EVIDENCE_FIELDS = frozenset(APPROVED_EVIDENCE_FIELDS - {"item_id"})
@@ -119,7 +123,7 @@ class AnswerFormatterResult(AnswerFormatterPayload):
     model: str | None = Field(default=None, max_length=200)
     attempts: int = Field(default=0, ge=0)
     duration_ms: float = Field(default=0.0, ge=0.0)
-    ollama_calls: list[OllamaCallMetrics] = Field(default_factory=list, max_length=20)
+    ollama_calls: list[ModelCallMetrics] = Field(default_factory=list, max_length=20)
 
 
 class AnswerValidationResult(StrictModel):
@@ -135,7 +139,7 @@ class AnswerFormattingError(RuntimeError):
         self,
         message: str,
         *,
-        ollama_calls: list[OllamaCallMetrics] | None = None,
+        ollama_calls: list[ModelCallMetrics] | None = None,
     ) -> None:
         super().__init__(message)
         self.ollama_calls = list(ollama_calls or [])
@@ -174,9 +178,11 @@ class EvidenceBoundAnswerFormatter:
         self,
         config: AnswerFormatterConfig,
         *,
-        generate: GenerateFunction = ollama_generate,
+        llm_gateway: LlmGateway | None = None,
+        generate: LegacyGenerateFunction | None = None,
     ) -> None:
         self.config = config
+        self.llm_gateway = llm_gateway
         self.generate = generate
 
     def format(
@@ -201,7 +207,7 @@ class EvidenceBoundAnswerFormatter:
         previous_error: str | None = None
         last_error: Exception | None = None
         attempts = max(1, self.config.retry_count + 1)
-        ollama_calls: list[OllamaCallMetrics] = []
+        ollama_calls: list[ModelCallMetrics] = []
 
         for attempt in range(1, attempts + 1):
             retry_block = ""
@@ -225,21 +231,24 @@ class EvidenceBoundAnswerFormatter:
                 RETRY_BLOCK=retry_block,
             )
             try:
-                raw = self.generate(
-                    ollama_url=self.config.ollama_url,
-                    model=self.config.model,
-                    prompt=prompt,
-                    num_ctx=self.config.num_ctx,
-                    num_predict=self.config.num_predict,
-                    temperature=0.0,
-                    keep_alive=self.config.keep_alive,
-                    timeout=self.config.timeout_seconds,
-                    format_json=self.config.format_json,
+                generation = invoke_generation(
+                    request=GenerationRequest(
+                        model=self.config.model,
+                        prompt=prompt,
+                        num_ctx=self.config.num_ctx,
+                        num_predict=self.config.num_predict,
+                        temperature=0.0,
+                        keep_alive=self.config.keep_alive,
+                        timeout_seconds=self.config.timeout_seconds,
+                        format_json=self.config.format_json,
+                    ),
+                    gateway=self.llm_gateway,
+                    legacy_generate=self.generate,
+                    legacy_base_url=self.config.ollama_url,
                 )
-                call_metrics = get_ollama_metrics(raw)
-                if call_metrics is not None:
-                    ollama_calls.append(call_metrics)
-                payload = AnswerFormatterPayload.model_validate(parse_json_from_llm(raw))
+                if generation.metrics is not None:
+                    ollama_calls.append(generation.metrics)
+                payload = AnswerFormatterPayload.model_validate(parse_json_from_llm(generation))
                 return AnswerFormatterResult(
                     **payload.model_dump(mode="python"),
                     model=self.config.model,

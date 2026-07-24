@@ -112,6 +112,7 @@ class FinalizationStage:
                     keep_alive=config.keep_alive,
                     timeout=config.categorization_timeout_seconds,
                     format_json=config.categorization_format_json,
+                    llm_gateway=context.dependencies.llm_gateway,
                 )
                 category_paths = write_categorization_artifacts(
                     context.categorization_result,

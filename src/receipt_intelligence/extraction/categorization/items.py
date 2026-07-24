@@ -18,7 +18,13 @@ from pathlib import Path
 from typing import Any
 
 from receipt_intelligence.app_version import get_app_version
-from receipt_intelligence.extraction.parsing.llm_parser import ollama_generate, parse_json_from_llm
+from receipt_intelligence.application.llm_json import parse_json_from_llm
+from receipt_intelligence.application.ports.llm import (
+    GenerationRequest,
+    LlmGateway,
+    coerce_generation_result,
+)
+from receipt_intelligence.extraction.parsing.llm_parser import ollama_generate
 from receipt_intelligence.prompts import render_prompt_template
 
 CATEGORY_SCHEMA_VERSION = "v14_14_item_categories_1"
@@ -801,6 +807,7 @@ def categorize_receipt_items_llm(
     keep_alive: str | None = None,
     timeout: float = 180.0,
     format_json: bool = True,
+    llm_gateway: LlmGateway | None = None,
 ) -> dict[str, Any]:
     started = time.perf_counter()
     item_count = len(receipt.get("items") or []) if isinstance(receipt.get("items"), list) else 0
@@ -827,18 +834,36 @@ def categorize_receipt_items_llm(
             "error": None,
         }
     try:
-        raw = ollama_generate(
-            ollama_url=ollama_url,
-            model=model,
-            prompt=prompt,
-            num_ctx=num_ctx,
-            num_predict=num_predict,
-            temperature=0.0,
-            keep_alive=keep_alive,
-            timeout=timeout,
-            format_json=format_json,
+        generation = (
+            llm_gateway.generate(
+                GenerationRequest(
+                    model=model,
+                    prompt=prompt,
+                    num_ctx=num_ctx,
+                    num_predict=num_predict,
+                    temperature=0.0,
+                    keep_alive=keep_alive,
+                    timeout_seconds=timeout,
+                    format_json=format_json,
+                )
+            )
+            if llm_gateway is not None
+            else coerce_generation_result(
+                ollama_generate(
+                    ollama_url=ollama_url,
+                    model=model,
+                    prompt=prompt,
+                    num_ctx=num_ctx,
+                    num_predict=num_predict,
+                    temperature=0.0,
+                    keep_alive=keep_alive,
+                    timeout=timeout,
+                    format_json=format_json,
+                )
+            )
         )
-        parsed = parse_json_from_llm(raw)
+        raw = generation.text
+        parsed = parse_json_from_llm(generation)
         original_items = [item for item in (receipt.get("items") or []) if isinstance(item, dict)]
         categories, coercion_warnings = _coerce_categories(parsed, original_items)
         warnings.extend(coercion_warnings)

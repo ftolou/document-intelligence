@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from receipt_intelligence.engines.vl_engine import run_optional_vlm
+from receipt_intelligence.application.ports import ModelLifecycleRequest, VlmRequest
 from receipt_intelligence.extraction.artifacts import save_json, write_text
 from receipt_intelligence.extraction.context import ExtractionContext
 from receipt_intelligence.extraction.evidence.visual import (
@@ -21,7 +21,6 @@ from receipt_intelligence.extraction.repair.region_reocr import (
     merge_region_reocr_into_visual_evidence,
     run_vlm_region_reocr,
 )
-from receipt_intelligence.services.ollama_control import reload_ollama, unload_ollama
 
 
 class VisualEvidenceStage:
@@ -43,16 +42,15 @@ class VisualEvidenceStage:
                 ),
                 backend=config.vlm_backend,
             )
-            context.visual_result = run_optional_vlm(
-                image_path=config.source_image_path,
-                result_dir=config.result_dir,
-                run_id=config.run_id,
-                enabled=config.vlm_enabled,
-                backend=config.vlm_backend,
-                service_url=config.vlm_service_url,
-                command=config.vlm_command,
-                timeout_seconds=config.vlm_timeout_seconds,
-                progress_callback=config.progress_callback,
+            context.visual_result = context.dependencies.vlm_engine.analyze(
+                VlmRequest(
+                    image_path=config.source_image_path,
+                    result_dir=config.result_dir,
+                    run_id=config.run_id,
+                    enabled=config.vlm_enabled,
+                    timeout_seconds=config.vlm_timeout_seconds,
+                    progress_callback=config.progress_callback,
+                )
             )
             save_json(paths["vlm_raw_output"], context.visual_result)
             if context.visual_result.get("status") == "ok":
@@ -171,6 +169,7 @@ class VisualEvidenceStage:
             keep_alive=config.keep_alive,
             timeout=min(max(config.llm_timeout_seconds, 180.0), 300.0),
             format_json=config.format_json,
+            llm_gateway=context.dependencies.llm_gateway,
         )
         result = context.table_interpretation_result
         save_json(
@@ -254,13 +253,12 @@ class VisualEvidenceStage:
             mode=config.gpu_orchestration,
             control_mode=config.ollama_control_mode,
         )
-        result = unload_ollama(
-            ollama_url=config.ollama_url,
-            model=config.model,
-            timeout_seconds=config.ollama_control_timeout_seconds,
-            mode=config.ollama_control_mode,
-            unload_command=config.ollama_unload_command,
-            wait_seconds=config.ollama_gpu_handoff_wait_seconds,
+        result = context.dependencies.model_lifecycle.release_for_vlm(
+            ModelLifecycleRequest(
+                model=config.model,
+                timeout_seconds=config.ollama_control_timeout_seconds,
+                wait_seconds=config.ollama_gpu_handoff_wait_seconds,
+            )
         )
         save_json(context.paths["gpu_orchestration_before_vlm"], result)
         context.emit(
@@ -287,15 +285,14 @@ class VisualEvidenceStage:
             mode=config.gpu_orchestration,
             control_mode=config.ollama_control_mode,
         )
-        result = reload_ollama(
-            ollama_url=config.ollama_url,
-            model=config.model,
-            keep_alive=config.keep_alive,
-            timeout_seconds=config.ollama_control_timeout_seconds,
-            mode=config.ollama_control_mode,
-            start_command=config.ollama_start_command,
-            warmup_prompt=config.ollama_reload_prompt,
-            wait_seconds=config.ollama_gpu_handoff_wait_seconds,
+        result = context.dependencies.model_lifecycle.restore_after_vlm(
+            ModelLifecycleRequest(
+                model=config.model,
+                keep_alive=config.keep_alive,
+                timeout_seconds=config.ollama_control_timeout_seconds,
+                warmup_prompt=config.ollama_reload_prompt,
+                wait_seconds=config.ollama_gpu_handoff_wait_seconds,
+            )
         )
         save_json(context.paths["gpu_orchestration_after_vlm"], result)
         context.emit(

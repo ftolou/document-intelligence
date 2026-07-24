@@ -4,11 +4,22 @@ import json
 
 import pytest
 
+from receipt_intelligence.application.ports.llm import GenerationRequest, GenerationResult
 from receipt_intelligence.rag_sql.question_analyzer import (
     QuestionAnalysisError,
     QuestionAnalyzerConfig,
     RagSqlQuestionAnalyzer,
 )
+
+
+class FakeGateway:
+    def __init__(self, response: str) -> None:
+        self.response = response
+        self.requests: list[GenerationRequest] = []
+
+    def generate(self, request: GenerationRequest) -> GenerationResult:
+        self.requests.append(request)
+        return GenerationResult(text=self.response)
 
 
 def test_analyzer_extracts_product_entity_and_spending_goal() -> None:
@@ -125,12 +136,13 @@ def test_analyzer_retries_invalid_json_without_deterministic_fallback() -> None:
 
 
 def test_analyzer_retains_ollama_timing_metrics() -> None:
-    from receipt_intelligence.observability.ollama import (
-        OllamaCallMetrics,
-        OllamaTextResponse,
+    from receipt_intelligence.application.ports.llm import (
+        GenerationResult,
+        ModelCallMetrics,
     )
 
-    metrics = OllamaCallMetrics(
+    metrics = ModelCallMetrics(
+        provider="ollama",
         endpoint="generate",
         model="gemma4",
         request_duration_ms=250.0,
@@ -142,8 +154,8 @@ def test_analyzer_retains_ollama_timing_metrics() -> None:
     )
 
     def generate(**_: object) -> str:
-        return OllamaTextResponse(
-            json.dumps(
+        return GenerationResult(
+            text=json.dumps(
                 {
                     "schema_version": "rag_sql_question_analysis_v2",
                     "status": "ready",
@@ -195,3 +207,30 @@ def test_analyzer_prompt_defines_descriptive_product_operations() -> None:
         QuestionAnalyzerConfig(retry_count=0), generate=generate
     ).analyze("What is Vittel?")
     assert result.requested_operation == "describe_product"
+
+
+def test_analyzer_accepts_provider_neutral_gateway() -> None:
+    gateway = FakeGateway(
+        json.dumps(
+            {
+                "schema_version": "rag_sql_question_analysis_v2",
+                "status": "ready",
+                "language": "de",
+                "user_goal": "Berechne die Ausgaben.",
+                "target_entity": "spending_amount",
+                "requested_operation": "aggregate_sum",
+                "requires_product_resolution": False,
+                "entities": [],
+                "clarification_question": None,
+                "reason": None,
+            }
+        )
+    )
+
+    result = RagSqlQuestionAnalyzer(
+        QuestionAnalyzerConfig(retry_count=0), llm_gateway=gateway
+    ).analyze("Wie viel habe ich ausgegeben?")
+
+    assert result.status == "ready"
+    assert len(gateway.requests) == 1
+    assert gateway.requests[0].model == "gemma4"

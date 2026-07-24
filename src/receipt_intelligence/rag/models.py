@@ -12,7 +12,7 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from receipt_intelligence.observability.ollama import OllamaCallMetrics
+from receipt_intelligence.application.ports.llm import ModelCallMetrics
 
 
 class StrictModel(BaseModel):
@@ -35,7 +35,7 @@ class EmbeddingBatchResult(StrictModel):
     load_duration_ns: int | None = Field(default=None, ge=0)
     prompt_eval_count: int | None = Field(default=None, ge=0)
     prompt_eval_duration_ns: int | None = Field(default=None, ge=0)
-    ollama_calls: list[OllamaCallMetrics] = Field(default_factory=list, max_length=20)
+    ollama_calls: list[ModelCallMetrics] = Field(default_factory=list, max_length=20)
 
     @model_validator(mode="after")
     def validate_vectors(self) -> Self:
@@ -151,7 +151,7 @@ class SemanticItemSearchResult(StrictModel):
     rrf_k: int = Field(default=60, ge=1)
     vector_weight: float = Field(default=1.0, ge=0.0)
     lexical_weight: float = Field(default=1.5, ge=0.0)
-    ollama_calls: list[OllamaCallMetrics] = Field(default_factory=list, max_length=20)
+    ollama_calls: list[ModelCallMetrics] = Field(default_factory=list, max_length=20)
     matches: list[SemanticItemMatch] = Field(default_factory=list)
 
     @property

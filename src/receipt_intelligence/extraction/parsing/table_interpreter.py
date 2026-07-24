@@ -27,10 +27,13 @@ import time
 from pathlib import Path
 from typing import Any
 
-from receipt_intelligence.extraction.parsing.llm_parser import (
-    ollama_generate,
-    parse_json_from_llm,
+from receipt_intelligence.application.llm_json import parse_json_from_llm
+from receipt_intelligence.application.ports.llm import (
+    GenerationRequest,
+    LlmGateway,
+    coerce_generation_result,
 )
+from receipt_intelligence.extraction.parsing.llm_parser import ollama_generate
 from receipt_intelligence.prompts import render_prompt_template
 
 TABLE_INTERPRETATION_SCHEMA_VERSION = "v14_17_table_interpretation_compact_1"
@@ -302,6 +305,7 @@ def run_table_interpreter(
     keep_alive: str | None = None,
     timeout: float = 180.0,
     format_json: bool = True,
+    llm_gateway: LlmGateway | None = None,
 ) -> dict[str, Any]:
     """Run the dedicated table-interpretation LLM step.
 
@@ -321,18 +325,36 @@ def run_table_interpreter(
     prompt = build_table_interpretation_prompt(visual_evidence or {})
     raw_text = ""
     try:
-        raw_text = ollama_generate(
-            ollama_url=ollama_url,
-            model=model,
-            prompt=prompt,
-            num_ctx=num_ctx,
-            num_predict=num_predict,
-            temperature=0.0,
-            keep_alive=keep_alive,
-            timeout=timeout,
-            format_json=format_json,
+        generation = (
+            llm_gateway.generate(
+                GenerationRequest(
+                    model=model,
+                    prompt=prompt,
+                    num_ctx=num_ctx,
+                    num_predict=num_predict,
+                    temperature=0.0,
+                    keep_alive=keep_alive,
+                    timeout_seconds=timeout,
+                    format_json=format_json,
+                )
+            )
+            if llm_gateway is not None
+            else coerce_generation_result(
+                ollama_generate(
+                    ollama_url=ollama_url,
+                    model=model,
+                    prompt=prompt,
+                    num_ctx=num_ctx,
+                    num_predict=num_predict,
+                    temperature=0.0,
+                    keep_alive=keep_alive,
+                    timeout=timeout,
+                    format_json=format_json,
+                )
+            )
         )
-        parsed = parse_json_from_llm(raw_text)
+        raw_text = generation.text
+        parsed = parse_json_from_llm(generation)
         result = normalize_table_interpretation(parsed)
         if result.get("schema_version") != TABLE_INTERPRETATION_SCHEMA_VERSION:
             result["schema_version"] = TABLE_INTERPRETATION_SCHEMA_VERSION

@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from receipt_intelligence.composition import build_extraction_dependencies
 from receipt_intelligence.extraction import (
     ExtractionConfig,
     ExtractionContext,
@@ -53,7 +54,10 @@ class StagedExtractionWorkflowTests(unittest.TestCase):
                 ollama_url="http://ollama",
                 model="model",
             )
-            context = ExtractionContext(config=config)
+            context = ExtractionContext(
+                config=config,
+                dependencies=build_extraction_dependencies(config),
+            )
             calls: list[str] = []
             workflow = ReceiptExtractionWorkflow(
                 [

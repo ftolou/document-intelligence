@@ -23,7 +23,11 @@ jobs_bp = Blueprint("jobs", __name__)
 
 def _processor() -> JobProcessingService:
     services = get_app_services()
-    return JobProcessingService(services.job_store, services.receipt_db)
+    return JobProcessingService(
+        services.job_store,
+        services.receipt_db,
+        ocr_engine=services.ocr_engine,
+    )
 
 
 @jobs_bp.post("/api/upload")

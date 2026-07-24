@@ -11,7 +11,7 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from receipt_intelligence.observability.ollama import OllamaCallMetrics
+from receipt_intelligence.application.ports.llm import ModelCallMetrics
 
 CANDIDATE_RESOLUTION_SCHEMA_VERSION = "rag_candidate_resolution_v2"
 
@@ -144,7 +144,7 @@ class CandidateResolutionResult(StrictModel):
     model: str | None = Field(default=None, max_length=200)
     attempts: int = Field(default=0, ge=0)
     duration_ms: float = Field(default=0.0, ge=0.0)
-    ollama_calls: list[OllamaCallMetrics] = Field(default_factory=list, max_length=20)
+    ollama_calls: list[ModelCallMetrics] = Field(default_factory=list, max_length=20)
     notes: list[str] = Field(default_factory=list, max_length=20)
 
     @model_validator(mode="after")

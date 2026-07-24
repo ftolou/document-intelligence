@@ -10,6 +10,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TARGETS = [
+    "src/receipt_intelligence/application",
+    "src/receipt_intelligence/adapters",
+    "src/receipt_intelligence/composition.py",
     "src/receipt_intelligence/rag",
     "src/receipt_intelligence/rag_sql",
     "src/receipt_intelligence/observability",
@@ -45,6 +48,7 @@ TARGETS = [
     "scripts/check_dependency_compatibility.py",
     "scripts/check_security_boundaries.py",
     "scripts/check_configuration_contracts.py",
+    "scripts/check_model_boundaries.py",
     "scripts/run_quality_checks.py",
     "scripts/verify_runtime_layout.py",
 ]
@@ -55,6 +59,7 @@ if importlib.util.find_spec("ruff") is None:
 commands = [
     [sys.executable, "scripts/check_security_boundaries.py"],
     [sys.executable, "scripts/check_configuration_contracts.py"],
+    [sys.executable, "scripts/check_model_boundaries.py"],
     [sys.executable, "-m", "ruff", "check", *TARGETS],
     [sys.executable, "-m", "ruff", "format", "--check", *TARGETS],
 ]
@@ -63,4 +68,4 @@ for command in commands:
     print("+", " ".join(command), flush=True)
     subprocess.run(command, cwd=ROOT, check=True)
 
-print("RAG-SQL LangGraph quality checks passed.")
+print("Quality checks passed.")

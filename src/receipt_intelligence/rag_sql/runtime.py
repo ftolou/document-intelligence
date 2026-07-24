@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from receipt_intelligence.adapters.llm import OllamaGateway
 from receipt_intelligence.rag.candidate_resolver import CandidateResolver, CandidateResolverConfig
 from receipt_intelligence.rag.embedding_client import OllamaEmbeddingClient
 from receipt_intelligence.rag.item_retriever import ItemSemanticRetriever
@@ -74,6 +75,7 @@ class RagSqlRuntime:
 
     def execute(self, question: str) -> RagSqlResponse:
         MigrationRunner(SQLiteConnectionFactory(self.config.database_path)).migrate()
+        llm_gateway = OllamaGateway(self.config.ollama_url)
         with OllamaEmbeddingClient(
             base_url=self.config.ollama_url,
             model=self.config.embedding_model,
@@ -90,11 +92,13 @@ class RagSqlRuntime:
                 lexical_weight=self.config.retrieval_lexical_weight,
             )
             engine = RagSqlEngine(
-                analyzer=RagSqlQuestionAnalyzer(self.config.analyzer),
+                analyzer=RagSqlQuestionAnalyzer(self.config.analyzer, llm_gateway=llm_gateway),
                 retriever=retriever,
-                resolver=CandidateResolver(self.config.resolver),
-                planner=RagSqlPlanner(self.config.planner),
-                answer_formatter=EvidenceBoundAnswerFormatter(self.config.answer_formatter)
+                resolver=CandidateResolver(self.config.resolver, llm_gateway=llm_gateway),
+                planner=RagSqlPlanner(self.config.planner, llm_gateway=llm_gateway),
+                answer_formatter=EvidenceBoundAnswerFormatter(
+                    self.config.answer_formatter, llm_gateway=llm_gateway
+                )
                 if self.config.answer_formatter.enabled
                 else None,
                 validator=RagSqlValidator(
