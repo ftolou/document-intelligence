@@ -33,9 +33,10 @@ TOTAL_RE = re.compile(
 )
 NET_RE = re.compile(r"\b(NETTO|OHNE\s+MWST|OHNE\s+UST)\b", re.IGNORECASE)
 TAX_RE = re.compile(
-    r"(?:\b(MWST|M\.?W\.?ST|UST|U\.?ST|MEHRWERTST|STEUER|VAT)\b|\d{1,2}(?:[,.]\d)?\s*%)",
+    r"\b(MWST|M\.?W\.?ST|UST|U\.?ST|MEHRWERTST|STEUER|VAT|TAX)\b",
     re.IGNORECASE,
 )
+PERCENT_RE = re.compile(r"(?<!\d)\d{1,2}(?:[,.]\d)?\s*%")
 PAYMENT_RE = re.compile(
     r"\b(BAR|CASH|GEGEBEN|ZAHLUNG|KARTENZAHLUNG|LASTSCHRIFT|EC|GIROCARD|KARTE|VISA|MASTERCARD|MAESTRO|PAYPAL|KREDITKARTE|DEBIT)\b",
     re.IGNORECASE,
@@ -148,6 +149,8 @@ def _tags_for_text(text: str, amount_value: float | None = None) -> list[str]:
         tags.append("net_keyword")
     if TAX_RE.search(t):
         tags.append("tax_keyword")
+    if PERCENT_RE.search(t):
+        tags.append("percentage_candidate")
     if PAYMENT_RE.search(t):
         tags.append("payment_keyword")
     if CHANGE_RE.search(t):
@@ -314,6 +317,7 @@ def build_layout_context(
                     "total_keyword",
                     "net_keyword",
                     "tax_keyword",
+                    "percentage_candidate",
                     "payment_keyword",
                     "change_keyword",
                     "discount_keyword",

@@ -62,6 +62,13 @@ def build_options_from_request() -> dict[str, Any]:
         ),
         "llm_timeout_seconds": form_float("llm_timeout_seconds", settings.LLM_TIMEOUT_SECONDS),
         "max_lines_for_llm": form_int("max_lines_for_llm", settings.MAX_LINES_FOR_LLM),
+        "extraction_strategy": (
+            request.form.get("extraction_strategy") or settings.EXTRACTION_STRATEGY
+        ),
+        "spatial_overview_num_ctx": settings.SPATIAL_OVERVIEW_NUM_CTX,
+        "spatial_overview_num_predict": settings.SPATIAL_OVERVIEW_NUM_PREDICT,
+        "spatial_overview_timeout_seconds": settings.SPATIAL_OVERVIEW_TIMEOUT_SECONDS,
+        "spatial_canvas_width": settings.SPATIAL_CANVAS_WIDTH,
         "ocr_lang": request.form.get("ocr_lang") or settings.OCR_LANG,
         "ocr_device": request.form.get("ocr_device") or settings.OCR_DEVICE,
         "ocr_max_side_limit": form_int("ocr_max_side_limit", settings.OCR_MAX_SIDE_LIMIT),

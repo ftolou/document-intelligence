@@ -19,3 +19,19 @@ The compatibility adapter recognizes only these historical aliases:
 | `reload_after_vlm` | `reload_llm_after_vlm` |
 
 Supplying both an alias and its canonical name is an error. Internal application services must use the canonical typed API rather than the compatibility adapter.
+
+
+## Extraction strategy
+
+`extraction_strategy` accepts:
+
+- `current`: the existing compact OCR/VLM/table path.
+- `spatial_overview`: the experimental geometry-first path described in `SPATIAL_OVERVIEW_EXTRACTION.md`.
+
+The active spatial tuning field is:
+
+- `spatial_canvas_width`
+
+The historical fields `spatial_overview_num_ctx`, `spatial_overview_num_predict`, and `spatial_overview_timeout_seconds` remain accepted for configuration compatibility, but the spatial strategy no longer performs a separate overview LLM call and therefore does not use them.
+
+The corresponding environment variables use uppercase names, for example `EXTRACTION_STRATEGY=spatial_overview`. Invalid strategies and unsafe canvas settings are rejected by the immutable configuration contract.

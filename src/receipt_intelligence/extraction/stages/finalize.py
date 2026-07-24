@@ -58,6 +58,13 @@ class FinalizationStage:
             "app_version": get_app_version(),
             "workflow": "ReceiptExtractionWorkflow",
             "staged_execution": True,
+            "extraction_strategy": config.extraction_strategy,
+            "spatial_overview_used": bool(llm_result.get("spatial_overview_used")),
+            "spatial_geometry_used": bool(llm_result.get("spatial_geometry_used")),
+            "spatial_overview_llm_call_performed": bool(
+                (context.spatial_overview_result or {}).get("llm_call_performed")
+            ),
+            "response_schema_enforced": bool(llm_result.get("response_schema_enforced")),
             "no_deterministic_fallback": True,
             "llm_error": llm_result.get("error"),
             "vlm_enabled": config.vlm_enabled,
@@ -192,11 +199,28 @@ class FinalizationStage:
                 "metrics_artifact": str(context.paths["extraction_metrics"]),
             },
             "architecture": (
-                "VLM layout regions -> crop OCR -> table interpretation -> OCR/VLM table "
-                "arbitration -> compact LLM parser -> validation -> gated right-column "
-                "recovery -> vertical price-stack recovery -> validated patch-only "
-                "correction -> item categorization"
+                "OCR/VLM evidence -> strategy-selected geometry-preserving representation -> "
+                "schema-constrained main LLM parser -> validation -> strategy-gated repair -> "
+                "validated patch-only correction -> item categorization"
             ),
+            "extraction_strategy": config.extraction_strategy,
+            "spatial_overview": {
+                "enabled": config.extraction_strategy == "spatial_overview",
+                "status": (
+                    context.spatial_overview_result.get("status")
+                    if context.spatial_overview_result
+                    else None
+                ),
+                "mode": (context.spatial_overview_result or {}).get("mode"),
+                "llm_call_performed": bool(
+                    (context.spatial_overview_result or {}).get("llm_call_performed")
+                ),
+                "geometric_row_group_count": (
+                    context.spatial_overview_result or {}
+                ).get("geometric_row_group_count"),
+                "document_map_artifact": str(context.paths["spatial_document_map"]),
+                "overview_artifact": str(context.paths["spatial_overview"]),
+            },
             "no_deterministic_semantic_parser": True,
             "no_deterministic_fallback": True,
             "old_v13_arguments_ignored": {
@@ -224,6 +248,9 @@ class FinalizationStage:
                 "duration_seconds": llm_result.get("duration_seconds"),
                 "json_retry_count": config.json_retry_count,
                 "format_json": config.format_json,
+                "response_schema_enforced": bool(
+                    llm_result.get("response_schema_enforced")
+                ),
                 "attempts": llm_result.get("attempts"),
             },
             "right_column_reocr": self._reocr_meta(context),

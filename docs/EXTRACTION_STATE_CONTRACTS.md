@@ -5,7 +5,7 @@ The extraction workflow exchanges typed, stage-owned artifact groups rather than
 The lifecycle is:
 
 ```text
-created -> prepared -> visual_ready -> parsed -> repaired -> finalized
+created -> prepared -> visual_ready -> overview_ready -> parsed -> repaired -> finalized
 ```
 
 Each default stage declares its required input phase and produced output phase. The workflow validates the phase before running the stage and advances it only after successful completion.
@@ -14,6 +14,7 @@ Artifact ownership is grouped as follows:
 
 - `PreparedArtifacts`: output paths and preliminary OCR context.
 - `VisualArtifacts`: VLM output, crop re-OCR evidence, table interpretation, and arbitration.
+- `OverviewArtifacts`: canonical spatial document map and structural overview result.
 - `ParsingArtifacts`: main LLM result, OCR context, receipt, compact evidence, and initial validation.
 - `RepairArtifacts`: recovery attempts and the currently selected receipt/report candidate.
 - `FinalizationArtifacts`: final receipt representation, categorization result, and pipeline metadata.

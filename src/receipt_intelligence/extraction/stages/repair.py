@@ -54,8 +54,11 @@ class RepairAndCorrectionStage:
             and not llm_result.get("error")
         ):
             self._run_bounded_reocr(context)
-            self._run_right_column_recovery(context)
-            self._run_vertical_price_stack_recovery(context)
+            if config.extraction_strategy == "spatial_overview":
+                self._skip_legacy_item_reconstruction(context)
+            else:
+                self._run_right_column_recovery(context)
+                self._run_vertical_price_stack_recovery(context)
             self._run_late_vlm_if_needed(context)
             self._run_patch_correction(context)
         elif not config.correction_enabled:
@@ -74,6 +77,32 @@ class RepairAndCorrectionStage:
                 {"status": "skipped", "message": "VLM layer not triggered."},
             )
         return context
+
+    def _skip_legacy_item_reconstruction(self, context: ExtractionContext) -> None:
+        reason = "disabled_for_spatial_overview_semantic_safety"
+        context.right_column_recovery_result = {
+            "status": "skipped",
+            "applied": False,
+            "reason": reason,
+        }
+        context.vertical_price_stack_recovery_result = {
+            "status": "skipped",
+            "applied": False,
+            "reason": reason,
+        }
+        save_json(context.paths["right_column_recovery"], context.right_column_recovery_result)
+        save_json(
+            context.paths["vertical_price_stack_recovery"],
+            context.vertical_price_stack_recovery_result,
+        )
+        context.emit(
+            "spatial_repair_policy",
+            "done",
+            (
+                "Spatial-overview strategy kept the parsed semantic rows stable; legacy "
+                "right-column and full price-stack item reconstruction were disabled."
+            ),
+        )
 
     def _run_bounded_reocr(self, context: ExtractionContext) -> None:
         config = context.config

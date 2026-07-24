@@ -48,6 +48,11 @@ def build_artifact_paths(result_dir: Path, run_id: str) -> dict[str, Path]:
         / f"{run_id}_v14_15_table_interpretation_prompt.txt",
         "table_interpretation_raw": result_dir / f"{run_id}_v14_15_table_interpretation_raw.txt",
         "table_arbitration": result_dir / f"{run_id}_v14_18_table_arbitration.json",
+        "spatial_document_map": result_dir / f"{run_id}_spatial_document_map.json",
+        "spatial_canvas": result_dir / f"{run_id}_spatial_canvas.txt",
+        "spatial_overview_prompt": result_dir / f"{run_id}_spatial_overview_prompt.txt",
+        "spatial_overview_raw": result_dir / f"{run_id}_spatial_overview_raw.txt",
+        "spatial_overview": result_dir / f"{run_id}_spatial_overview.json",
         "receipt_table_assembled": result_dir / f"{run_id}_v14_19_receipt_table_assembled.json",
         "table_assembly_report": result_dir / f"{run_id}_v14_19_table_assembly_report.json",
         "region_reocr": result_dir / f"{run_id}_v14_13_region_reocr.json",
@@ -151,6 +156,23 @@ def publish_latest_aliases(paths: dict[str, Path], result_dir: Path) -> None:
         "latest_v14_18_table_arbitration": (
             "table_arbitration",
             "latest_v14_18_table_arbitration.json",
+        ),
+        "latest_spatial_document_map": (
+            "spatial_document_map",
+            "latest_spatial_document_map.json",
+        ),
+        "latest_spatial_canvas": ("spatial_canvas", "latest_spatial_canvas.txt"),
+        "latest_spatial_overview_prompt": (
+            "spatial_overview_prompt",
+            "latest_spatial_overview_prompt.txt",
+        ),
+        "latest_spatial_overview_raw": (
+            "spatial_overview_raw",
+            "latest_spatial_overview_raw.txt",
+        ),
+        "latest_spatial_overview": (
+            "spatial_overview",
+            "latest_spatial_overview.json",
         ),
         "latest_v14_19_receipt_table_assembled": (
             "receipt_table_assembled",

@@ -24,7 +24,7 @@ from receipt_intelligence.extraction.validation.receipt import validate_receipt
 
 class MainParsingStage:
     name = "main_parsing"
-    input_phase = ExtractionPhase.VISUAL_READY
+    input_phase = ExtractionPhase.OVERVIEW_READY
     output_phase = ExtractionPhase.PARSED
 
     def run(self, context: ExtractionContext) -> ExtractionContext:
@@ -48,15 +48,20 @@ class MainParsingStage:
             format_json=config.format_json,
         )
 
-        main_parser_visual_evidence = (
-            compact_visual_evidence_for_main_parser(
-                context.visual_evidence,
-                table_interpretation=context.table_interpretation_result,
-                arbitration=context.table_arbitration_result,
+        if config.extraction_strategy == "spatial_overview":
+            # In the experimental path VLM output is explicitly secondary.  Do
+            # not inject the legacy "authoritative table" guidance.
+            main_parser_visual_evidence = context.visual_evidence
+        else:
+            main_parser_visual_evidence = (
+                compact_visual_evidence_for_main_parser(
+                    context.visual_evidence,
+                    table_interpretation=context.table_interpretation_result,
+                    arbitration=context.table_arbitration_result,
+                )
+                if context.visual_evidence
+                else None
             )
-            if context.visual_evidence
-            else None
-        )
         context.llm_result = run_llm_main_parser(
             ocr_json_path=config.ocr_json_path,
             ollama_url=config.ollama_url,
@@ -69,6 +74,10 @@ class MainParsingStage:
             json_retry_count=config.json_retry_count,
             format_json=config.format_json,
             visual_evidence=main_parser_visual_evidence,
+            prebuilt_ocr_context=context.preliminary_ocr_context,
+            spatial_document_map=context.spatial_document_map,
+            spatial_overview=context.spatial_overview_result,
+            extraction_strategy=config.extraction_strategy,
             llm_gateway=context.dependencies.llm_gateway,
         )
 
@@ -128,6 +137,14 @@ class MainParsingStage:
         return context
 
     def _apply_table_assembly(self, context: ExtractionContext) -> None:
+        if context.config.extraction_strategy == "spatial_overview":
+            context.table_assembly_report = {
+                "attempted": False,
+                "changed": False,
+                "reason": "disabled_for_spatial_overview_strategy",
+            }
+            save_json(context.paths["table_assembly_report"], context.table_assembly_report)
+            return
         if context.table_interpretation_result is None:
             return
         llm_result = context.llm_result

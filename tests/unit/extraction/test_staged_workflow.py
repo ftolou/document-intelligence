@@ -39,6 +39,7 @@ class StagedExtractionWorkflowTests(unittest.TestCase):
             [
                 "prepare",
                 "visual_evidence",
+                "spatial_overview",
                 "main_parsing",
                 "repair_and_correction",
                 "finalize",
@@ -73,6 +74,105 @@ class StagedExtractionWorkflowTests(unittest.TestCase):
             self.assertEqual(calls, ["first", "second"])
             self.assertEqual(context.stage_trace[0]["status"], "done")
             self.assertEqual(context.stage_trace[1]["status"], "error")
+
+    def test_spatial_strategy_builds_geometry_before_main_parser_without_overview_llm(self) -> None:
+        report = {
+            "import_decision": "needs_review",
+            "balanced": False,
+            "difference": 1.0,
+            "issues": ["test"],
+            "failure_diagnosis": None,
+        }
+        receipt = {"schema_version": "test", "items": [], "warnings": []}
+        ocr_context = {
+            "image_width": 100,
+            "image_height": 200,
+            "words": [],
+            "lines": [
+                {
+                    "line_id": "line_000",
+                    "text": "TEST 1,00",
+                    "bbox": {"x": 0.1, "y": 0.2, "w": 0.8, "h": 0.05},
+                    "source_word_ids": [],
+                }
+            ],
+            "layout_context": {},
+            "layout_rows": [],
+        }
+        llm_result = {
+            "receipt": receipt,
+            "ocr_context": ocr_context,
+            "prompt": "spatial prompt",
+            "raw_output": "{}",
+            "error": None,
+            "attempts": [],
+            "visual_evidence_used": False,
+            "spatial_overview_used": True,
+            "spatial_geometry_used": True,
+            "response_schema_enforced": True,
+            "extraction_strategy": "spatial_overview",
+            "duration_seconds": 0.01,
+        }
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            ocr_path = root / "ocr.json"
+            ocr_path.write_text(json.dumps({"words": []}), encoding="utf-8")
+            with (
+                patch(
+                    "receipt_intelligence.extraction.stages.prepare.build_ocr_context",
+                    return_value=ocr_context,
+                ),
+                patch(
+                    "receipt_intelligence.extraction.stages.parse.run_llm_main_parser",
+                    return_value=llm_result,
+                ) as parser_call,
+                patch(
+                    "receipt_intelligence.extraction.stages.parse.build_compact_evidence",
+                    return_value={},
+                ),
+                patch(
+                    "receipt_intelligence.extraction.stages.parse.build_grouped_evidence",
+                    return_value={},
+                ),
+                patch(
+                    "receipt_intelligence.extraction.stages.parse.apply_consistency_postprocess",
+                    return_value=(receipt, []),
+                ),
+                patch(
+                    "receipt_intelligence.extraction.stages.parse.validate_receipt",
+                    return_value=report,
+                ),
+                patch(
+                    "receipt_intelligence.extraction.stages.finalize.sanitize_model_warnings",
+                    return_value=(receipt, []),
+                ),
+            ):
+                result = run_integrated_receipt_pipeline(
+                    ocr_json_path=ocr_path,
+                    result_dir=root,
+                    run_id="spatial-1",
+                    ollama_url="http://ollama",
+                    model="gemma",
+                    extraction_strategy="spatial_overview",
+                    vlm_enabled=False,
+                    correction_enabled=False,
+                    categorization_enabled=False,
+                )
+
+            self.assertEqual(parser_call.call_args.kwargs["extraction_strategy"], "spatial_overview")
+            self.assertIsNotNone(parser_call.call_args.kwargs["spatial_document_map"])
+            self.assertEqual(result["pipeline_meta"]["extraction_strategy"], "spatial_overview")
+            self.assertTrue(result["pipeline_meta"]["spatial_overview"]["enabled"])
+            self.assertFalse(
+                result["pipeline_meta"]["spatial_overview"]["llm_call_performed"]
+            )
+            self.assertEqual(
+                result["pipeline_meta"]["spatial_overview"]["mode"],
+                "deterministic_geometry",
+            )
+            self.assertTrue((root / "spatial-1_spatial_document_map.json").exists())
+            self.assertTrue((root / "spatial-1_spatial_overview.json").exists())
 
     def test_compatibility_entry_point_runs_the_staged_workflow(self) -> None:
         report = {
@@ -147,6 +247,7 @@ class StagedExtractionWorkflowTests(unittest.TestCase):
                 [
                     "prepare",
                     "visual_evidence",
+                    "spatial_overview",
                     "main_parsing",
                     "repair_and_correction",
                     "finalize",
@@ -158,7 +259,7 @@ class StagedExtractionWorkflowTests(unittest.TestCase):
             self.assertTrue(metrics_path.exists())
             metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
             self.assertEqual(metrics["status"], "completed")
-            self.assertEqual(metrics["completed_stage_count"], 5)
+            self.assertEqual(metrics["completed_stage_count"], 6)
             self.assertTrue(all("duration_ms" in row for row in metrics["stages"]))
             self.assertTrue((root / "latest_receipt_final.json").exists())
             self.assertIn("latest_receipt_final", result["paths"])

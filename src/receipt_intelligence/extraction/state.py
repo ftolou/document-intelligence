@@ -16,6 +16,7 @@ class ExtractionPhase(str, Enum):  # noqa: UP042
     CREATED = "created"
     PREPARED = "prepared"
     VISUAL_READY = "visual_ready"
+    OVERVIEW_READY = "overview_ready"
     PARSED = "parsed"
     REPAIRED = "repaired"
     FINALIZED = "finalized"
@@ -42,6 +43,14 @@ class VisualArtifacts:
     region_reocr_result: JsonObject | None = None
     table_interpretation_result: JsonObject | None = None
     table_arbitration_result: JsonObject | None = None
+
+
+@dataclass(slots=True)
+class OverviewArtifacts:
+    """Canonical spatial map and geometry-only overview metadata."""
+
+    spatial_document_map: JsonObject | None = None
+    spatial_overview_result: JsonObject | None = None
 
 
 @dataclass(slots=True)

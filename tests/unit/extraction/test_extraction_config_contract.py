@@ -74,3 +74,18 @@ def test_compatibility_entry_point_rejects_unknown_keywords_before_execution(
             **required_values(tmp_path),
             typoed_option=True,
         )
+
+
+def test_spatial_overview_strategy_is_normalized_and_validated(tmp_path: Path) -> None:
+    request = ExtractionRequest(
+        **required_values(tmp_path),
+        extraction_strategy="Spatial_Overview",
+    )
+
+    assert request.extraction_strategy == "spatial_overview"
+
+    with pytest.raises(ValueError, match="extraction_strategy"):
+        ExtractionRequest(
+            **required_values(tmp_path),
+            extraction_strategy="unknown",
+        )

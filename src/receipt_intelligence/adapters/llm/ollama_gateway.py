@@ -47,7 +47,9 @@ class OllamaGateway(LlmGateway):
         }
         if request.keep_alive not in (None, ""):
             payload["keep_alive"] = request.keep_alive
-        if request.format_json:
+        if request.response_json_schema is not None:
+            payload["format"] = request.response_json_schema
+        elif request.format_json:
             payload["format"] = "json"
 
         started = time.perf_counter()

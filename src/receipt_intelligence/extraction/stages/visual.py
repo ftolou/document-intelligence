@@ -158,6 +158,24 @@ class VisualEvidenceStage:
         if not visual_evidence.get("structured_tables"):
             return
         config = context.config
+        if config.extraction_strategy == "spatial_overview":
+            save_json(
+                context.paths["table_interpretation"],
+                {
+                    "status": "skipped",
+                    "reason": "spatial_strategy_uses_geometry_and_raw_vlm_hypotheses",
+                },
+            )
+            context.emit(
+                "table_interpretation",
+                "skipped",
+                (
+                    "Spatial-overview strategy selected; the dedicated table interpreter "
+                    "is skipped so the main parser receives source geometry and raw VLM "
+                    "table hypotheses without another semantic pre-parser."
+                ),
+            )
+            return
         context.emit(
             "table_interpretation",
             "running",

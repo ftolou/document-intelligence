@@ -57,6 +57,12 @@ def main() -> int:
     parser.add_argument("--run-id", default=None)
     parser.add_argument("--ollama-url", default="http://localhost:11434")
     parser.add_argument("--model", default="gemma4")
+    parser.add_argument(
+        "--extraction-strategy",
+        choices=("current", "spatial_overview"),
+        default="current",
+        help="Select the legacy compact path or the experimental geometry-first path.",
+    )
     parser.add_argument("--tolerance", type=float, default=0.03)
     parser.add_argument("--max-lines-for-llm", type=int, default=260)
     parser.add_argument("--num-ctx", type=int, default=24384)
@@ -103,6 +109,7 @@ def main() -> int:
         run_id=run_id,
         ollama_url=args.ollama_url,
         model=args.model,
+        extraction_strategy=args.extraction_strategy,
         tolerance=args.tolerance,
         skip_row_llm=args.skip_row_llm,
         active_line_repair=args.active_line_repair,

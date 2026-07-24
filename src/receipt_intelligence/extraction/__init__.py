@@ -6,6 +6,7 @@ from receipt_intelligence.extraction.factory import build_default_extraction_wor
 from receipt_intelligence.extraction.state import (
     ExtractionPhase,
     FinalizationArtifacts,
+    OverviewArtifacts,
     ParsingArtifacts,
     PreparedArtifacts,
     RepairArtifacts,
@@ -22,6 +23,7 @@ __all__ = [
     "StageContractError",
     "PreparedArtifacts",
     "VisualArtifacts",
+    "OverviewArtifacts",
     "ParsingArtifacts",
     "RepairArtifacts",
     "FinalizationArtifacts",

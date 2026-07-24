@@ -44,6 +44,9 @@ from receipt_intelligence.extraction.evidence.layout import (
     build_layout_context,
     extract_ocr_amounts,
 )
+from receipt_intelligence.extraction.evidence.spatial_document import (
+    spatial_document_to_prompt_text,
+)
 from receipt_intelligence.extraction.evidence.visual import visual_evidence_to_prompt_text
 from receipt_intelligence.prompts import render_prompt_template
 
@@ -87,6 +90,19 @@ class OcrWord:
     @property
     def height(self) -> float:
         return max(0.0, self.ymax - self.ymin)
+
+    def compact(self, image_width: int, image_height: int) -> dict[str, Any]:
+        return {
+            "word_id": self.id,
+            "text": self.text,
+            "confidence": round(self.confidence, 4),
+            "bbox": {
+                "x": round(self.xmin / max(image_width, 1), 5),
+                "y": round(self.ymin / max(image_height, 1), 5),
+                "w": round(self.width / max(image_width, 1), 5),
+                "h": round(self.height / max(image_height, 1), 5),
+            },
+        }
 
 
 @dataclass
@@ -461,6 +477,7 @@ def build_ocr_context(data: dict[str, Any], max_lines: int = 260) -> dict[str, A
         "image_width": image_width,
         "image_height": image_height,
         "word_count": len(words),
+        "words": [word.compact(image_width, image_height) for word in words],
         "line_count": len(lines),
         "kept_line_count": len(kept),
         "omitted_middle_line_count": omitted,
@@ -819,24 +836,198 @@ def _strict_output_schema_for_prompt() -> dict[str, Any]:
     }
 
 
+def receipt_response_json_schema() -> dict[str, Any]:
+    """Provider-enforced JSON Schema for the canonical receipt response.
+
+    This constrains serialization only. It does not infer receipt semantics or
+    populate missing values; the model still decides every semantic field.
+    """
+
+    nullable_string = {"type": ["string", "null"]}
+    nullable_number = {"type": ["number", "null"]}
+    source_ids = {"type": "array", "items": {"type": "string"}}
+    merchant = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "name": nullable_string,
+            "address": nullable_string,
+            "tax_id": nullable_string,
+            "source_line_ids": source_ids,
+        },
+        "required": ["name", "address", "tax_id", "source_line_ids"],
+    }
+    item = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "raw_description": nullable_string,
+            "description": nullable_string,
+            "product_description": nullable_string,
+            "line_note": nullable_string,
+            "promotion_note": nullable_string,
+            "quantity": nullable_number,
+            "unit": nullable_string,
+            "unit_price": nullable_number,
+            "original_price": nullable_number,
+            "discount_amount": nullable_number,
+            "line_total": nullable_number,
+            "tax_rate": nullable_number,
+            "tax_code": nullable_string,
+            "category": {
+                "type": "string",
+                "enum": ["item", "discount", "deposit", "refund", "unknown"],
+            },
+            "source_line_ids": source_ids,
+            "table_interpretation_source_row_id": nullable_string,
+            "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+            "notes": nullable_string,
+        },
+        "required": [
+            "raw_description",
+            "description",
+            "product_description",
+            "line_note",
+            "promotion_note",
+            "quantity",
+            "unit",
+            "unit_price",
+            "original_price",
+            "discount_amount",
+            "line_total",
+            "tax_rate",
+            "tax_code",
+            "category",
+            "source_line_ids",
+            "table_interpretation_source_row_id",
+            "confidence",
+            "notes",
+        ],
+    }
+    tax = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "rate": nullable_number,
+            "net": nullable_number,
+            "tax": nullable_number,
+            "gross": nullable_number,
+            "source_line_ids": source_ids,
+        },
+        "required": ["rate", "net", "tax", "gross", "source_line_ids"],
+    }
+    totals = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "subtotal": nullable_number,
+            "tax_total": nullable_number,
+            "grand_total": nullable_number,
+            "paid_total": nullable_number,
+            "change": nullable_number,
+            "source_line_ids": source_ids,
+        },
+        "required": [
+            "subtotal",
+            "tax_total",
+            "grand_total",
+            "paid_total",
+            "change",
+            "source_line_ids",
+        ],
+    }
+    payment = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "method": {
+                "type": "string",
+                "enum": [
+                    "cash",
+                    "girocard",
+                    "credit_card",
+                    "debit_card",
+                    "voucher",
+                    "coupon",
+                    "gift_card",
+                    "unknown",
+                ],
+            },
+            "amount": nullable_number,
+            "source_line_ids": source_ids,
+        },
+        "required": ["method", "amount", "source_line_ids"],
+    }
+    unresolved = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "line_id": {"type": "string"},
+            "text": {"type": "string"},
+            "reason": {"type": "string"},
+        },
+        "required": ["line_id", "text", "reason"],
+    }
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "schema_version": {
+                "type": "string",
+                "enum": [EXPECTED_SCHEMA_VERSION],
+            },
+            "parse_status": {
+                "type": "string",
+                "enum": ["ok", "partial", "failed"],
+            },
+            "currency": nullable_string,
+            "merchant": merchant,
+            "date": nullable_string,
+            "time": nullable_string,
+            "items": {"type": "array", "items": item},
+            "taxes": {"type": "array", "items": tax},
+            "totals": totals,
+            "payments": {"type": "array", "items": payment},
+            "unresolved_rows": {"type": "array", "items": unresolved},
+            "warnings": {"type": "array", "items": {"type": "string"}},
+            "overall_confidence": {
+                "type": "number",
+                "minimum": 0.0,
+                "maximum": 1.0,
+            },
+        },
+        "required": [
+            "schema_version",
+            "parse_status",
+            "currency",
+            "merchant",
+            "date",
+            "time",
+            "items",
+            "taxes",
+            "totals",
+            "payments",
+            "unresolved_rows",
+            "warnings",
+            "overall_confidence",
+        ],
+    }
+
+
 def build_prompt(
     ocr_context: dict[str, Any],
     prompt_profile: str = "compact_evidence",
     previous_error: str | None = None,
     visual_evidence: dict[str, Any] | None = None,
+    spatial_document_map: dict[str, Any] | None = None,
+    spatial_overview: dict[str, Any] | None = None,
+    extraction_strategy: str = "current",
 ) -> str:
-    """Build the V14.6 compact-evidence LLM prompt.
-
-    V14.6 intentionally does not send bbox/coordinate JSON or the full OCR context
-    to the model. The model gets receipt-shaped evidence only: header candidates,
-    reconstructed rows, candidate groups, neighbor context, and minimal raw text.
-    """
+    """Build either the current compact prompt or the spatial-overview prompt."""
     retry_note = ""
     has_visual = bool(
         visual_evidence and visual_evidence.get("status") in {"ok", "no_amounts_found"}
     )
-    # When VLM/table evidence exists, the OCR evidence becomes secondary and can be shorter.
-    # This avoids the previous long/noisy OCR-only prompt that caused slow or truncated JSON.
     max_rows = 90 if has_visual else 140
     if prompt_profile in {"schema_retry", "wrong_schema_retry"}:
         retry_note = (
@@ -849,12 +1040,24 @@ def build_prompt(
         retry_note = "\nULTRA-COMPACT RETRY: output only the required receipt JSON schema.\n"
         max_rows = 45 if has_visual else 90
 
-    evidence = build_compact_evidence(ocr_context, max_rows=max_rows)
-    evidence_text = compact_evidence_to_prompt_text(evidence)
-    visual_text = visual_evidence_to_prompt_text(visual_evidence) if has_visual else ""
     schema = _strict_output_schema_for_prompt()
     error_block = f"\nPrevious rejection reason: {previous_error}\n" if previous_error else ""
 
+    if extraction_strategy == "spatial_overview" and isinstance(spatial_document_map, dict):
+        return render_prompt_template(
+            "main_receipt_parser_spatial.txt",
+            RETRY_NOTE=retry_note,
+            ERROR_BLOCK=error_block,
+            SCHEMA_JSON=json.dumps(schema, ensure_ascii=False, indent=2),
+            SPATIAL_EVIDENCE=spatial_document_to_prompt_text(
+                spatial_document_map,
+                max_rows=max_rows,
+            ),
+        )
+
+    evidence = build_compact_evidence(ocr_context, max_rows=max_rows)
+    evidence_text = compact_evidence_to_prompt_text(evidence)
+    visual_text = visual_evidence_to_prompt_text(visual_evidence) if has_visual else ""
     return render_prompt_template(
         "main_receipt_parser.txt",
         RETRY_NOTE=retry_note,
@@ -863,7 +1066,6 @@ def build_prompt(
         VISUAL_TEXT=visual_text,
         EVIDENCE_TEXT=evidence_text,
     )
-
 
 def ollama_generate(
     *,
@@ -876,6 +1078,7 @@ def ollama_generate(
     keep_alive: str | None = None,
     timeout: float = 240.0,
     format_json: bool = True,
+    response_json_schema: dict[str, Any] | None = None,
 ) -> GenerationResult:
     """Compatibility entry point; new code injects ``LlmGateway`` directly."""
 
@@ -892,6 +1095,7 @@ def ollama_generate(
             keep_alive=keep_alive,
             timeout_seconds=timeout,
             format_json=format_json,
+            response_json_schema=response_json_schema,
         )
     )
 
@@ -1211,11 +1415,18 @@ def run_llm_main_parser(
     json_retry_count: int = 1,
     format_json: bool = True,
     visual_evidence: dict[str, Any] | None = None,
+    prebuilt_ocr_context: dict[str, Any] | None = None,
+    spatial_document_map: dict[str, Any] | None = None,
+    spatial_overview: dict[str, Any] | None = None,
+    extraction_strategy: str = "current",
     llm_gateway: LlmGateway | None = None,
 ) -> dict[str, Any]:
     started = time.perf_counter()
-    ocr = load_json(ocr_json_path)
-    context = build_ocr_context(ocr, max_lines=max_lines)
+    if prebuilt_ocr_context is not None:
+        context = dict(prebuilt_ocr_context)
+    else:
+        ocr = load_json(ocr_json_path)
+        context = build_ocr_context(ocr, max_lines=max_lines)
     if visual_evidence:
         context["visual_evidence_lines"] = _visual_evidence_line_registry(visual_evidence)
 
@@ -1224,6 +1435,7 @@ def run_llm_main_parser(
     error = None
     final_prompt = ""
     final_raw_text = ""
+    response_schema_enforced = False
 
     # V14.6 starts with compact evidence, not the bulky V14.1 full OCR JSON prompt.
     # Retry attempts use the same evidence but stronger schema-retry wording.
@@ -1261,6 +1473,9 @@ def run_llm_main_parser(
             prompt_profile=spec["profile"],
             previous_error=previous_error_for_prompt,
             visual_evidence=visual_evidence,
+            spatial_document_map=spatial_document_map,
+            spatial_overview=spatial_overview,
+            extraction_strategy=extraction_strategy,
         )
         raw_text = ""
         attempt_error = None
@@ -1271,13 +1486,22 @@ def run_llm_main_parser(
                     GenerationRequest(
                         model=model,
                         prompt=prompt,
-                        operation="receipt_main_parse",
+                        operation=(
+                            "receipt_main_parse_spatial"
+                            if extraction_strategy == "spatial_overview"
+                            else "receipt_main_parse"
+                        ),
                         attempt=attempt_index + 1,
                         num_ctx=num_ctx,
                         num_predict=int(spec["num_predict"]),
                         keep_alive=keep_alive,
                         timeout_seconds=timeout,
                         format_json=bool(spec["format_json"]),
+                        response_json_schema=(
+                            receipt_response_json_schema()
+                            if bool(spec["format_json"])
+                            else None
+                        ),
                     )
                 )
                 if llm_gateway is not None
@@ -1291,6 +1515,11 @@ def run_llm_main_parser(
                         keep_alive=keep_alive,
                         timeout=timeout,
                         format_json=bool(spec["format_json"]),
+                        response_json_schema=(
+                            receipt_response_json_schema()
+                            if bool(spec["format_json"])
+                            else None
+                        ),
                     )
                 )
             )
@@ -1302,11 +1531,13 @@ def run_llm_main_parser(
             receipt = normalize_llm_receipt(parsed)
             final_prompt = prompt
             final_raw_text = raw_text
+            response_schema_enforced = bool(spec["format_json"])
             attempts.append(
                 {
                     "name": spec["name"],
                     "profile": spec["profile"],
                     "format_json": spec["format_json"],
+                    "schema_constrained": bool(spec["format_json"]),
                     "num_predict": spec["num_predict"],
                     "prompt_chars": len(prompt),
                     "raw_chars": len(raw_text),
@@ -1327,6 +1558,7 @@ def run_llm_main_parser(
                     "name": spec["name"],
                     "profile": spec["profile"],
                     "format_json": spec["format_json"],
+                    "schema_constrained": bool(spec["format_json"]),
                     "num_predict": spec["num_predict"],
                     "prompt_chars": len(prompt),
                     "raw_chars": len(raw_text),
@@ -1358,6 +1590,14 @@ def run_llm_main_parser(
         "visual_evidence_used": bool(
             visual_evidence and visual_evidence.get("status") in {"ok", "no_amounts_found"}
         ),
+        "extraction_strategy": extraction_strategy,
+        "spatial_overview_used": bool(
+            extraction_strategy == "spatial_overview" and spatial_document_map
+        ),
+        "spatial_geometry_used": bool(
+            extraction_strategy == "spatial_overview" and spatial_document_map
+        ),
+        "response_schema_enforced": response_schema_enforced,
     }
 
 

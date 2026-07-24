@@ -14,6 +14,7 @@ from receipt_intelligence.extraction.state import (
     ExtractionPhase,
     FinalizationArtifacts,
     JsonObject,
+    OverviewArtifacts,
     ParsingArtifacts,
     PreparedArtifacts,
     RepairArtifacts,
@@ -45,6 +46,7 @@ class ExtractionContext:
 
     prepared: PreparedArtifacts | None = None
     visual: VisualArtifacts | None = None
+    overview: OverviewArtifacts | None = None
     parsed: ParsingArtifacts | None = None
     repair: RepairArtifacts | None = None
     finalized: FinalizationArtifacts | None = None
@@ -90,10 +92,17 @@ class ExtractionContext:
         self.visual = VisualArtifacts()
         return self.visual
 
+    def begin_overview_stage(self) -> OverviewArtifacts:
+        if self.overview is not None:
+            raise StageContractError("Overview artifacts were already initialized.")
+        self.require_visual()
+        self.overview = OverviewArtifacts()
+        return self.overview
+
     def begin_parsing_stage(self) -> ParsingArtifacts:
         if self.parsed is not None:
             raise StageContractError("Parsing artifacts were already initialized.")
-        self.require_visual()
+        self.require_overview()
         self.parsed = ParsingArtifacts()
         return self.parsed
 
@@ -119,6 +128,9 @@ class ExtractionContext:
 
     def require_visual(self) -> VisualArtifacts:
         return _required(self.visual, "visual artifacts")
+
+    def require_overview(self) -> OverviewArtifacts:
+        return _required(self.overview, "overview artifacts")
 
     def require_parsed(self) -> ParsingArtifacts:
         return _required(self.parsed, "parsing artifacts")
@@ -184,6 +196,22 @@ class ExtractionContext:
     @table_arbitration_result.setter
     def table_arbitration_result(self, value: JsonObject | None) -> None:
         self.require_visual().table_arbitration_result = value
+
+    @property
+    def spatial_document_map(self) -> JsonObject | None:
+        return self.overview.spatial_document_map if self.overview is not None else None
+
+    @spatial_document_map.setter
+    def spatial_document_map(self, value: JsonObject | None) -> None:
+        self.require_overview().spatial_document_map = value
+
+    @property
+    def spatial_overview_result(self) -> JsonObject | None:
+        return self.overview.spatial_overview_result if self.overview is not None else None
+
+    @spatial_overview_result.setter
+    def spatial_overview_result(self, value: JsonObject | None) -> None:
+        self.require_overview().spatial_overview_result = value
 
     @property
     def llm_result(self) -> JsonObject:

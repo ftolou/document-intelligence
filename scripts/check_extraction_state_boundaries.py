@@ -24,6 +24,7 @@ for path in sorted(STAGES.glob("*.py")):
 required_artifacts = {
     "PreparedArtifacts",
     "VisualArtifacts",
+    "OverviewArtifacts",
     "ParsingArtifacts",
     "RepairArtifacts",
     "FinalizationArtifacts",
@@ -39,7 +40,8 @@ if missing:
 expected_stages = {
     "prepare.py": ("ExtractionPhase.CREATED", "ExtractionPhase.PREPARED"),
     "visual.py": ("ExtractionPhase.PREPARED", "ExtractionPhase.VISUAL_READY"),
-    "parse.py": ("ExtractionPhase.VISUAL_READY", "ExtractionPhase.PARSED"),
+    "overview.py": ("ExtractionPhase.VISUAL_READY", "ExtractionPhase.OVERVIEW_READY"),
+    "parse.py": ("ExtractionPhase.OVERVIEW_READY", "ExtractionPhase.PARSED"),
     "repair.py": ("ExtractionPhase.PARSED", "ExtractionPhase.REPAIRED"),
     "finalize.py": ("ExtractionPhase.REPAIRED", "ExtractionPhase.FINALIZED"),
 }

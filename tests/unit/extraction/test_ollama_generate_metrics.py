@@ -77,3 +77,40 @@ def test_ollama_generate_sends_residency_options(monkeypatch) -> None:
         "num_ctx": 6144,
         "num_predict": 128,
     }
+
+
+def test_ollama_generate_sends_json_schema_as_format_object(monkeypatch) -> None:
+    calls: list[tuple[str, dict[str, object] | None]] = []
+
+    def fake_http_json(
+        url: str,
+        payload: dict[str, object] | None = None,
+        timeout: float = 180.0,
+    ) -> dict[str, object]:
+        del timeout
+        calls.append((url, payload))
+        if url.endswith("/api/tags"):
+            return {"models": []}
+        return {
+            "model": "gemma4",
+            "response": '{"schema_version":"v14_6_llm_receipt_1"}',
+            "done_reason": "stop",
+        }
+
+    monkeypatch.setattr(ollama_gateway, "_http_json", fake_http_json)
+    schema = {
+        "type": "object",
+        "properties": {"schema_version": {"type": "string"}},
+        "required": ["schema_version"],
+    }
+
+    llm_parser.ollama_generate(
+        ollama_url="http://localhost:11434",
+        model="gemma4",
+        prompt="test",
+        response_json_schema=schema,
+    )
+
+    generate_payload = calls[1][1]
+    assert generate_payload is not None
+    assert generate_payload["format"] == schema

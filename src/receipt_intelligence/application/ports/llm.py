@@ -75,6 +75,7 @@ class GenerationRequest:
     keep_alive: str | None = None
     timeout_seconds: float = 240.0
     format_json: bool = True
+    response_json_schema: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         operation = str(self.operation or "").strip()
@@ -82,6 +83,17 @@ class GenerationRequest:
             raise ValueError("GenerationRequest.operation must not be empty.")
         if self.attempt < 1:
             raise ValueError("GenerationRequest.attempt must be >= 1.")
+        schema = self.response_json_schema
+        if schema is not None:
+            if not isinstance(schema, dict) or not schema:
+                raise ValueError(
+                    "GenerationRequest.response_json_schema must be a non-empty object."
+                )
+            if not self.format_json:
+                raise ValueError(
+                    "GenerationRequest.response_json_schema requires format_json=True."
+                )
+            object.__setattr__(self, "response_json_schema", dict(schema))
         object.__setattr__(self, "operation", operation)
 
 

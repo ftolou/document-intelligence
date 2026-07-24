@@ -77,6 +77,13 @@ class JobProcessingService:
                 ollama_url=options["ollama_url"],
                 model=options["model"],
                 tolerance=options["validation_tolerance"],
+                extraction_strategy=options["extraction_strategy"],
+                spatial_overview_num_ctx=options["spatial_overview_num_ctx"],
+                spatial_overview_num_predict=options["spatial_overview_num_predict"],
+                spatial_overview_timeout_seconds=options[
+                    "spatial_overview_timeout_seconds"
+                ],
+                spatial_canvas_width=options["spatial_canvas_width"],
                 ocr_lang=options["ocr_lang"],
                 ocr_device=options["ocr_device"],
                 max_lines_for_llm=options["max_lines_for_llm"],

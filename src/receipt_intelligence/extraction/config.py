@@ -40,6 +40,12 @@ class ExtractionConfig:
     ocr_rec_model: str | None = "latin_PP-OCRv5_mobile_rec"
     progress_callback: ProgressCallback | None = None
 
+    extraction_strategy: str = "current"
+    spatial_overview_num_ctx: int = 16384
+    spatial_overview_num_predict: int = 4096
+    spatial_overview_timeout_seconds: float = 180.0
+    spatial_canvas_width: int = 112
+
     max_lines_for_llm: int = 260
     num_ctx: int = 24384
     num_predict: int = 8192
@@ -79,6 +85,21 @@ class ExtractionConfig:
         object.__setattr__(self, "result_dir", Path(self.result_dir))
         if self.source_image_path is not None:
             object.__setattr__(self, "source_image_path", Path(self.source_image_path))
+        strategy = (self.extraction_strategy or "current").strip().lower()
+        if strategy not in {"current", "spatial_overview"}:
+            raise ValueError(
+                "extraction_strategy must be 'current' or 'spatial_overview'"
+            )
+        object.__setattr__(self, "extraction_strategy", strategy)
+        if self.spatial_overview_num_ctx < 1024:
+            raise ValueError("spatial_overview_num_ctx must be >= 1024")
+        if self.spatial_overview_num_predict < 256:
+            raise ValueError("spatial_overview_num_predict must be >= 256")
+        if self.spatial_overview_timeout_seconds <= 0:
+            raise ValueError("spatial_overview_timeout_seconds must be > 0")
+        if not 72 <= self.spatial_canvas_width <= 160:
+            raise ValueError("spatial_canvas_width must be between 72 and 160")
+
         object.__setattr__(
             self,
             "gpu_orchestration",

@@ -26,3 +26,5 @@
 
 Completed phase documents, patch notes, and portfolio snapshots are under
 [`archive/`](archive/README.md).
+
+- [Experimental spatial-overview extraction](SPATIAL_OVERVIEW_EXTRACTION.md)
