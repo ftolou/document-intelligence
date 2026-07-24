@@ -207,7 +207,6 @@ class FinalizationStage:
                 "ocr_device": config.ocr_device,
                 "ocr_det_model": config.ocr_det_model,
                 "ocr_rec_model": config.ocr_rec_model,
-                "unused_kwargs": config.unused_kwargs,
             },
             "llm": {
                 "model": config.model,

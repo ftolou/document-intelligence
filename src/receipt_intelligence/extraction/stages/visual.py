@@ -242,16 +242,16 @@ class VisualEvidenceStage:
     def _unload_ollama_if_requested(self, context: ExtractionContext) -> None:
         config = context.config
         if (
-            config.gpu_orchestration_mode
+            config.gpu_orchestration
             not in {"sequential", "sequential_ollama_handoff", "ollama_handoff"}
-            or not config.unload_before_vlm
+            or not config.unload_llm_before_vlm
         ):
             return
         context.emit(
             "gpu_orchestration",
             "running",
             "VLM-first mode: unloading Ollama/Gemma before VLM to free GPU memory.",
-            mode=config.gpu_orchestration_mode,
+            mode=config.gpu_orchestration,
             control_mode=config.ollama_control_mode,
         )
         result = unload_ollama(
@@ -275,16 +275,16 @@ class VisualEvidenceStage:
     def _reload_ollama_if_requested(self, context: ExtractionContext) -> None:
         config = context.config
         if (
-            config.gpu_orchestration_mode
+            config.gpu_orchestration
             not in {"sequential", "sequential_ollama_handoff", "ollama_handoff"}
-            or not config.reload_after_vlm
+            or not config.reload_llm_after_vlm
         ):
             return
         context.emit(
             "gpu_orchestration",
             "running",
             "VLM-first mode: reloading Ollama/Gemma before the main LLM parser.",
-            mode=config.gpu_orchestration_mode,
+            mode=config.gpu_orchestration,
             control_mode=config.ollama_control_mode,
         )
         result = reload_ollama(

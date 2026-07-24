@@ -25,6 +25,7 @@ TARGETS = [
     "src/receipt_intelligence/extraction/__init__.py",
     "src/receipt_intelligence/extraction/artifacts.py",
     "src/receipt_intelligence/extraction/config.py",
+    "src/receipt_intelligence/extraction/compatibility.py",
     "src/receipt_intelligence/extraction/context.py",
     "src/receipt_intelligence/extraction/factory.py",
     "src/receipt_intelligence/extraction/stages",
@@ -43,6 +44,7 @@ TARGETS = [
     "scripts/run_test_profile.py",
     "scripts/check_dependency_compatibility.py",
     "scripts/check_security_boundaries.py",
+    "scripts/check_configuration_contracts.py",
     "scripts/run_quality_checks.py",
     "scripts/verify_runtime_layout.py",
 ]
@@ -52,6 +54,7 @@ if importlib.util.find_spec("ruff") is None:
 
 commands = [
     [sys.executable, "scripts/check_security_boundaries.py"],
+    [sys.executable, "scripts/check_configuration_contracts.py"],
     [sys.executable, "-m", "ruff", "check", *TARGETS],
     [sys.executable, "-m", "ruff", "format", "--check", *TARGETS],
 ]

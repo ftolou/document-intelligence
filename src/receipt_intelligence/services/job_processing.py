@@ -13,9 +13,8 @@ from werkzeug.utils import secure_filename
 
 import receipt_intelligence.settings as settings
 from receipt_intelligence.engines.ocr_engine import run_paddleocr_image
-from receipt_intelligence.pipeline.integrated_receipt_pipeline import (
-    run_integrated_receipt_pipeline,
-)
+from receipt_intelligence.extraction import ExtractionRequest
+from receipt_intelligence.pipeline.integrated_receipt_pipeline import run_receipt_extraction
 from receipt_intelligence.services.artifact_service import artifact_url
 from receipt_intelligence.services.review_service import ReviewService
 from receipt_intelligence.storage.job_store import JobStore
@@ -64,7 +63,7 @@ class JobProcessingService:
                 progress_callback=progress,
             )
 
-            result = run_integrated_receipt_pipeline(
+            extraction_request = ExtractionRequest(
                 ocr_json_path=ocr_json_path,
                 result_dir=job_dir,
                 run_id=job_id,
@@ -88,9 +87,9 @@ class JobProcessingService:
                 vlm_timeout_seconds=options["vlm_timeout_seconds"],
                 vlm_max_chars=options["vlm_max_chars"],
                 correction_enabled=options["vlm_correction_enabled"],
-                vlm_gpu_orchestration=options["vlm_gpu_orchestration"],
-                ollama_unload_before_vlm=options["ollama_unload_before_vlm"],
-                ollama_reload_after_vlm=options["ollama_reload_after_vlm"],
+                gpu_orchestration=options["gpu_orchestration"],
+                unload_llm_before_vlm=options["unload_llm_before_vlm"],
+                reload_llm_after_vlm=options["reload_llm_after_vlm"],
                 ollama_control_mode=options["ollama_control_mode"],
                 ollama_control_timeout_seconds=options["ollama_control_timeout_seconds"],
                 ollama_unload_command=options["ollama_unload_command"],
@@ -105,6 +104,7 @@ class JobProcessingService:
                 categorization_format_json=options["categorization_format_json"],
                 progress_callback=progress,
             )
+            result = run_receipt_extraction(extraction_request)
             report = result["report"]
             paths = {key: str(value) for key, value in result.get("paths", {}).items()}
             key_artifacts = self._build_key_artifacts(

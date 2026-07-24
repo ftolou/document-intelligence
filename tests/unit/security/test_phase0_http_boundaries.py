@@ -58,9 +58,9 @@ def test_upload_options_ignore_external_urls_and_commands(monkeypatch) -> None:
     assert options["ollama_unload_command"] == "trusted-unload"
     assert options["ollama_start_command"] == "trusted-start"
     assert options["vlm_timeout_seconds"] == 900.0
-    assert options["vlm_gpu_orchestration"] == "none"
-    assert options["ollama_unload_before_vlm"] is False
-    assert options["ollama_reload_after_vlm"] is False
+    assert options["gpu_orchestration"] == "none"
+    assert options["unload_llm_before_vlm"] is False
+    assert options["reload_llm_after_vlm"] is False
     assert options["ollama_control_timeout_seconds"] == 120.0
     assert options["ollama_reload_prompt"] == "trusted-warmup"
     assert options["ollama_gpu_handoff_wait_seconds"] == 3.0

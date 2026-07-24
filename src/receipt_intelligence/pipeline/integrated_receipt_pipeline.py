@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Backward-compatible entry point for the staged receipt extraction workflow.
-
-The implementation moved to :mod:`receipt_intelligence.extraction`. Existing
-scripts and services can keep importing ``run_integrated_receipt_pipeline``.
-"""
+"""Typed receipt extraction entry point plus a strict compatibility adapter."""
 
 from __future__ import annotations
 
@@ -12,10 +8,11 @@ from pathlib import Path
 from typing import Any
 
 from receipt_intelligence.extraction import (
-    ExtractionConfig,
     ExtractionContext,
+    ExtractionRequest,
     build_default_extraction_workflow,
 )
+from receipt_intelligence.extraction.compatibility import extraction_request_from_mapping
 from receipt_intelligence.extraction.support import (
     merge_visual_evidence as _merge_visual_evidence,
 )
@@ -23,6 +20,14 @@ from receipt_intelligence.extraction.support import report_score as _report_scor
 from receipt_intelligence.extraction.support import (
     should_run_visual_layer as _should_run_visual_layer,
 )
+
+
+def run_receipt_extraction(request: ExtractionRequest) -> dict[str, Any]:
+    """Run receipt extraction from an explicit immutable request contract."""
+
+    context = ExtractionContext(config=request)
+    workflow = build_default_extraction_workflow()
+    return workflow.run(context).as_result()
 
 
 def run_integrated_receipt_pipeline(
@@ -67,59 +72,86 @@ def run_integrated_receipt_pipeline(
     categorization_num_predict: int = 4096,
     categorization_timeout_seconds: float = 180.0,
     categorization_format_json: bool = True,
-    **unused_kwargs: Any,
+    gpu_orchestration: str | None = None,
+    unload_llm_before_vlm: bool | None = None,
+    reload_llm_after_vlm: bool | None = None,
+    ollama_control_mode: str = "api",
+    ollama_control_timeout_seconds: float = 120.0,
+    ollama_unload_command: str = "",
+    ollama_start_command: str = "",
+    ollama_reload_prompt: str = "ok",
+    ollama_gpu_handoff_wait_seconds: float = 0.0,
+    **legacy_options: Any,
 ) -> dict[str, Any]:
-    """Run the current receipt pipeline through explicit application stages."""
+    """Backward-compatible adapter that rejects unsupported options.
 
-    config = ExtractionConfig(
-        ocr_json_path=Path(ocr_json_path),
-        result_dir=Path(result_dir),
-        run_id=run_id,
-        ollama_url=ollama_url,
-        model=model,
-        tolerance=tolerance,
-        skip_row_llm=skip_row_llm,
-        active_line_repair=active_line_repair,
-        max_repair_passes=max_repair_passes,
-        max_repair_rois=max_repair_rois,
-        max_repair_variants=max_repair_variants,
-        max_reocr_images=max_reocr_images,
-        repair_time_budget_seconds=repair_time_budget_seconds,
-        repair_ocr_min_score=repair_ocr_min_score,
-        ocr_lang=ocr_lang,
-        ocr_device=ocr_device,
-        ocr_det_model=ocr_det_model,
-        ocr_rec_model=ocr_rec_model,
-        progress_callback=progress_callback,
-        max_lines_for_llm=max_lines_for_llm,
-        num_ctx=num_ctx,
-        num_predict=num_predict,
-        keep_alive=keep_alive,
-        llm_timeout_seconds=llm_timeout_seconds,
-        json_retry_count=json_retry_count,
-        format_json=format_json,
-        source_image_path=Path(source_image_path) if source_image_path else None,
-        vlm_enabled=vlm_enabled,
-        vlm_backend=vlm_backend,
-        vlm_service_url=vlm_service_url,
-        vlm_command=vlm_command,
-        vlm_timeout_seconds=vlm_timeout_seconds,
-        vlm_max_chars=vlm_max_chars,
-        correction_enabled=correction_enabled,
-        categorization_enabled=categorization_enabled,
-        categorization_model=categorization_model,
-        categorization_num_ctx=categorization_num_ctx,
-        categorization_num_predict=categorization_num_predict,
-        categorization_timeout_seconds=categorization_timeout_seconds,
-        categorization_format_json=categorization_format_json,
-        unused_kwargs=dict(unused_kwargs),
-    )
-    context = ExtractionContext(config=config)
-    workflow = build_default_extraction_workflow()
-    return workflow.run(context).as_result()
+    New application code should construct :class:`ExtractionRequest` and call
+    :func:`run_receipt_extraction`. This adapter exists for scripts and external
+    callers that still use the historical keyword interface.
+    """
+
+    values: dict[str, Any] = {
+        "ocr_json_path": ocr_json_path,
+        "result_dir": result_dir,
+        "run_id": run_id,
+        "ollama_url": ollama_url,
+        "model": model,
+        "tolerance": tolerance,
+        "skip_row_llm": skip_row_llm,
+        "active_line_repair": active_line_repair,
+        "max_repair_passes": max_repair_passes,
+        "max_repair_rois": max_repair_rois,
+        "max_repair_variants": max_repair_variants,
+        "max_reocr_images": max_reocr_images,
+        "repair_time_budget_seconds": repair_time_budget_seconds,
+        "repair_ocr_min_score": repair_ocr_min_score,
+        "ocr_lang": ocr_lang,
+        "ocr_device": ocr_device,
+        "ocr_det_model": ocr_det_model,
+        "ocr_rec_model": ocr_rec_model,
+        "progress_callback": progress_callback,
+        "max_lines_for_llm": max_lines_for_llm,
+        "num_ctx": num_ctx,
+        "num_predict": num_predict,
+        "keep_alive": keep_alive,
+        "llm_timeout_seconds": llm_timeout_seconds,
+        "json_retry_count": json_retry_count,
+        "format_json": format_json,
+        "source_image_path": source_image_path,
+        "vlm_enabled": vlm_enabled,
+        "vlm_backend": vlm_backend,
+        "vlm_service_url": vlm_service_url,
+        "vlm_command": vlm_command,
+        "vlm_timeout_seconds": vlm_timeout_seconds,
+        "vlm_max_chars": vlm_max_chars,
+        "correction_enabled": correction_enabled,
+        "categorization_enabled": categorization_enabled,
+        "categorization_model": categorization_model,
+        "categorization_num_ctx": categorization_num_ctx,
+        "categorization_num_predict": categorization_num_predict,
+        "categorization_timeout_seconds": categorization_timeout_seconds,
+        "categorization_format_json": categorization_format_json,
+        "ollama_control_mode": ollama_control_mode,
+        "ollama_control_timeout_seconds": ollama_control_timeout_seconds,
+        "ollama_unload_command": ollama_unload_command,
+        "ollama_start_command": ollama_start_command,
+        "ollama_reload_prompt": ollama_reload_prompt,
+        "ollama_gpu_handoff_wait_seconds": ollama_gpu_handoff_wait_seconds,
+    }
+    if gpu_orchestration is not None:
+        values["gpu_orchestration"] = gpu_orchestration
+    if unload_llm_before_vlm is not None:
+        values["unload_llm_before_vlm"] = unload_llm_before_vlm
+    if reload_llm_after_vlm is not None:
+        values["reload_llm_after_vlm"] = reload_llm_after_vlm
+    values.update(legacy_options)
+
+    request = extraction_request_from_mapping(values)
+    return run_receipt_extraction(request)
 
 
 __all__ = [
+    "run_receipt_extraction",
     "run_integrated_receipt_pipeline",
     "_report_score",
     "_should_run_visual_layer",

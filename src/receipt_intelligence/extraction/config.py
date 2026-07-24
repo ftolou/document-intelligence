@@ -1,22 +1,22 @@
-"""Configuration model for the staged receipt extraction workflow."""
+"""Typed configuration contracts for receipt extraction."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 ProgressCallback = Callable[[dict[str, Any]], None]
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
 class ExtractionConfig:
     """Immutable inputs for one receipt extraction run.
 
-    The field names intentionally match the historical
-    ``run_integrated_receipt_pipeline`` keyword arguments so the public API can
-    remain backward compatible while the implementation is split into stages.
+    This contract is intentionally explicit. Runtime callers must provide only
+    declared fields; compatibility aliases are handled outside the workflow by
+    the legacy entry-point adapter.
     """
 
     ocr_json_path: Path
@@ -64,43 +64,40 @@ class ExtractionConfig:
     categorization_timeout_seconds: float = 180.0
     categorization_format_json: bool = True
 
-    unused_kwargs: dict[str, Any] = field(default_factory=dict)
+    gpu_orchestration: str = "none"
+    unload_llm_before_vlm: bool = False
+    reload_llm_after_vlm: bool = False
+    ollama_control_mode: str = "api"
+    ollama_control_timeout_seconds: float = 120.0
+    ollama_unload_command: str = ""
+    ollama_start_command: str = ""
+    ollama_reload_prompt: str = "ok"
+    ollama_gpu_handoff_wait_seconds: float = 0.0
 
-    @property
-    def gpu_orchestration_mode(self) -> str:
-        # The current VLM-first architecture intentionally avoids an automatic
-        # unload/reload cycle. These accessors preserve historical knobs without
-        # scattering dictionary lookups through stages.
-        return str(self.unused_kwargs.get("gpu_orchestration_mode") or "none")
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "ocr_json_path", Path(self.ocr_json_path))
+        object.__setattr__(self, "result_dir", Path(self.result_dir))
+        if self.source_image_path is not None:
+            object.__setattr__(self, "source_image_path", Path(self.source_image_path))
+        object.__setattr__(
+            self,
+            "gpu_orchestration",
+            (self.gpu_orchestration or "none").strip().lower(),
+        )
+        object.__setattr__(
+            self,
+            "ollama_control_mode",
+            (self.ollama_control_mode or "api").strip().lower(),
+        )
 
-    @property
-    def unload_before_vlm(self) -> bool:
-        return bool(self.unused_kwargs.get("unload_before_vlm", False))
+        if not self.run_id.strip():
+            raise ValueError("run_id must not be empty")
+        if not self.model.strip():
+            raise ValueError("model must not be empty")
+        if not self.ollama_url.strip():
+            raise ValueError("ollama_url must not be empty")
 
-    @property
-    def reload_after_vlm(self) -> bool:
-        return bool(self.unused_kwargs.get("reload_after_vlm", False))
 
-    @property
-    def ollama_control_mode(self) -> str:
-        return str(self.unused_kwargs.get("ollama_control_mode") or "api")
-
-    @property
-    def ollama_control_timeout_seconds(self) -> float:
-        return float(self.unused_kwargs.get("ollama_control_timeout_seconds") or 120.0)
-
-    @property
-    def ollama_unload_command(self) -> str:
-        return str(self.unused_kwargs.get("ollama_unload_command") or "")
-
-    @property
-    def ollama_start_command(self) -> str:
-        return str(self.unused_kwargs.get("ollama_start_command") or "")
-
-    @property
-    def ollama_reload_prompt(self) -> str:
-        return str(self.unused_kwargs.get("ollama_reload_prompt") or "ok")
-
-    @property
-    def ollama_gpu_handoff_wait_seconds(self) -> float:
-        return float(self.unused_kwargs.get("ollama_gpu_handoff_wait_seconds") or 0.0)
+@dataclass(frozen=True, slots=True)
+class ExtractionRequest(ExtractionConfig):
+    """Public typed request consumed by the extraction application service."""
