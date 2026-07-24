@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Sequence
+from threading import RLock
 from typing import Any
 
 import requests
@@ -45,6 +46,8 @@ class OllamaEmbeddingClient:
         self.keep_alive = str(keep_alive).strip() if keep_alive is not None else None
         self._session = session or requests.Session()
         self._owns_session = session is None
+        self._lock = RLock()
+        self._closed = False
 
     def embed(self, texts: Sequence[str]) -> EmbeddingBatchResult:
         """Embed a batch of non-empty strings and validate the provider output."""
@@ -61,20 +64,23 @@ class OllamaEmbeddingClient:
             payload["keep_alive"] = self.keep_alive
 
         request_started = time.perf_counter()
-        try:
-            response = self._session.post(
-                f"{self.base_url}/api/embed",
-                json=payload,
-                timeout=self.timeout_seconds,
-            )
-            response.raise_for_status()
-        except requests.RequestException as exc:
-            raise EmbeddingClientError(f"Ollama embedding request failed: {exc}") from exc
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("Ollama embedding client is closed.")
+            try:
+                response = self._session.post(
+                    f"{self.base_url}/api/embed",
+                    json=payload,
+                    timeout=self.timeout_seconds,
+                )
+                response.raise_for_status()
+            except requests.RequestException as exc:
+                raise EmbeddingClientError(f"Ollama embedding request failed: {exc}") from exc
 
-        try:
-            response_payload = response.json()
-        except (TypeError, ValueError) as exc:
-            raise EmbeddingClientError("Ollama returned invalid JSON for /api/embed.") from exc
+            try:
+                response_payload = response.json()
+            except (TypeError, ValueError) as exc:
+                raise EmbeddingClientError("Ollama returned invalid JSON for /api/embed.") from exc
 
         if not isinstance(response_payload, dict):
             raise EmbeddingClientError("Ollama embedding response must be a JSON object.")
@@ -129,8 +135,12 @@ class OllamaEmbeddingClient:
             raise EmbeddingClientError(f"Ollama returned invalid embeddings: {exc}") from exc
 
     def close(self) -> None:
-        if self._owns_session:
-            self._session.close()
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+            if self._owns_session:
+                self._session.close()
 
     def __enter__(self) -> OllamaEmbeddingClient:
         return self

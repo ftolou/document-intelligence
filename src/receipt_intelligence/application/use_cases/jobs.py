@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import shutil
-import threading
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,9 +11,16 @@ from typing import Any, BinaryIO
 from receipt_intelligence.application.errors import (
     InvalidRequestError,
     ResourceNotFoundError,
+    ServiceUnavailableError,
     UnsupportedResourceError,
 )
-from receipt_intelligence.application.ports.jobs import JobProcessor, JobRepository
+from receipt_intelligence.application.ports.jobs import (
+    JobDispatchRequest,
+    JobDispatcher,
+    JobProcessor,
+    JobQueueFullError,
+    JobRepository,
+)
 from receipt_intelligence.utils.filenames import safe_filename
 
 
@@ -34,15 +40,17 @@ class StartBatchCommand:
 
 
 class JobUseCases:
-    """Application boundary for receipt processing jobs.
+    """Application boundary for persisted receipt-processing jobs."""
 
-    Thread-backed execution remains intentionally encapsulated here until the
-    durable dispatcher migration. HTTP routes never create or manage workers.
-    """
-
-    def __init__(self, store: JobRepository, processor: JobProcessor) -> None:
+    def __init__(
+        self,
+        store: JobRepository,
+        processor: JobProcessor,
+        dispatcher: JobDispatcher,
+    ) -> None:
         self._store = store
         self._processor = processor
+        self._dispatcher = dispatcher
 
     def submit_receipt(self, command: SubmitReceiptCommand) -> dict[str, Any]:
         filename = str(command.filename or "").strip()
@@ -59,19 +67,22 @@ class JobUseCases:
         with image_path.open("wb") as output:
             shutil.copyfileobj(command.stream, output)
 
+        dispatch = JobDispatchRequest(
+            job_id=job_id,
+            kind="receipt",
+            image_path=image_path,
+            options=command.options,
+        )
         self._store.create(
             job_id,
             {
                 "filename": safe_name,
                 "image_path": str(image_path),
                 "options": command.options,
+                "dispatch": dispatch.to_payload(),
             },
         )
-        threading.Thread(
-            target=self._processor.run_job,
-            args=(job_id, image_path, command.options),
-            daemon=True,
-        ).start()
+        self._submit_or_fail(dispatch)
         return {"job_id": job_id, "state": "queued"}
 
     def start_batch(self, command: StartBatchCommand) -> dict[str, Any]:
@@ -90,6 +101,12 @@ class JobUseCases:
         batch_id = "batch_" + uuid.uuid4().hex[:10]
         batch_dir = self._store.job_dir(batch_id)
         batch_dir.mkdir(parents=True, exist_ok=True)
+        dispatch = JobDispatchRequest(
+            job_id=batch_id,
+            kind="batch",
+            image_paths=tuple(image_paths),
+            options=command.options,
+        )
         self._store.create(
             batch_id,
             {
@@ -102,13 +119,10 @@ class JobUseCases:
                 "failed": 0,
                 "items": [],
                 "options": command.options,
+                "dispatch": dispatch.to_payload(),
             },
         )
-        threading.Thread(
-            target=self._processor.run_batch_job,
-            args=(batch_id, image_paths, command.options),
-            daemon=True,
-        ).start()
+        self._submit_or_fail(dispatch)
         return {
             "batch_id": batch_id,
             "job_id": batch_id,
@@ -142,6 +156,20 @@ class JobUseCases:
         if not requested.exists() or not requested.is_file():
             raise ResourceNotFoundError("artifact not found")
         return requested
+
+    def _submit_or_fail(self, request: JobDispatchRequest) -> None:
+        try:
+            self._dispatcher.submit(request)
+        except JobQueueFullError as exc:
+            self._store.fail(
+                request.job_id,
+                {
+                    "message": str(exc),
+                    "type": type(exc).__name__,
+                    "code": "job_queue_full",
+                },
+            )
+            raise ServiceUnavailableError(str(exc), code="job_queue_full") from exc
 
 
 __all__ = ["JobUseCases", "StartBatchCommand", "SubmitReceiptCommand"]

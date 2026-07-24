@@ -135,3 +135,19 @@ def test_wraps_http_failures() -> None:
 
     with pytest.raises(EmbeddingClientError, match="request failed"):
         client.embed(["Schuhe"])
+
+
+def test_owned_session_is_closed_idempotently_and_rejects_reuse(monkeypatch) -> None:
+    session = Mock()
+    monkeypatch.setattr(requests, "Session", lambda: session)
+    client = OllamaEmbeddingClient(
+        base_url="http://localhost:11434",
+        model="embeddinggemma",
+    )
+
+    client.close()
+    client.close()
+
+    session.close.assert_called_once_with()
+    with pytest.raises(RuntimeError, match="closed"):
+        client.embed(["Schuhe"])

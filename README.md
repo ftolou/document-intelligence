@@ -80,9 +80,9 @@ See [`src/receipt_intelligence/rag/`](src/receipt_intelligence/rag/) and [`docs/
 
 ### The LLM proposes SQL but never executes it
 
-LangGraph makes analysis, planning, validation, execution, repair, and answer formatting explicit. The validator accepts only bounded read-only queries against curated analytics views and approved functions. Invalid or unsupported plans are rejected, while missing evidence produces `insufficient_info` instead of an invented answer.
+LangGraph makes analysis, planning, validation, execution, repair, and answer formatting explicit. The application composes one process-scoped RAG-SQL engine and compiled graph at startup, then reuses them across query requests. The optional graph-library import is isolated behind an orchestration adapter. The validator accepts only bounded read-only queries against curated analytics views and approved functions. Invalid or unsupported plans are rejected, while missing evidence produces `insufficient_info` instead of an invented answer.
 
-See [`src/receipt_intelligence/rag_sql/`](src/receipt_intelligence/rag_sql/) and [`docs/RAG_SQL_ENGINE.md`](docs/RAG_SQL_ENGINE.md).
+See [`src/receipt_intelligence/rag_sql/`](src/receipt_intelligence/rag_sql/), [`docs/RAG_SQL_ENGINE.md`](docs/RAG_SQL_ENGINE.md), and [`docs/RAG_SQL_RUNTIME_LIFECYCLE.md`](docs/RAG_SQL_RUNTIME_LIFECYCLE.md).
 
 ### Local models are isolated behind replaceable services
 

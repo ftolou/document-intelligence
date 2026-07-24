@@ -122,13 +122,16 @@ def main() -> int:
             execution_timeout_seconds=settings.RAG_SQL_EXECUTION_TIMEOUT_SECONDS,
         )
     )
-    response = strategy.execute(args.question)
-    print(json.dumps(response.model_dump(mode="json"), ensure_ascii=False, indent=2))
-    if response.status == "completed":
-        return 0
-    if response.status in {"needs_clarification", "not_found", "unsupported"}:
-        return 3
-    return 2
+    try:
+        response = strategy.execute(args.question)
+        print(json.dumps(response.model_dump(mode="json"), ensure_ascii=False, indent=2))
+        if response.status == "completed":
+            return 0
+        if response.status in {"needs_clarification", "not_found", "unsupported"}:
+            return 3
+        return 2
+    finally:
+        strategy.close()
 
 
 if __name__ == "__main__":

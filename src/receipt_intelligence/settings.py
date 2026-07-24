@@ -202,6 +202,22 @@ BATCH_RECURSIVE_DEFAULT = os.getenv("BATCH_RECURSIVE_DEFAULT", "0").lower() in {
 }
 BATCH_ALLOW_ANY_PATH = os.getenv("BATCH_ALLOW_ANY_PATH", "0").lower() in {"1", "true", "yes", "on"}
 
+# Bounded local background worker. One worker is the safe default because OCR,
+# VLM, and LLM execution share constrained local compute resources.
+JOB_WORKER_MAX_WORKERS = max(1, int(os.getenv("JOB_WORKER_MAX_WORKERS", "1")))
+JOB_QUEUE_CAPACITY = max(0, int(os.getenv("JOB_QUEUE_CAPACITY", "32")))
+JOB_CLAIM_LEASE_SECONDS = max(30.0, float(os.getenv("JOB_CLAIM_LEASE_SECONDS", "120")))
+JOB_MAINTENANCE_INTERVAL_SECONDS = max(
+    1.0,
+    float(os.getenv("JOB_MAINTENANCE_INTERVAL_SECONDS", "10")),
+)
+JOB_RECOVER_PENDING = os.getenv("JOB_RECOVER_PENDING", "1").lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+
 
 # V14.7.3 optional sequential GPU orchestration for Ollama + VLM.
 VLM_GPU_ORCHESTRATION = (

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 
+from receipt_intelligence.adapters.jobs import ThreadPoolJobDispatcher
 from receipt_intelligence.adapters.lifecycle import OllamaModelLifecycleCoordinator
 from receipt_intelligence.adapters.llm import OllamaGateway
 from receipt_intelligence.adapters.ocr import PaddleOcrEngine
@@ -13,7 +14,13 @@ from receipt_intelligence.adapters.vlm import (
     RemoteVlmClient,
     TrustedCommandVlmEngine,
 )
-from receipt_intelligence.application.ports import OcrEngine, VlmEngine
+from receipt_intelligence.application.ports import (
+    JobDispatcher,
+    JobProcessor,
+    JobRepository,
+    OcrEngine,
+    VlmEngine,
+)
 from receipt_intelligence.application.vlm import (
     FallbackVlmEngine,
     OptionalVlmEngine,
@@ -95,6 +102,25 @@ def build_extraction_dependencies(config: ExtractionConfig) -> ExtractionDepende
     )
 
 
+def build_job_dispatcher(
+    repository: JobRepository,
+    processor: JobProcessor,
+    *,
+    max_workers: int = 1,
+    queue_capacity: int = 32,
+    claim_lease_seconds: float = 120.0,
+    maintenance_interval_seconds: float = 10.0,
+) -> JobDispatcher:
+    return ThreadPoolJobDispatcher(
+        repository,
+        processor,
+        max_workers=max_workers,
+        queue_capacity=queue_capacity,
+        claim_lease_seconds=claim_lease_seconds,
+        maintenance_interval_seconds=maintenance_interval_seconds,
+    )
+
+
 def build_ocr_engine() -> OcrEngine:
     return PaddleOcrEngine()
 
@@ -102,6 +128,7 @@ def build_ocr_engine() -> OcrEngine:
 __all__ = [
     "build_client_vlm_engine",
     "build_extraction_dependencies",
+    "build_job_dispatcher",
     "build_ocr_engine",
     "build_vlm_service_engine",
 ]

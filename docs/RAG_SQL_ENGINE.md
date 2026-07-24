@@ -1,8 +1,15 @@
-# RAG-SQL LangGraph query engine
+# RAG-SQL query engine
 
 RAG-SQL is the single Ask Your Receipts execution path. It combines semantic
 product resolution with validated read-only SQL and hybrid evidence-bound
-answer formatting.
+answer formatting. One process-scoped engine and compiled orchestration graph
+are created at application startup and reused across requests.
+
+## Orchestration adapter
+
+LangGraph is selected at the composition boundary. Core RAG-SQL contracts and
+modules remain importable without it; only
+`rag_sql/orchestration/langgraph.py` imports the graph library.
 
 ## Graph
 

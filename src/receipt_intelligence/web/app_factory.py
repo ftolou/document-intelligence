@@ -5,6 +5,7 @@ from __future__ import annotations
 from flask import Flask
 
 import receipt_intelligence.settings as settings
+from receipt_intelligence.application.ports import JobDispatcher
 from receipt_intelligence.application.use_cases.query import ReceiptQueryExecutor
 from receipt_intelligence.runtime.paths import RuntimePaths
 from receipt_intelligence.storage.job_store import JobStore
@@ -23,6 +24,7 @@ def create_app(
     receipt_db: ReceiptDatabase | None = None,
     runtime_paths: RuntimePaths | None = None,
     receipt_query_service: ReceiptQueryExecutor | None = None,
+    job_dispatcher: JobDispatcher | None = None,
     testing: bool = False,
 ) -> Flask:
     app = Flask(
@@ -41,6 +43,7 @@ def create_app(
         receipt_db=receipt_db,
         runtime_paths=runtime_paths,
         receipt_query_service=receipt_query_service,
+        job_dispatcher=job_dispatcher,
     )
 
     app.register_blueprint(core_bp)

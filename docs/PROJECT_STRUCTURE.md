@@ -12,9 +12,10 @@ document-intelligence-pipeline/
 │   │   └── stages/         explicit extraction workflow stages
 │   ├── observability/      timing, JSONL telemetry, and readiness checks
 │   ├── pipeline/           stable integrated pipeline entry point only
-│   ├── rag_sql/            LangGraph orchestration, semantic resolution, safe SQL, and formatting
+│   ├── rag_sql/            Query contracts, semantic resolution, safe SQL, formatting, and isolated orchestration adapters
 │   ├── runtime/            canonical runtime paths and job manifests
 │   ├── application/        ports, resource contracts, and explicit use cases
+│   ├── adapters/           LLM/OCR/VLM, storage, lifecycle, and job dispatch adapters
 │   ├── services/           reusable application workflow implementations
 │   ├── storage/            SQLite repositories and migrations
 │   └── web/                Flask transport, presenters, and blueprint adapters

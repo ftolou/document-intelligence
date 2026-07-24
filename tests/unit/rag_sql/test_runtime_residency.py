@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from receipt_intelligence.rag_sql.runtime import build_rag_sql_runtime_from_settings
+from receipt_intelligence.rag_sql.runtime import (
+    build_rag_sql_runtime_config_from_settings,
+)
 
 
 def test_rag_sql_runtime_uses_one_resident_llm_configuration(
@@ -25,8 +27,7 @@ def test_rag_sql_runtime_uses_one_resident_llm_configuration(
     monkeypatch.setattr(settings, "RAG_SQL_PLANNER_NUM_CTX", 8192)
     monkeypatch.setattr(settings, "RAG_CANDIDATE_KEEP_ALIVE", "0")
 
-    runtime = build_rag_sql_runtime_from_settings()
-    config = runtime.config
+    config = build_rag_sql_runtime_config_from_settings()
 
     assert config.analyzer.num_ctx == 6144
     assert config.resolver.num_ctx == 6144

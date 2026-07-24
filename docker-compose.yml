@@ -60,6 +60,14 @@ services:
       OLLAMA_CONTROL_TIMEOUT_SECONDS: "120"
       OLLAMA_GPU_HANDOFF_WAIT_SECONDS: "0"
 
+      # Bounded persistent background jobs. A single worker avoids local
+      # OCR/VLM/LLM resource contention while keeping request handling responsive.
+      JOB_WORKER_MAX_WORKERS: "${JOB_WORKER_MAX_WORKERS:-1}"
+      JOB_QUEUE_CAPACITY: "${JOB_QUEUE_CAPACITY:-32}"
+      JOB_CLAIM_LEASE_SECONDS: "${JOB_CLAIM_LEASE_SECONDS:-120}"
+      JOB_MAINTENANCE_INTERVAL_SECONDS: "${JOB_MAINTENANCE_INTERVAL_SECONDS:-10}"
+      JOB_RECOVER_PENDING: "${JOB_RECOVER_PENDING:-1}"
+
       # V14.14 item categorization.
       CATEGORIZATION_ENABLED: "1"
       CATEGORIZATION_MODEL: "gemma4"

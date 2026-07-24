@@ -4,11 +4,13 @@
 
 - [Architecture](ARCHITECTURE.md)
 - [Application use-case boundary](APPLICATION_USE_CASES.md)
+- [Background job execution](BACKGROUND_JOB_EXECUTION.md)
 - [Project structure](PROJECT_STRUCTURE.md)
 - [Development](DEVELOPMENT.md)
 - [Docker image design](DOCKER_IMAGE_DESIGN.md)
 - [Observability and readiness operations](operations/OBSERVABILITY.md)
 - [RAG-SQL LangGraph query engine](RAG_SQL_ENGINE.md)
+- [RAG-SQL runtime lifecycle](RAG_SQL_RUNTIME_LIFECYCLE.md)
 - [Receipt database and RAG](RECEIPT_DB_AND_RAG.md)
 - [RAG embedding storage foundation](RAG_EMBEDDING_STORAGE.md)
 - [RAG hybrid semantic retrieval](RAG_SEMANTIC_RETRIEVAL.md)

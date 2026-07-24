@@ -2,18 +2,19 @@
 
 from __future__ import annotations
 
+import atexit
 from dataclasses import dataclass
 
 from flask import Flask, current_app
 
 import receipt_intelligence.settings as settings
-from receipt_intelligence.application.ports import OcrEngine
+from receipt_intelligence.application.ports import JobDispatcher, OcrEngine
 from receipt_intelligence.application.use_cases.jobs import JobUseCases
 from receipt_intelligence.application.use_cases.query import AskReceipts, ReceiptQueryExecutor
 from receipt_intelligence.application.use_cases.receipts import ReceiptUseCases
 from receipt_intelligence.application.use_cases.reviews import ReviewUseCases
 from receipt_intelligence.application.use_cases.runtime import RuntimeUseCases
-from receipt_intelligence.composition import build_ocr_engine
+from receipt_intelligence.composition import build_job_dispatcher, build_ocr_engine
 from receipt_intelligence.observability.query import QueryTelemetrySink
 from receipt_intelligence.runtime.paths import RuntimePaths
 from receipt_intelligence.services.database_receipt_editor import DatabaseReceiptEditor
@@ -33,6 +34,14 @@ class AppServices:
     reviews: ReviewUseCases
     ask_receipts: AskReceipts
     runtime: RuntimeUseCases
+    job_dispatcher: JobDispatcher
+    query_executor: ReceiptQueryExecutor
+
+    def shutdown(self, *, wait: bool = True, cancel_futures: bool = False) -> None:
+        self.job_dispatcher.shutdown(wait=wait, cancel_futures=cancel_futures)
+        close = getattr(self.query_executor, "close", None)
+        if callable(close):
+            close()
 
 
 def init_app_services(
@@ -44,6 +53,7 @@ def init_app_services(
     receipt_query_service: ReceiptQueryExecutor | None = None,
     runtime_paths: RuntimePaths | None = None,
     ocr_engine: OcrEngine | None = None,
+    job_dispatcher: JobDispatcher | None = None,
 ) -> AppServices:
     resolved_paths = runtime_paths or settings.RUNTIME_PATHS
     telemetry_path = (
@@ -57,6 +67,7 @@ def init_app_services(
         telemetry_path,
         enabled=settings.QUERY_TELEMETRY_ENABLED,
     )
+    owns_query_service = receipt_query_service is None
     if receipt_query_service is None:
         from receipt_intelligence.rag_sql.application import (
             build_receipt_query_service_from_settings,
@@ -74,8 +85,17 @@ def init_app_services(
         resolved_database,
         ocr_engine=ocr_engine or build_ocr_engine(),
     )
+    owns_dispatcher = job_dispatcher is None
+    resolved_dispatcher = job_dispatcher or build_job_dispatcher(
+        resolved_store,
+        processor,
+        max_workers=settings.JOB_WORKER_MAX_WORKERS,
+        queue_capacity=settings.JOB_QUEUE_CAPACITY,
+        claim_lease_seconds=settings.JOB_CLAIM_LEASE_SECONDS,
+        maintenance_interval_seconds=settings.JOB_MAINTENANCE_INTERVAL_SECONDS,
+    )
     services = AppServices(
-        jobs=JobUseCases(resolved_store, processor),
+        jobs=JobUseCases(resolved_store, processor, resolved_dispatcher),
         receipts=ReceiptUseCases(
             resolved_store,
             resolved_database,
@@ -90,11 +110,15 @@ def init_app_services(
             apply_human_review,
         ),
         ask_receipts=AskReceipts(resolved_query_service),
-        runtime=RuntimeUseCases(
-            RuntimeInformationService(resolved_database, resolved_paths)
-        ),
+        runtime=RuntimeUseCases(RuntimeInformationService(resolved_database, resolved_paths)),
+        job_dispatcher=resolved_dispatcher,
+        query_executor=resolved_query_service,
     )
     app.extensions[_EXTENSION_KEY] = services
+    if settings.JOB_RECOVER_PENDING:
+        resolved_dispatcher.recover_pending()
+    if owns_dispatcher or owns_query_service:
+        atexit.register(services.shutdown, wait=True, cancel_futures=False)
     return services
 
 
@@ -105,4 +129,20 @@ def get_app_services() -> AppServices:
     return services
 
 
-__all__ = ["AppServices", "get_app_services", "init_app_services"]
+def shutdown_app_services(
+    app: Flask,
+    *,
+    wait: bool = True,
+    cancel_futures: bool = False,
+) -> None:
+    services = app.extensions.get(_EXTENSION_KEY)
+    if isinstance(services, AppServices):
+        services.shutdown(wait=wait, cancel_futures=cancel_futures)
+
+
+__all__ = [
+    "AppServices",
+    "get_app_services",
+    "init_app_services",
+    "shutdown_app_services",
+]

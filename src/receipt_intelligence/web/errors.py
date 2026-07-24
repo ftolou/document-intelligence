@@ -7,11 +7,17 @@ from flask import jsonify
 from receipt_intelligence.application.errors import (
     ApplicationError,
     ResourceNotFoundError,
+    ServiceUnavailableError,
 )
 
 
 def application_error_response(error: ApplicationError):
-    status = 404 if isinstance(error, ResourceNotFoundError) else 400
+    if isinstance(error, ResourceNotFoundError):
+        status = 404
+    elif isinstance(error, ServiceUnavailableError):
+        status = 503
+    else:
+        status = 400
     payload = {"error": str(error)}
     if error.code not in {"invalid_request", "not_found", "application_error"}:
         payload["error_code"] = error.code

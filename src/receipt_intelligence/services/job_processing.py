@@ -46,7 +46,6 @@ class JobProcessingService:
         job_dir = self.store.job_dir(job_id)
         progress = self.progress_for(job_id)
         try:
-            self.store.update(job_id, state="running")
             progress(
                 {
                     "stage": "upload",
@@ -123,7 +122,6 @@ class JobProcessingService:
             )
             self.store.update(
                 job_id,
-                state="done",
                 result={
                     "report": report,
                     "artifacts": key_artifacts,
@@ -173,11 +171,7 @@ class JobProcessingService:
                     "details": {"traceback": traceback_text[-4000:]},
                 }
             )
-            self.store.update(
-                job_id,
-                state="error",
-                error={"message": str(exc), "traceback": traceback_text},
-            )
+            raise
 
     def _final_result_path(self, paths: dict[str, str]) -> Path:
         categorized = paths.get("receipt_final_categorized")
@@ -340,7 +334,6 @@ class JobProcessingService:
         try:
             self.store.update(
                 batch_id,
-                state="running",
                 total=len(image_paths),
                 completed=0,
                 failed=0,
@@ -384,7 +377,20 @@ class JobProcessingService:
                         "options": options,
                     },
                 )
-                self.run_job(child_id, image_copy, options)
+                self.store.begin_attempt(child_id)
+                try:
+                    self.run_job(child_id, image_copy, options)
+                except Exception as child_error:
+                    self.store.fail(
+                        child_id,
+                        {
+                            "message": str(child_error),
+                            "type": type(child_error).__name__,
+                            "traceback": traceback.format_exc(),
+                        },
+                    )
+                else:
+                    self.store.complete(child_id)
                 item = self._batch_item_from_job(child_id, source_path)
                 items.append(item)
                 failed = self._failed_batch_count(items)
@@ -414,7 +420,6 @@ class JobProcessingService:
             artifacts = self.write_batch_summaries(batch_id, items)
             self.store.update(
                 batch_id,
-                state="done",
                 completed=len(items),
                 failed=failed,
                 items=items,
@@ -449,15 +454,15 @@ class JobProcessingService:
             )
             self.store.update(
                 batch_id,
-                state="error",
-                error={"message": str(exc), "traceback": traceback_text},
                 result={"artifacts": artifacts, "items": items},
             )
+            raise
 
     @staticmethod
     def _failed_batch_count(items: list[dict[str, Any]]) -> int:
         return sum(
             1
             for item in items
-            if item.get("state") == "error" or item.get("decision") in {"reject", "llm_failed"}
+            if item.get("state") in {"failed", "error"}
+            or item.get("decision") in {"reject", "llm_failed"}
         )

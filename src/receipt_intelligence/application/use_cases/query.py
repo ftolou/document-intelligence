@@ -12,6 +12,8 @@ _ALLOWED_FIELDS = {"question", "limit"}
 class ReceiptQueryExecutor(Protocol):
     def execute(self, question: str, *, limit: int = 25) -> dict[str, Any]: ...
 
+    def close(self) -> None: ...
+
 
 class AskReceipts:
     def __init__(self, query_service: ReceiptQueryExecutor) -> None:

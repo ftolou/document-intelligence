@@ -19,6 +19,12 @@ class InvalidRequestError(ApplicationError):
     default_code = "invalid_request"
 
 
+class ServiceUnavailableError(ApplicationError):
+    """A required application resource is temporarily unavailable."""
+
+    default_code = "service_unavailable"
+
+
 class ResourceNotFoundError(ApplicationError):
     """A requested application resource does not exist."""
 
@@ -35,5 +41,6 @@ __all__ = [
     "ApplicationError",
     "InvalidRequestError",
     "ResourceNotFoundError",
+    "ServiceUnavailableError",
     "UnsupportedResourceError",
 ]

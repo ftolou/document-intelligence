@@ -64,6 +64,7 @@ class _JobStore:
     def __init__(self, root: Path) -> None:
         self.root = root
         self.created: list[tuple[str, dict]] = []
+        self.failures: list[tuple[str, dict]] = []
 
     def job_dir(self, job_id: str) -> Path:
         return self.root / job_id
@@ -78,6 +79,9 @@ class _JobStore:
     def list_recent(self, *, limit: int):
         return []
 
+    def fail(self, job_id: str, error: dict) -> None:
+        self.failures.append((job_id, error))
+
 
 class _Processor:
     def allowed_file(self, filename: str) -> bool:
@@ -87,17 +91,21 @@ class _Processor:
         return None
 
 
-class _ImmediateThread:
-    def __init__(self, *, target, args, daemon) -> None:
-        self.target = target
-        self.args = args
-        self.daemon = daemon
+class _Dispatcher:
+    def __init__(self) -> None:
+        self.requests = []
 
-    def start(self) -> None:
-        self.target(*self.args)
+    def submit(self, request) -> None:
+        self.requests.append(request)
+
+    def recover_pending(self) -> int:
+        return 0
+
+    def shutdown(self, *, wait: bool = True, cancel_futures: bool = False) -> None:
+        return None
 
 
-def test_job_submission_is_orchestrated_outside_http(monkeypatch, tmp_path: Path) -> None:
+def test_job_submission_is_orchestrated_outside_http(tmp_path: Path) -> None:
     from io import BytesIO
 
     from receipt_intelligence.application.use_cases.jobs import (
@@ -105,12 +113,9 @@ def test_job_submission_is_orchestrated_outside_http(monkeypatch, tmp_path: Path
         SubmitReceiptCommand,
     )
 
-    monkeypatch.setattr(
-        "receipt_intelligence.application.use_cases.jobs.threading.Thread",
-        _ImmediateThread,
-    )
     store = _JobStore(tmp_path)
-    use_cases = JobUseCases(store, _Processor())  # type: ignore[arg-type]
+    dispatcher = _Dispatcher()
+    use_cases = JobUseCases(store, _Processor(), dispatcher)  # type: ignore[arg-type]
 
     result = use_cases.submit_receipt(
         SubmitReceiptCommand(
@@ -125,3 +130,35 @@ def test_job_submission_is_orchestrated_outside_http(monkeypatch, tmp_path: Path
     _, payload = store.created[0]
     assert payload["filename"] == "receipt_image.jpg"
     assert Path(payload["image_path"]).read_bytes() == b"image"
+    assert payload["dispatch"]["kind"] == "receipt"
+    assert dispatcher.requests[0].job_id == result["job_id"]
+
+
+def test_job_submission_persists_queue_rejection(tmp_path: Path) -> None:
+    from io import BytesIO
+
+    from receipt_intelligence.application.errors import ServiceUnavailableError
+    from receipt_intelligence.application.ports.jobs import JobQueueFullError
+    from receipt_intelligence.application.use_cases.jobs import (
+        JobUseCases,
+        SubmitReceiptCommand,
+    )
+
+    class _FullDispatcher(_Dispatcher):
+        def submit(self, request) -> None:
+            raise JobQueueFullError("Background job queue is full.")
+
+    store = _JobStore(tmp_path)
+    use_cases = JobUseCases(store, _Processor(), _FullDispatcher())  # type: ignore[arg-type]
+
+    with pytest.raises(ServiceUnavailableError) as error:
+        use_cases.submit_receipt(
+            SubmitReceiptCommand(
+                filename="receipt.jpg",
+                stream=BytesIO(b"image"),
+                options={},
+            )
+        )
+
+    assert error.value.code == "job_queue_full"
+    assert store.failures[0][1]["code"] == "job_queue_full"

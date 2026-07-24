@@ -1,6 +1,12 @@
 """Stable application ports implemented by infrastructure adapters."""
 
-from receipt_intelligence.application.ports.jobs import JobProcessor, JobRepository
+from receipt_intelligence.application.ports.jobs import (
+    JobDispatchRequest,
+    JobDispatcher,
+    JobProcessor,
+    JobQueueFullError,
+    JobRepository,
+)
 from receipt_intelligence.application.ports.llm import (
     GenerationRequest,
     GenerationResult,
@@ -29,7 +35,10 @@ __all__ = [
     "GenerationRequest",
     "GenerationResult",
     "GenerationValue",
+    "JobDispatchRequest",
+    "JobDispatcher",
     "JobProcessor",
+    "JobQueueFullError",
     "JobRepository",
     "LlmGateway",
     "ModelCallMetrics",

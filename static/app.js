@@ -1313,9 +1313,21 @@ function renderAskReceiptsResult(data) {
   renderRagSqlResult(data);
 }
 
+function isCompletedJobState(state) {
+  return state === 'completed' || state === 'done';
+}
+
+function isFailedJobState(state) {
+  return state === 'failed' || state === 'error';
+}
+
+function isTerminalJobState(state) {
+  return isCompletedJobState(state) || isFailedJobState(state);
+}
+
 function stateClass(state) {
-  if (state === 'done') return 'badge ok';
-  if (state === 'error') return 'badge bad';
+  if (isCompletedJobState(state)) return 'badge ok';
+  if (isFailedJobState(state)) return 'badge bad';
   return 'badge neutral';
 }
 
@@ -1324,8 +1336,7 @@ function updateProgress(job) {
   let pct = 0;
   if (job.state === 'queued') pct = 8;
   else if (job.state === 'running') pct = Math.min(90, 20 + events.length * 12);
-  else if (job.state === 'done') pct = 100;
-  else if (job.state === 'error') pct = 100;
+  else if (isTerminalJobState(job.state)) pct = 100;
   if (progressFillEl) progressFillEl.style.width = `${pct}%`;
 }
 
@@ -1401,7 +1412,7 @@ async function poll(jobId) {
     summaryEl.textContent = last ? last.message : 'Waiting for job...';
   }
 
-  if (job.state === 'done' || job.state === 'error') {
+  if (isTerminalJobState(job.state)) {
     clearInterval(pollTimer);
     pollTimer = null;
   }
@@ -1427,7 +1438,7 @@ function updateBatchProgress(job) {
   let pct = 0;
   if (job.state === 'queued') pct = 5;
   else if (job.state === 'running') pct = total > 0 ? Math.max(5, Math.min(95, (completed / total) * 100)) : 20;
-  else if (job.state === 'done' || job.state === 'error') pct = 100;
+  else if (isTerminalJobState(job.state)) pct = 100;
   if (batchProgressFillEl) batchProgressFillEl.style.width = `${pct}%`;
 }
 
@@ -1470,7 +1481,7 @@ function renderBatchSummary(job) {
   const items = Array.isArray(job.items) ? job.items : (Array.isArray(result.items) ? result.items : []);
   const rows = items.length ? items.map((item, idx) => {
     const decision = item.decision || item.state || 'n/a';
-    const cls = decision === 'import' ? 'ok-cell' : (decision === 'reject' || decision === 'llm_failed' || item.state === 'error' ? 'bad-cell' : 'muted');
+    const cls = decision === 'import' ? 'ok-cell' : (decision === 'reject' || decision === 'llm_failed' || isFailedJobState(item.state) ? 'bad-cell' : 'muted');
     const finalLink = item.final_receipt ? `<a href="${escapeHtml(item.final_receipt)}" target="_blank" rel="noopener noreferrer">final JSON</a>` : '—';
     const reportLink = item.validation_report ? `<a href="${escapeHtml(item.validation_report)}" target="_blank" rel="noopener noreferrer">report</a>` : '—';
     return `<tr>
@@ -1524,7 +1535,7 @@ async function pollBatch(batchId) {
     batchSummaryStatusEl.textContent = `Batch: ${job.completed || 0}/${job.total || 0} completed | Failed/rejected: ${job.failed || 0}`;
   }
 
-  if (job.state === 'done' || job.state === 'error') {
+  if (isTerminalJobState(job.state)) {
     clearInterval(batchPollTimer);
     batchPollTimer = null;
   }

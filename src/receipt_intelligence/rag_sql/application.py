@@ -9,7 +9,7 @@ from typing import Any
 
 from receipt_intelligence.observability.query import QueryTelemetrySink
 from receipt_intelligence.observability.timing import utc_now_iso
-from receipt_intelligence.rag_sql.graph import RAG_SQL_GRAPH_VERSION
+from receipt_intelligence.rag_sql.orchestration.contracts import RAG_SQL_GRAPH_VERSION
 from receipt_intelligence.rag_sql.runtime import (
     RagSqlRuntime,
     build_rag_sql_runtime_from_settings,
@@ -31,9 +31,19 @@ class ReceiptQueryService:
         response = self.runtime.execute(question)
         payload = response.model_dump(mode="json")
         diagnostics = payload.setdefault("diagnostics", {})
+        orchestrator_name = str(
+            getattr(self.runtime, "orchestrator_name", None)
+            or diagnostics.get("orchestrator")
+            or "langgraph"
+        )
+        orchestrator_version = str(
+            getattr(self.runtime, "orchestrator_version", None)
+            or diagnostics.get("graph_version")
+            or RAG_SQL_GRAPH_VERSION
+        )
         diagnostics.setdefault("requested_api_limit", max(1, min(100, int(limit))))
-        diagnostics.setdefault("orchestrator", "langgraph")
-        diagnostics.setdefault("graph_version", RAG_SQL_GRAPH_VERSION)
+        diagnostics.setdefault("orchestrator", orchestrator_name)
+        diagnostics.setdefault("graph_version", orchestrator_version)
         duration_ms = diagnostics.get("duration_ms")
         if not isinstance(duration_ms, int | float):
             duration_ms = (time.perf_counter() - started_perf) * 1000.0
@@ -46,8 +56,8 @@ class ReceiptQueryService:
         payload["execution"] = {
             "engine": "rag_sql",
             "engine_version": payload.get("engine_version"),
-            "orchestrator": "langgraph",
-            "graph_version": RAG_SQL_GRAPH_VERSION,
+            "orchestrator": orchestrator_name,
+            "graph_version": orchestrator_version,
             "query_id": query_id,
             "started_at": started_at,
             "duration_ms": float(duration_ms),
@@ -59,6 +69,11 @@ class ReceiptQueryService:
         if self.telemetry_sink is not None:
             self.telemetry_sink.record(payload)
         return payload
+
+    def close(self) -> None:
+        """Release process-scoped query resources during application shutdown."""
+
+        self.runtime.close()
 
 
 def build_receipt_query_service_from_settings(
