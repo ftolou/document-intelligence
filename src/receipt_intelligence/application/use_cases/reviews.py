@@ -113,6 +113,15 @@ class ReviewUseCases:
             item_corrections,
             review,
         )
+        try:
+            finalization = self._review_service.finalize_human_review(
+                job_id,
+                approved,
+                requested_status=review.get("status"),
+            )
+        except ValueError as exc:
+            raise InvalidRequestError(str(exc)) from exc
+        approved = finalization["receipt"]
         approved_path = self._review_service.approved_receipt_path(job_id)
         review_path = self._review_service.review_record_path(job_id)
         approved_path.parent.mkdir(parents=True, exist_ok=True)
@@ -120,17 +129,26 @@ class ReviewUseCases:
             json.dumps(approved, ensure_ascii=False, indent=2, default=str),
             encoding="utf-8",
         )
+        human_review = (
+            approved.get("human_review")
+            if isinstance(approved.get("human_review"), dict)
+            else {}
+        )
         record = {
             "job_id": job_id,
             "source_receipt": (original_source_path or source_path).name,
             "approved_receipt": approved_path.name,
-            "status": approved.get("human_review", {}).get("status"),
-            "reviewer": approved.get("human_review", {}).get("reviewer"),
-            "notes": approved.get("human_review", {}).get("notes"),
-            "reviewed_at": approved.get("human_review", {}).get("reviewed_at"),
+            "requested_status": finalization.get("requested_status"),
+            "status": human_review.get("status"),
+            "reviewer": human_review.get("reviewer"),
+            "notes": human_review.get("notes"),
+            "reviewed_at": human_review.get("reviewed_at"),
             "changed_fields": changed,
             "submitted_fields": fields,
             "submitted_items": item_corrections,
+            "validation": finalization.get("validation"),
+            "approval_blocked": finalization.get("approval_blocked", False),
+            "validation_override": finalization.get("validation_override", False),
         }
         review_path.write_text(
             json.dumps(record, ensure_ascii=False, indent=2, default=str),
@@ -144,23 +162,44 @@ class ReviewUseCases:
             )
             self._store.register_artifact(job_id, "human_review", review_path, category="review")
 
-        db_import = self._review_service.import_reviewed_receipt(
+        if finalization.get("import_allowed"):
+            db_import = self._review_service.import_reviewed_receipt(
+                job_id,
+                approved,
+                approved_path,
+                original_source_path or source_path,
+            )
+            semantic_index = self._review_service.index_receipt_items(
+                int(db_import["receipt_db_id"])
+            )
+        else:
+            db_import = {
+                "status": "not_imported",
+                "receipt_db_id": None,
+                "job_id": job_id,
+                "item_count": 0,
+                "reason": (
+                    "approval_blocked"
+                    if finalization.get("approval_blocked")
+                    else f"review_status_{finalization.get('effective_status')}"
+                ),
+            }
+            semantic_index = {
+                "status": "not_required",
+                "requested_item_ids": [],
+                "message": "Receipt is not approved for import; embeddings were not created.",
+            }
+        record["receipt_db_import"] = db_import
+        record["semantic_index"] = semantic_index
+        queue_status = str(finalization.get("queue_status") or "needs_review")
+        review_queue = self._review_service.sync_review_queue(
             job_id,
             approved,
-            approved_path,
-            original_source_path or source_path,
-        )
-        record["receipt_db_import"] = db_import
-        queue_status = (
-            "approved"
-            if record.get("status") not in {"rejected", "duplicate_confirmed"}
-            else str(record.get("status"))
-        )
-        self._receipt_db.update_review_status(
-            job_id,
-            queue_status,
+            receipt_path=approved_path,
+            queue_status=queue_status,
             receipt_db_id=db_import.get("receipt_db_id"),
         )
+        record["review_queue"] = review_queue
         review_path.write_text(
             json.dumps(record, ensure_ascii=False, indent=2, default=str),
             encoding="utf-8",
@@ -183,16 +222,27 @@ class ReviewUseCases:
                 result=result,
                 review=record,
                 receipt_db_import=db_import,
+                semantic_index=semantic_index,
+                review_queue_status=queue_status,
             )
             self._store.add_event(
                 job_id,
                 {
                     "stage": "human_review",
                     "status": "done",
-                    "message": f"Human review saved with {len(changed)} changed field(s).",
+                    "message": (
+                        f"Human review saved with {len(changed)} changed field(s); "
+                        f"effective status is {record.get('status')}."
+                    ),
                     "details": {
+                        "requested_status": record.get("requested_status"),
                         "review_status": record.get("status"),
+                        "approval_blocked": record.get("approval_blocked"),
+                        "import_decision": (record.get("validation") or {}).get(
+                            "import_decision"
+                        ),
                         "changed_fields": changed,
+                        "semantic_index_status": semantic_index.get("status"),
                     },
                 },
             )
@@ -204,6 +254,12 @@ class ReviewUseCases:
             "receipt": approved,
             "artifacts": artifacts,
             "receipt_db_import": db_import,
+            "validation": approved.get("validation"),
+            "review_finalization": {
+                key: value for key, value in finalization.items() if key != "receipt"
+            },
+            "semantic_index": semantic_index,
+            "review_queue": review_queue,
             "source": "approved_receipt",
             "editable": True,
         }

@@ -528,7 +528,7 @@ function renderHumanReview(receipt, artifacts = {}, options = {}) {
         ${receiptImage}
       </aside>
       <div class="review-edit-panel">
-        <div class="receipt-section-title"><h4>Receipt header</h4><small>Correct merchant, date, totals and decision</small></div>
+        <div class="receipt-section-title"><h4>Receipt header</h4><small>Correct merchant, date and totals; validation is recalculated when saved</small></div>
         <div class="review-grid">
           <div class="field"><label>Merchant name</label><input data-review-field="merchant_name" value="${escapeHtml(inputValue(merchant.name))}" /></div>
           <div class="field"><label>Date</label><input data-review-field="date" value="${escapeHtml(inputValue(receipt.date))}" /></div>
@@ -543,10 +543,9 @@ function renderHumanReview(receipt, artifacts = {}, options = {}) {
           <div class="field"><label>Grand total</label><input data-review-field="grand_total" type="number" step="0.01" value="${escapeHtml(inputValue(totals.grand_total))}" /></div>
           <div class="field"><label>Paid total</label><input data-review-field="paid_total" type="number" step="0.01" value="${escapeHtml(inputValue(totals.paid_total))}" /></div>
           <div class="field"><label>Change</label><input data-review-field="change" type="number" step="0.01" value="${escapeHtml(inputValue(totals.change))}" /></div>
-          <div class="field"><label>Import decision</label>
-            <select data-review-field="import_decision">
-              ${['import', 'needs_review', 'reject'].map((v) => `<option value="${v}" ${decision === v ? 'selected' : ''}>${v}</option>`).join('')}
-            </select>
+          <div class="field"><label>Current validation decision</label>
+            <input value="${escapeHtml(inputValue(decision))}" disabled />
+            <small>Recomputed from the corrected receipt when the review is saved.</small>
           </div>
         </div>
 
@@ -564,7 +563,7 @@ function renderHumanReview(receipt, artifacts = {}, options = {}) {
         </div>
         <div class="form-actions">
           <button type="button" id="saveHumanReviewButton">Save human review</button>
-          <small id="humanReviewMessage" class="v14-note">Saves transactionally to SQLite. Product-name or semantic-description changes selectively rebuild only the affected semantic embeddings.</small>
+          <small id="humanReviewMessage" class="v14-note">Revalidates the corrected receipt, saves it transactionally, and creates or refreshes semantic embeddings after approval.</small>
         </div>
       </div>
     </div>
@@ -645,7 +644,9 @@ async function saveHumanReview() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Human review save failed');
     const semanticStatus = data.semantic_index?.status || 'not_reported';
-    const semanticCount = data.database_update?.semantic_item_ids?.length || 0;
+    const semanticCount = data.semantic_index?.requested_item_ids?.length
+      || data.database_update?.semantic_item_ids?.length
+      || 0;
     const semanticText = semanticStatus === 'current'
       ? `Semantic index updated for ${semanticCount} item(s).`
       : semanticStatus === 'not_required'
@@ -655,7 +656,15 @@ async function saveHumanReview() {
           : semanticStatus === 'failed'
             ? 'Database saved; semantic reindexing failed and can be retried.'
             : '';
-    if (msg) msg.innerHTML = `Saved to database. Changed fields: ${escapeHtml((data.review?.changed_fields || []).join(', ') || 'none')}. DB items: ${escapeHtml(data.receipt_db_import?.item_count ?? 'n/a')}. ${escapeHtml(semanticText)}`;
+    const effectiveStatus = data.receipt?.human_review?.status || data.review?.status || 'needs_review';
+    const approvalBlocked = Boolean(data.review_finalization?.approval_blocked);
+    const persistenceText = data.receipt_db_import?.status === 'not_imported'
+      ? 'Review saved; receipt was not imported.'
+      : 'Saved to database.';
+    const stateText = approvalBlocked
+      ? ` Approval remains blocked by: ${(data.receipt?.human_review?.blocking_issue_codes || []).join(', ') || 'validation issues'}.`
+      : ` Effective review status: ${effectiveStatus}.`;
+    if (msg) msg.innerHTML = `${escapeHtml(persistenceText)} Changed fields: ${escapeHtml((data.review?.changed_fields || []).join(', ') || 'none')}. DB items: ${escapeHtml(data.receipt_db_import?.item_count ?? 'n/a')}.${escapeHtml(stateText)} ${escapeHtml(semanticText)}`;
     refreshReceiptDbSummary().catch(() => {});
     refreshReceiptDbList().catch(() => {});
     loadReviewQueue().catch(() => {});

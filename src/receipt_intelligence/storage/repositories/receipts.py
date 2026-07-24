@@ -350,6 +350,14 @@ class ReceiptRepository(BaseRepository):
         }
         return receipt
 
+    def list_receipt_item_ids(self, receipt_id: int) -> list[int]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT id FROM receipt_items WHERE receipt_id = ? ORDER BY item_index, id",
+                (int(receipt_id),),
+            ).fetchall()
+        return [int(row["id"]) for row in rows]
+
     def update_receipt_from_review(
         self,
         receipt_id: int,
@@ -383,7 +391,7 @@ class ReceiptRepository(BaseRepository):
 
         with self.connect() as connection:
             stored_receipt = connection.execute(
-                "SELECT id, job_id FROM receipts WHERE id = ?",
+                "SELECT id, job_id, review_status FROM receipts WHERE id = ?",
                 (int(receipt_id),),
             ).fetchone()
             if stored_receipt is None:
@@ -402,6 +410,7 @@ class ReceiptRepository(BaseRepository):
                 (int(receipt_id),),
             ).fetchall()
             stored_by_id = {int(row["id"]): dict(row) for row in stored_items}
+            previous_review_status = as_str(stored_receipt["review_status"])
 
             if len(incoming_items) != len(stored_items):
                 raise ValueError(
@@ -423,6 +432,8 @@ class ReceiptRepository(BaseRepository):
                 seen_item_ids.add(item_id)
                 resolved_items.append((item_id, index, item))
 
+            all_item_ids = sorted(stored_by_id)
+            current_review_status = as_str(human_review.get("status")) or "needs_review"
             semantic_item_ids: list[int] = []
             metadata_item_ids: list[int] = []
             changed_item_ids: list[int] = []
@@ -639,11 +650,14 @@ class ReceiptRepository(BaseRepository):
                 )
 
             invalidated_embedding_count = 0
-            if semantic_item_ids:
-                placeholders = ", ".join("?" for _ in semantic_item_ids)
+            embedding_invalidation_ids = (
+                all_item_ids if current_review_status != "approved" else semantic_item_ids
+            )
+            if embedding_invalidation_ids:
+                placeholders = ", ".join("?" for _ in embedding_invalidation_ids)
                 cursor = connection.execute(
                     f"DELETE FROM rag_item_embeddings WHERE item_id IN ({placeholders})",
-                    semantic_item_ids,
+                    embedding_invalidation_ids,
                 )
                 invalidated_embedding_count = max(0, int(cursor.rowcount or 0))
 
@@ -652,12 +666,25 @@ class ReceiptRepository(BaseRepository):
                 connection.execute(
                     """
                     UPDATE review_queue
-                    SET queue_status=?, receipt_db_id=?, raw_json=?, updated_at=?
+                    SET queue_status=?, receipt_db_id=?, decision=?, balanced=?,
+                        difference=?, issue_count=?, raw_json=?, updated_at=?
                     WHERE job_id=?
                     """,
                     (
-                        as_str(human_review.get("status")) or "approved",
+                        current_review_status,
                         int(receipt_id),
+                        as_str(validation.get("import_decision")),
+                        (
+                            1
+                            if validation.get("balanced") is True
+                            else 0
+                            if validation.get("balanced") is False
+                            else None
+                        ),
+                        as_float(validation.get("difference")),
+                        len(validation.get("issues") or [])
+                        if isinstance(validation.get("issues"), list)
+                        else 0,
                         json.dumps(clean_receipt, ensure_ascii=False, default=str),
                         now,
                         job_id,
@@ -670,8 +697,11 @@ class ReceiptRepository(BaseRepository):
             "job_id": stored_receipt["job_id"],
             "item_count": len(item_payloads),
             "changed_item_ids": sorted(changed_item_ids),
+            "all_item_ids": all_item_ids,
             "semantic_item_ids": sorted(semantic_item_ids),
             "metadata_item_ids": sorted(metadata_item_ids),
+            "previous_review_status": previous_review_status,
+            "review_status": current_review_status,
             "invalidated_embedding_count": invalidated_embedding_count,
             "updated_at": now,
         }

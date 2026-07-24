@@ -198,6 +198,9 @@ class ReceiptDatabase:
     ) -> dict[str, Any]:
         return self.receipts.update_receipt_from_review(receipt_id, receipt)
 
+    def list_receipt_item_ids(self, receipt_id: int) -> list[int]:
+        return self.receipts.list_receipt_item_ids(receipt_id)
+
     def get_receipt_review_record(self, receipt_id: int) -> dict[str, Any] | None:
         return self.receipts.get_receipt_review_record(receipt_id)
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
@@ -219,3 +220,53 @@ def test_semantic_description_edit_reindexes_only_affected_item(tmp_path: Path) 
         ).fetchone()
     assert row["semantic_description"] == "Vittel is bottled mineral water."
     assert row["category_reason"] == "Reviewed as bottled water."
+
+
+def test_first_approval_indexes_all_items_and_refreshes_validation_state(tmp_path: Path) -> None:
+    database = ReceiptDatabase(tmp_path / "receipt.db")
+    receipt = _receipt()
+    receipt["human_review"] = {"status": "needs_review"}
+    receipt["validation"] = {
+        "import_decision": "reject",
+        "issues": [{"code": "MISSING_MERCHANT", "severity": "medium"}],
+    }
+    imported = database.import_receipt(job_id="job-first-approval", receipt=receipt)
+    database.upsert_review_queue(
+        job_id="job-first-approval",
+        receipt=receipt,
+        decision="reject",
+        balanced=False,
+        difference=None,
+        issue_count=1,
+        image_path=None,
+        final_receipt_path=None,
+        queue_status="rejected",
+    )
+    document = database.get_receipt_edit_document(imported.receipt_db_id)
+    assert document is not None
+    item_ids = [int(item["_db_item_id"]) for item in document["items"]]
+
+    reindex_calls: list[list[int]] = []
+    editor = DatabaseReceiptEditor(
+        database,
+        ReviewService(JobStore(tmp_path / "jobs"), database),
+        reindex_callback=lambda ids: reindex_calls.append(ids) or {"status": "current"},
+    )
+    result = editor.save(
+        imported.receipt_db_id,
+        fields={},
+        item_corrections=[{"index": 0}, {"index": 1}],
+        review={"status": "approved", "reviewer": "tester"},
+    )
+
+    assert reindex_calls == [item_ids]
+    assert result["receipt"]["human_review"]["status"] == "approved"
+    assert result["receipt"]["validation"]["import_decision"] == "import"
+    assert result["receipt"]["validation"]["pre_review_import_decision"] == "reject"
+    assert result["database_update"]["previous_review_status"] == "needs_review"
+    assert result["semantic_index"]["status"] == "current"
+    queue = database.list_review_queue(status="approved")
+    assert len(queue) == 1
+    assert queue[0]["decision"] == "import"
+    assert queue[0]["balanced"] == 1
+    assert json.loads(queue[0]["raw_json"])["validation"]["import_decision"] == "import"

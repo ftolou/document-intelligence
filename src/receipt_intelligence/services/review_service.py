@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 from urllib.parse import unquote, urlparse
 
+from receipt_intelligence.extraction.validation.receipt import validate_receipt
 from receipt_intelligence.services.artifact_service import artifact_resource
 from receipt_intelligence.storage.job_store import JobStore
+from receipt_intelligence.services.semantic_index_service import SemanticIndexUpdater
 from receipt_intelligence.storage.receipt_db import ReceiptDatabase
 
 
@@ -69,8 +70,6 @@ def apply_human_review(
 
     merchant = updated.setdefault("merchant", {})
     totals = updated.setdefault("totals", {})
-    validation = updated.setdefault("validation", {})
-
     mapping: list[tuple[str, dict[str, Any], str, bool]] = [
         ("merchant_name", merchant, "name", False),
         ("merchant_address", merchant, "address", False),
@@ -85,7 +84,6 @@ def apply_human_review(
         ("grand_total", totals, "grand_total", True),
         ("paid_total", totals, "paid_total", True),
         ("change", totals, "change", True),
-        ("import_decision", validation, "import_decision", False),
     ]
     for incoming_key, target, target_key, numeric in mapping:
         if incoming_key not in fields:
@@ -181,7 +179,7 @@ def apply_human_review(
         if "review_status" not in correction:
             item.setdefault("review_status", review.get("status") or "reviewed")
 
-    reviewed_at = datetime.now(UTC).isoformat(timespec="seconds")
+    reviewed_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     updated["human_review"] = {
         "status": review.get("status") or "needs_review",
         "reviewer": review.get("reviewer") or "",
@@ -193,9 +191,235 @@ def apply_human_review(
 
 
 class ReviewService:
-    def __init__(self, store: JobStore, receipt_db: ReceiptDatabase) -> None:
+    _APPROVAL_BLOCKING_CODES = {
+        "LLM_PARSE_FAILED",
+        "MISSING_MERCHANT",
+        "MISSING_TOTAL",
+        "NO_ITEMS",
+    }
+
+    def __init__(
+        self,
+        store: JobStore,
+        receipt_db: ReceiptDatabase,
+        *,
+        semantic_index_updater: SemanticIndexUpdater | None = None,
+    ) -> None:
         self.store = store
         self.receipt_db = receipt_db
+        self.semantic_index_updater = semantic_index_updater
+
+    def ocr_context_path(self, job_id: str) -> Path | None:
+        """Resolve the extraction OCR context used for post-HITL validation."""
+
+        if not str(job_id or "").strip():
+            return None
+        job = self.store.get(job_id) or {}
+        result = job.get("result") if isinstance(job.get("result"), dict) else {}
+        artifacts = result.get("artifacts") if isinstance(result.get("artifacts"), dict) else {}
+        path = self.artifact_path_from_url(job_id, artifacts.get("ocr_context"))
+        if path is not None:
+            return path
+
+        job_dir = self.store.job_dir(job_id)
+        candidates = sorted(
+            [
+                *job_dir.glob("*_v14_ocr_context.json"),
+                *job_dir.glob("latest_v14_ocr_context.json"),
+            ],
+            key=lambda candidate: candidate.stat().st_mtime,
+            reverse=True,
+        )
+        return candidates[0] if candidates else None
+
+    def load_ocr_context(self, job_id: str) -> tuple[dict[str, Any], str]:
+        path = self.ocr_context_path(job_id)
+        if path is None:
+            return {"lines": [], "layout_rows": []}, "unavailable"
+        try:
+            value = json.loads(path.read_text(encoding="utf-8-sig"))
+        except Exception:
+            return {"lines": [], "layout_rows": []}, "unreadable"
+        if not isinstance(value, dict):
+            return {"lines": [], "layout_rows": []}, "invalid"
+        return value, path.name
+
+    def finalize_human_review(
+        self,
+        job_id: str,
+        receipt: dict[str, Any],
+        *,
+        requested_status: str | None,
+    ) -> dict[str, Any]:
+        """Revalidate edited data and derive the effective review/import state.
+
+        Human approval can resolve non-blocking validation warnings, but it may
+        not override missing core receipt data or high/critical validation issues.
+        A manually completed receipt can recover from an original LLM failure: the
+        machine parse status is preserved in review metadata and validation is run
+        against the reviewed document.
+        """
+
+        requested = str(requested_status or "needs_review").strip().lower()
+        if requested not in {"approved", "needs_review", "rejected"}:
+            raise ValueError(f"Unsupported human review status: {requested}")
+
+        updated = _deep_copy_json(receipt)
+        previous_validation = (
+            dict(updated.get("validation"))
+            if isinstance(updated.get("validation"), dict)
+            else {}
+        )
+        original_parse_status = str(updated.get("parse_status") or "partial")
+        if requested == "approved" and original_parse_status == "failed":
+            # The reviewed document, not the failed model attempt, is now the input
+            # to validation. Structural validation still blocks incomplete edits.
+            updated["parse_status"] = "partial"
+
+        ocr_context, context_source = self.load_ocr_context(job_id)
+        report = validate_receipt(updated, ocr_context)
+        deterministic_decision = str(report.get("import_decision") or "needs_review")
+        issues = [issue for issue in report.get("issues") or [] if isinstance(issue, dict)]
+        blocking_issues = [
+            issue
+            for issue in issues
+            if str(issue.get("severity") or "").lower() in {"critical", "high"}
+            or str(issue.get("code") or "") in self._APPROVAL_BLOCKING_CODES
+        ]
+
+        approval_blocked = False
+        validation_override = False
+        if requested == "approved":
+            if blocking_issues or deterministic_decision in {"reject", "llm_failed"}:
+                effective_status = "needs_review"
+                effective_decision = (
+                    deterministic_decision
+                    if deterministic_decision in {"reject", "llm_failed"}
+                    else "reject"
+                )
+                approval_blocked = True
+            else:
+                effective_status = "approved"
+                effective_decision = "import"
+                validation_override = deterministic_decision != "import"
+        elif requested == "rejected":
+            effective_status = "rejected"
+            effective_decision = "reject"
+        else:
+            effective_status = "needs_review"
+            effective_decision = "needs_review"
+
+        items = updated.get("items") if isinstance(updated.get("items"), list) else []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            item_status = str(item.get("review_status") or "").strip().lower()
+            if effective_status == "approved" and item_status != "rejected":
+                item["review_status"] = (
+                    "corrected" if item_status == "corrected" else "approved"
+                )
+            elif approval_blocked and item_status == "approved":
+                item["review_status"] = "needs_review"
+
+        report["deterministic_import_decision"] = deterministic_decision
+        report["pre_review_import_decision"] = previous_validation.get("import_decision")
+        report["import_decision"] = effective_decision
+        report["review_resolution"] = {
+            "requested_status": requested,
+            "effective_status": effective_status,
+            "approval_blocked": approval_blocked,
+            "human_override": validation_override,
+            "blocking_issue_codes": [
+                str(issue.get("code") or "") for issue in blocking_issues
+            ],
+            "ocr_context_source": context_source,
+        }
+        updated["validation"] = report
+
+        human_review = (
+            dict(updated.get("human_review"))
+            if isinstance(updated.get("human_review"), dict)
+            else {}
+        )
+        human_review.update(
+            {
+                "requested_status": requested,
+                "status": effective_status,
+                "approval_blocked": approval_blocked,
+                "validation_override": validation_override,
+                "original_parse_status": original_parse_status,
+                "remaining_issue_codes": [
+                    str(issue.get("code") or "") for issue in issues
+                ],
+                "blocking_issue_codes": [
+                    str(issue.get("code") or "") for issue in blocking_issues
+                ],
+            }
+        )
+        updated["human_review"] = human_review
+        return {
+            "receipt": updated,
+            "validation": report,
+            "requested_status": requested,
+            "effective_status": effective_status,
+            "queue_status": effective_status,
+            "import_allowed": effective_status == "approved" and effective_decision == "import",
+            "approval_blocked": approval_blocked,
+            "validation_override": validation_override,
+        }
+
+    def sync_review_queue(
+        self,
+        job_id: str,
+        receipt: dict[str, Any],
+        *,
+        receipt_path: Path,
+        queue_status: str,
+        receipt_db_id: int | None = None,
+    ) -> dict[str, Any]:
+        validation = (
+            receipt.get("validation") if isinstance(receipt.get("validation"), dict) else {}
+        )
+        issues = validation.get("issues") if isinstance(validation.get("issues"), list) else []
+        result = self.receipt_db.upsert_review_queue(
+            job_id=job_id,
+            receipt=receipt,
+            decision=validation.get("import_decision"),
+            balanced=validation.get("balanced"),
+            difference=validation.get("difference"),
+            issue_count=len(issues),
+            image_path=self.job_image_path(job_id),
+            final_receipt_path=receipt_path,
+            queue_status=queue_status,
+        )
+        if receipt_db_id is not None:
+            result.update(
+                self.receipt_db.update_review_status(
+                    job_id,
+                    queue_status,
+                    receipt_db_id=receipt_db_id,
+                )
+            )
+        return result
+
+    def index_receipt_items(self, receipt_id: int) -> dict[str, Any]:
+        item_ids = self.receipt_db.list_receipt_item_ids(receipt_id)
+        if self.semantic_index_updater is None:
+            return {
+                "status": "not_configured",
+                "requested_item_ids": item_ids,
+                "message": "No semantic index updater is configured for this process.",
+            }
+        return self.semantic_index_updater.index_item_ids(item_ids)
+
+    def index_item_ids(self, item_ids: list[int]) -> dict[str, Any]:
+        if self.semantic_index_updater is None:
+            return {
+                "status": "not_configured",
+                "requested_item_ids": sorted({int(value) for value in item_ids}),
+                "message": "No semantic index updater is configured for this process.",
+            }
+        return self.semantic_index_updater.index_item_ids(item_ids)
 
     def artifact_path_from_url(
         self,

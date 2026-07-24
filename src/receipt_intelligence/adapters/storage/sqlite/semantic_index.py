@@ -37,6 +37,7 @@ class SQLiteSemanticIndexRepository:
         clauses = [
             "trim(COALESCE(i.raw_name, '')) <> ''",
             "lower(COALESCE(i.parser_item_type, 'item')) IN (?, ?, ?, ?)",
+            "lower(COALESCE(i.review_status, '')) NOT IN ('rejected', 'needs_review')",
         ]
         parameters: list[object] = list(_PURCHASE_ITEM_TYPES)
         if approved_only:

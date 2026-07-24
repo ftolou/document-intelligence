@@ -3,20 +3,15 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-import receipt_intelligence.settings as settings
-from receipt_intelligence.adapters.storage.sqlite.semantic_index import (
-    SQLiteSemanticIndexRepository,
-)
-from receipt_intelligence.rag.embedding_client import OllamaEmbeddingClient
-from receipt_intelligence.rag.item_indexer import ItemEmbeddingIndexer
 from receipt_intelligence.services.review_service import ReviewService, apply_human_review
+from receipt_intelligence.services.semantic_index_service import (
+    ReindexCallback,
+    SemanticIndexUpdater,
+)
 from receipt_intelligence.storage.receipt_db import ReceiptDatabase
-
-ReindexCallback = Callable[[list[int]], dict[str, Any]]
 
 
 class DatabaseReceiptEditor:
@@ -35,7 +30,11 @@ class DatabaseReceiptEditor:
     ) -> None:
         self.receipt_db = receipt_db
         self.review_service = review_service
-        self._reindex_callback = reindex_callback
+        self._semantic_index = (
+            SemanticIndexUpdater(receipt_db, reindex_callback=reindex_callback)
+            if reindex_callback is not None
+            else review_service.semantic_index_updater or SemanticIndexUpdater(receipt_db)
+        )
 
     def load(self, receipt_id: int) -> dict[str, Any]:
         receipt = self.receipt_db.get_receipt_edit_document(receipt_id)
@@ -81,9 +80,35 @@ class DatabaseReceiptEditor:
             item_corrections,
             review,
         )
+        database_record = self.receipt_db.get_receipt_review_record(receipt_id) or {}
+        job_id = str(
+            database_record.get("job_id")
+            or (current.get("_database") or {}).get("job_id")
+            or ""
+        ).strip()
+        finalization = self.review_service.finalize_human_review(
+            job_id,
+            updated,
+            requested_status=review.get("status"),
+        )
+        updated = finalization["receipt"]
         database_update = self.receipt_db.update_receipt_from_review(receipt_id, updated)
-        semantic_item_ids = list(database_update.get("semantic_item_ids") or [])
-        indexing = self._reindex(semantic_item_ids)
+
+        previous_status = str(database_update.get("previous_review_status") or "")
+        effective_status = str(database_update.get("review_status") or "")
+        if effective_status == "approved":
+            item_ids = (
+                list(database_update.get("all_item_ids") or [])
+                if previous_status != "approved"
+                else list(database_update.get("semantic_item_ids") or [])
+            )
+            indexing = self._semantic_index.index_item_ids(item_ids)
+        else:
+            indexing = {
+                "status": "not_required",
+                "requested_item_ids": [],
+                "message": "Receipt is not approved; semantic embeddings are not created.",
+            }
 
         fresh = self.receipt_db.get_receipt_edit_document(receipt_id)
         if fresh is None:
@@ -109,70 +134,17 @@ class DatabaseReceiptEditor:
                     "item_count": database_update.get("item_count", 0),
                     "updated_at": database_update.get("updated_at"),
                 },
+                "validation": fresh.get("validation"),
+                "review_finalization": {
+                    key: value
+                    for key, value in finalization.items()
+                    if key != "receipt"
+                },
                 "semantic_index": indexing,
                 "artifact_mirror": mirror,
             }
         )
         return payload
-
-    def _reindex(self, item_ids: list[int]) -> dict[str, Any]:
-        if not item_ids:
-            return {
-                "status": "not_required",
-                "requested_item_ids": [],
-                "message": "No embedded semantic fields changed.",
-            }
-        if self._reindex_callback is not None:
-            try:
-                return self._reindex_callback(item_ids)
-            except Exception as exc:
-                return {
-                    "status": "failed",
-                    "requested_item_ids": item_ids,
-                    "error": f"{type(exc).__name__}: {exc}",
-                    "message": (
-                        "Database changes were saved. Semantic reindexing can be retried later."
-                    ),
-                }
-        if not settings.RAG_EMBEDDING_ENABLED:
-            return {
-                "status": "pending",
-                "requested_item_ids": item_ids,
-                "message": "Semantic embeddings are disabled; stale vectors were removed.",
-            }
-
-        try:
-            with OllamaEmbeddingClient(
-                base_url=settings.OLLAMA_URL,
-                model=settings.RAG_EMBEDDING_MODEL,
-                timeout_seconds=settings.RAG_EMBEDDING_TIMEOUT_SECONDS,
-                keep_alive=settings.RAG_EMBEDDING_KEEP_ALIVE,
-            ) as embedding_client:
-                report = ItemEmbeddingIndexer(
-                    repository=SQLiteSemanticIndexRepository(self.receipt_db.db_path),
-                    embedding_client=embedding_client,
-                    batch_size=settings.RAG_EMBEDDING_BATCH_SIZE,
-                ).index_item_ids(item_ids)
-            status = "current" if report.failed == 0 else "failed"
-            return {
-                "status": status,
-                "requested_item_ids": item_ids,
-                "report": report.model_dump(mode="json"),
-                "message": (
-                    "Semantic index updated."
-                    if status == "current"
-                    else "Database changes were saved, but one or more embeddings failed."
-                ),
-            }
-        except Exception as exc:
-            return {
-                "status": "failed",
-                "requested_item_ids": item_ids,
-                "error": f"{type(exc).__name__}: {exc}",
-                "message": (
-                    "Database changes were saved. Semantic reindexing can be retried later."
-                ),
-            }
 
     def _write_approved_json_mirror(
         self,

@@ -233,3 +233,29 @@ def test_rebuild_prunes_previously_indexed_placeholder_rows(tmp_path: Path) -> N
             "SELECT COUNT(*) FROM rag_item_embeddings WHERE item_id = 1"
         ).fetchone()[0]
     assert remaining == 0
+
+
+def test_item_level_rejection_is_not_embedded_and_existing_vector_is_pruned(
+    tmp_path: Path,
+) -> None:
+    database = _database(tmp_path)
+    client = FakeEmbeddingClient()
+    indexer = ItemEmbeddingIndexer(
+        repository=SQLiteSemanticIndexRepository(database),
+        embedding_client=client,
+    )
+    first = indexer.index_item_ids([1])
+    assert first.embedded == 1
+
+    with sqlite3.connect(database) as connection:
+        connection.execute("UPDATE receipt_items SET review_status='rejected' WHERE id=1")
+        connection.commit()
+
+    second = indexer.index_item_ids([1])
+    assert second.eligible_items == 0
+    assert second.pruned == 1
+    with sqlite3.connect(database) as connection:
+        remaining = connection.execute(
+            "SELECT COUNT(*) FROM rag_item_embeddings WHERE item_id=1"
+        ).fetchone()[0]
+    assert remaining == 0

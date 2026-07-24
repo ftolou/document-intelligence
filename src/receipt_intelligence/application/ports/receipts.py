@@ -89,6 +89,28 @@ class ReviewWorkflow(Protocol):
         source_path: Path | None = None,
     ) -> dict[str, Any]: ...
 
+    def finalize_human_review(
+        self,
+        job_id: str,
+        receipt: dict[str, Any],
+        *,
+        requested_status: str | None,
+    ) -> dict[str, Any]: ...
+
+    def sync_review_queue(
+        self,
+        job_id: str,
+        receipt: dict[str, Any],
+        *,
+        receipt_path: Path,
+        queue_status: str,
+        receipt_db_id: int | None = None,
+    ) -> dict[str, Any]: ...
+
+    def index_receipt_items(self, receipt_id: int) -> dict[str, Any]: ...
+
+    def index_item_ids(self, item_ids: list[int]) -> dict[str, Any]: ...
+
 
 class ReceiptEditor(Protocol):
     def load(self, receipt_id: int) -> dict[str, Any]: ...

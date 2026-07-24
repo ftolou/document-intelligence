@@ -109,3 +109,107 @@ def test_import_reviewed_receipt_preserves_database_image_without_job_status(tmp
 
     assert stored is not None
     assert stored["image_path"] == str(image_path)
+
+
+def _reviewable_receipt(*, merchant_name: str | None, parse_status: str = "failed") -> dict:
+    return {
+        "schema_version": "v14_6_llm_receipt_1",
+        "parse_status": parse_status,
+        "merchant": {"name": merchant_name},
+        "date": "2026-07-24",
+        "currency": "EUR",
+        "totals": {"grand_total": 5.0, "paid_total": 5.0},
+        "items": [
+            {
+                "description": "TEST ITEM",
+                "category": "item",
+                "line_total": 5.0,
+                "source_line_ids": ["line_002"],
+            }
+        ],
+        "payments": [
+            {"method": "card", "amount": 5.0, "source_line_ids": ["line_003"]}
+        ],
+        "validation": {
+            "import_decision": "reject",
+            "issues": [{"code": "MISSING_MERCHANT", "severity": "medium"}],
+        },
+    }
+
+
+def _write_ocr_context(store, job_id: str) -> None:
+    job_dir = store.job_dir(job_id)
+    job_dir.mkdir(parents=True, exist_ok=True)
+    (job_dir / f"{job_id}_v14_ocr_context.json").write_text(
+        """{
+  "lines": [
+    {"line_id": "line_001", "text": "24.07.2026", "confidence": 0.99},
+    {"line_id": "line_002", "text": "TEST ITEM 5,00", "confidence": 0.99},
+    {"line_id": "line_003", "text": "CARD 5,00", "confidence": 0.99}
+  ],
+  "layout_rows": [
+    {"row_id": "row_001", "text": "TEST ITEM 5,00", "source_line_ids": ["line_002"]}
+  ]
+}""",
+        encoding="utf-8",
+    )
+
+
+def test_finalize_human_review_replaces_stale_rejection_after_correction(tmp_path) -> None:
+    from receipt_intelligence.services.review_service import ReviewService, apply_human_review
+    from receipt_intelligence.storage.job_store import JobStore
+    from receipt_intelligence.storage.receipt_db import ReceiptDatabase
+
+    store = JobStore(tmp_path / "jobs")
+    database = ReceiptDatabase(tmp_path / "receipt.db")
+    service = ReviewService(store, database)
+    _write_ocr_context(store, "job-reviewed")
+    corrected, _ = apply_human_review(
+        _reviewable_receipt(merchant_name=None),
+        {"merchant_name": "REWE"},
+        [],
+        {"status": "approved", "reviewer": "tester"},
+    )
+
+    result = service.finalize_human_review(
+        "job-reviewed",
+        corrected,
+        requested_status="approved",
+    )
+
+    assert result["effective_status"] == "approved"
+    assert result["import_allowed"] is True
+    assert result["receipt"]["validation"]["import_decision"] == "import"
+    assert result["receipt"]["validation"]["pre_review_import_decision"] == "reject"
+    assert "MISSING_MERCHANT" not in {
+        issue["code"] for issue in result["receipt"]["validation"]["issues"]
+    }
+    assert result["receipt"]["human_review"]["original_parse_status"] == "failed"
+
+
+def test_finalize_human_review_blocks_approval_when_core_data_is_still_missing(tmp_path) -> None:
+    from receipt_intelligence.services.review_service import ReviewService, apply_human_review
+    from receipt_intelligence.storage.job_store import JobStore
+    from receipt_intelligence.storage.receipt_db import ReceiptDatabase
+
+    store = JobStore(tmp_path / "jobs")
+    database = ReceiptDatabase(tmp_path / "receipt.db")
+    service = ReviewService(store, database)
+    _write_ocr_context(store, "job-blocked")
+    reviewed, _ = apply_human_review(
+        _reviewable_receipt(merchant_name=None, parse_status="partial"),
+        {},
+        [],
+        {"status": "approved"},
+    )
+
+    result = service.finalize_human_review(
+        "job-blocked",
+        reviewed,
+        requested_status="approved",
+    )
+
+    assert result["effective_status"] == "needs_review"
+    assert result["approval_blocked"] is True
+    assert result["import_allowed"] is False
+    assert "MISSING_MERCHANT" in result["receipt"]["human_review"]["blocking_issue_codes"]

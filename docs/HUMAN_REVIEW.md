@@ -25,7 +25,7 @@ This is intentionally better than approving a JSON preview alone. The reviewer c
 - grand total
 - paid total
 - change
-- import decision
+- current validation decision (read-only; recalculated on save)
 
 ## Editable item fields
 
@@ -68,8 +68,7 @@ Example payload:
   "fields": {
     "merchant_name": "dm-drogerie markt",
     "date": "2026-07-07",
-    "grand_total": 23.45,
-    "import_decision": "import"
+    "grand_total": 23.45
   },
   "items": [
     {
@@ -160,9 +159,27 @@ human_review_record.json
 - submitted item corrections
 - receipt database import result
 
-## Database import
+## Post-review validation, state transition, and database import
 
-After saving a review, the app automatically imports the corrected receipt into the local SQLite database. Corrected item names and categories are used to build the enriched item text for the Ask Your Receipts retrieval layer.
+Saving a review no longer preserves the extraction-time validation state. The application:
+
+1. applies the human corrections;
+2. reloads the job's OCR context when available;
+3. reruns deterministic receipt validation;
+4. replaces the stale `receipt.validation` block;
+5. derives the effective review and queue state;
+6. imports only an effectively approved receipt;
+7. creates semantic embeddings after the database transaction commits.
+
+Human approval can resolve non-blocking warnings. Missing core data such as merchant, total, or priced items, and any remaining high/critical issue, blocks approval and leaves the effective state at `needs_review`. The submitted corrections are still saved so the reviewer can continue editing.
+
+The validation report preserves both decisions:
+
+- `deterministic_import_decision`: result of the post-edit validator;
+- `import_decision`: effective decision after the human-review policy;
+- `pre_review_import_decision`: stale extraction-time decision retained only for audit.
+
+When a receipt is approved for the first time, every persisted purchase-item ID is submitted to the incremental embedding indexer. The indexer embeds only eligible purchase rows and skips item rows marked `rejected` or `needs_review`. On later edits, only semantic product changes are re-embedded. An embedding-provider failure never rolls back the approved receipt; the API returns `pending` or `failed` so indexing can be retried.
 
 ## Why this matters
 

@@ -24,6 +24,7 @@ from receipt_intelligence.runtime.paths import RuntimePaths
 from receipt_intelligence.services.database_receipt_editor import DatabaseReceiptEditor
 from receipt_intelligence.services.job_processing import JobProcessingService
 from receipt_intelligence.services.review_service import ReviewService, apply_human_review
+from receipt_intelligence.services.semantic_index_service import SemanticIndexUpdater
 from receipt_intelligence.services.runtime_information import RuntimeInformationService
 from receipt_intelligence.storage.job_store import JobStore
 from receipt_intelligence.storage.receipt_db import ReceiptDatabase
@@ -87,7 +88,12 @@ def init_app_services(
         )
     else:
         resolved_query_service = receipt_query_service
-    resolved_review_service = ReviewService(resolved_store, resolved_database)
+    semantic_index_updater = SemanticIndexUpdater(resolved_database)
+    resolved_review_service = ReviewService(
+        resolved_store,
+        resolved_database,
+        semantic_index_updater=semantic_index_updater,
+    )
     resolved_editor = DatabaseReceiptEditor(resolved_database, resolved_review_service)
     processor = JobProcessingService(
         resolved_store,
