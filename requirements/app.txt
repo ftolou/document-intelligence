@@ -18,7 +18,8 @@ paddleocr>=3.0.0,<4.0.0
 
 # Optional V14.5 VLM layer:
 # Keep disabled unless your PaddleOCR package/runtime exposes PaddleOCRVL or you
-# provide VLM_COMMAND. Extra VLM dependencies are intentionally not forced here
+# provide a trusted server-side VLM_COMMAND executed without a shell. Extra VLM
+# dependencies are intentionally not forced here
 # to preserve the known-working V13/V14 Docker OCR runtime.
 
 # RAG-SQL graph orchestration and typed validation.

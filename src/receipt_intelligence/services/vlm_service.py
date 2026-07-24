@@ -3,7 +3,8 @@
 
 This service intentionally runs in a separate container from the main receipt app.
 It owns the heavier PaddleOCR-VL / doc-parser dependencies and exposes a small
-HTTP API. The main app sends a shared image path and receives raw visual evidence.
+HTTP API. The main app sends a path inside the shared runtime root and receives
+raw visual evidence. Paths outside configured input roots are rejected.
 
 Endpoints:
   GET  /health
@@ -14,6 +15,8 @@ Request JSON:
 
 Response JSON:
   {"status": "ok|error|unavailable", "backend": "...", "raw_result": ...}
+
+Backend, runner, timeout, resize, and command settings are server-managed.
 """
 
 from __future__ import annotations
@@ -60,6 +63,20 @@ MAX_SIDE_LIMIT = int(os.getenv("VLM_SERVICE_MAX_SIDE_LIMIT", "1600"))
 RUNNER = os.getenv("VLM_SERVICE_RUNNER", "cli").strip().lower()
 ENGINE = os.getenv("VLM_ENGINE", "transformers").strip()
 DEVICE = os.getenv("VLM_DEVICE", "gpu:0").strip()
+
+
+def _configured_allowed_input_roots() -> tuple[Path, ...]:
+    configured = os.getenv("VLM_ALLOWED_INPUT_ROOTS", "").strip()
+    roots = (
+        [Path(value).expanduser().resolve() for value in configured.split(os.pathsep) if value]
+        if configured
+        else [RUNTIME_PATHS.var_root.resolve(), UPLOAD_DIR.resolve()]
+    )
+    # Preserve order while removing duplicates.
+    return tuple(dict.fromkeys(roots))
+
+
+ALLOWED_INPUT_ROOTS = _configured_allowed_input_roots()
 ALLOW_CPU_FALLBACK = os.getenv("VLM_ALLOW_CPU_FALLBACK", "0").strip().lower() in {
     "1",
     "true",
@@ -80,32 +97,45 @@ def _save_json(path: Path, data: Any) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def _resolve_image_from_request() -> tuple[Path | None, str | None]:
-    """Return image path or error message.
+def _is_within(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
 
-    Path mode is preferred because docker-compose mounts the same canonical
-    ``var/`` runtime root into both containers. File-upload mode is provided
-    for manual testing.
-    """
+
+def _resolve_allowed_image_path(raw_path: object) -> tuple[Path | None, str | None]:
+    try:
+        path = Path(str(raw_path)).expanduser().resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        return None, f"Image path cannot be resolved: {exc}"
+
+    if not path.is_file():
+        return None, f"Image path is not a file: {path}"
+    if not any(_is_within(path, root) for root in ALLOWED_INPUT_ROOTS):
+        return None, "Image path is outside the configured VLM input roots."
+    return path, None
+
+
+def _resolve_image_from_request() -> tuple[Path | None, str | None]:
+    """Return an uploaded or allow-listed shared-runtime image path."""
     if request.files.get("file") is not None:
         f = request.files["file"]
         if not f.filename:
             return None, "Uploaded file has no filename."
         name = secure_filename(f.filename) or f"vlm_upload_{int(time.time())}.jpg"
-        path = UPLOAD_DIR / name
+        path = (UPLOAD_DIR / name).resolve()
+        if not _is_within(path, UPLOAD_DIR.resolve()):
+            return None, "Uploaded filename resolves outside the upload directory."
         f.save(path)
         return path, None
 
     payload = request.get_json(silent=True) or {}
-    image_path = payload.get("image_path") or payload.get("path")
+    image_path = payload.get("image_path")
     if not image_path:
         return None, "Missing image_path in JSON body or file upload field."
-    path = Path(str(image_path))
-    if not path.exists():
-        return None, f"Image path does not exist inside receipt-vlm container: {path}"
-    if not path.is_file():
-        return None, f"Image path is not a file: {path}"
-    return path, None
+    return _resolve_allowed_image_path(image_path)
 
 
 def _transformers_runtime_status() -> dict[str, Any]:
@@ -260,7 +290,8 @@ def _prepare_image_for_vlm(
 def analyze():
     started = time.perf_counter()
     payload = request.get_json(silent=True) or {}
-    run_id = str(payload.get("run_id") or f"vlm_{int(started * 1000)}")
+    requested_run_id = str(payload.get("run_id") or f"vlm_{int(started * 1000)}")
+    run_id = secure_filename(requested_run_id)[:120] or f"vlm_{int(started * 1000)}"
     image_path, err = _resolve_image_from_request()
     if err:
         return jsonify(
@@ -277,11 +308,12 @@ def analyze():
     result_dir.mkdir(parents=True, exist_ok=True)
     out_json = result_dir / f"{run_id}_vlm_service_raw.json"
 
-    backend = str(payload.get("backend") or BACKEND or "paddleocr_vl").lower()
-    command = str(payload.get("command") or COMMAND or "")
-    timeout = float(payload.get("timeout_seconds") or TIMEOUT_SECONDS)
-    max_side = int(payload.get("max_side_limit") or MAX_SIDE_LIMIT)
-    runner = str(payload.get("runner") or RUNNER or "auto").strip().lower()
+    # Execution policy is trusted deployment configuration, never request data.
+    backend = str(BACKEND or "paddleocr_vl").lower()
+    command = str(COMMAND or "")
+    timeout = TIMEOUT_SECONDS
+    max_side = MAX_SIDE_LIMIT
+    runner = str(RUNNER or "auto").strip().lower()
 
     prepared_image_path, prepare_meta = _prepare_image_for_vlm(image_path, result_dir, max_side)
 

@@ -91,8 +91,8 @@ services:
 
   receipt-vlm:
     image: paddle-gemma-receipt-vlm:gpu-python-cu126
-    ports:
-      - "7870:7870"
+    expose:
+      - "7870"
     gpus: all
     environment:
       VLM_SERVICE_HOST: "0.0.0.0"
@@ -114,6 +114,7 @@ services:
       VLM_ALLOW_CPU_FALLBACK: "0"
       VLM_TIMEOUT_SECONDS: "900"
       VLM_SERVICE_MAX_SIDE_LIMIT: "1200"
+      VLM_ALLOWED_INPUT_ROOTS: "/app/var"
 
       CUDA_VISIBLE_DEVICES: "0"
       FLAGS_selected_gpus: "0"

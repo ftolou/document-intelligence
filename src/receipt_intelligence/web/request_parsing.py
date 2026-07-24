@@ -46,9 +46,12 @@ def normalize_vlm_backend(backend: str, service_url: str) -> str:
 
 def build_options_from_request() -> dict[str, Any]:
     """Read parser/runtime options from the current Flask request form."""
-    service_url = request.form.get("vlm_service_url") or settings.VLM_SERVICE_URL
+    # Infrastructure endpoints and executable commands are trusted server-side settings.
+    # Public form data may tune receipt-processing behavior, but it must not redirect
+    # internal HTTP calls or select commands executed by the host.
+    service_url = settings.VLM_SERVICE_URL
     return {
-        "ollama_url": request.form.get("ollama_url") or settings.OLLAMA_URL,
+        "ollama_url": settings.OLLAMA_URL,
         "model": request.form.get("model") or settings.OLLAMA_MODEL,
         "num_ctx": form_int("num_ctx", settings.NUM_CTX),
         "num_predict": form_int("num_predict", settings.NUM_PREDICT),
@@ -74,57 +77,25 @@ def build_options_from_request() -> dict[str, Any]:
         "vlm_enabled": as_bool(request.form.get("vlm_enabled"), settings.VLM_ENABLED),
         "vlm_service_url": service_url,
         "vlm_backend": normalize_vlm_backend(
-            request.form.get("vlm_backend") or settings.VLM_BACKEND,
+            settings.VLM_BACKEND,
             service_url,
         ),
-        "vlm_command": (
-            request.form.get("vlm_command")
-            if request.form.get("vlm_command") is not None
-            else settings.VLM_COMMAND
-        ),
-        "vlm_timeout_seconds": form_float("vlm_timeout_seconds", settings.VLM_TIMEOUT_SECONDS),
+        "vlm_command": settings.VLM_COMMAND,
+        "vlm_timeout_seconds": settings.VLM_TIMEOUT_SECONDS,
         "vlm_max_chars": form_int("vlm_max_chars", settings.VLM_MAX_CHARS),
         "vlm_correction_enabled": as_bool(
             request.form.get("vlm_correction_enabled"),
             settings.VLM_CORRECTION_ENABLED,
         ),
-        "vlm_gpu_orchestration": (
-            request.form.get("vlm_gpu_orchestration") or settings.VLM_GPU_ORCHESTRATION
-        ),
-        "ollama_unload_before_vlm": as_bool(
-            request.form.get("ollama_unload_before_vlm"),
-            settings.OLLAMA_UNLOAD_BEFORE_VLM,
-        ),
-        "ollama_reload_after_vlm": as_bool(
-            request.form.get("ollama_reload_after_vlm"),
-            settings.OLLAMA_RELOAD_AFTER_VLM,
-        ),
-        "ollama_control_mode": (
-            request.form.get("ollama_control_mode") or settings.OLLAMA_CONTROL_MODE
-        ),
-        "ollama_control_timeout_seconds": form_float(
-            "ollama_control_timeout_seconds",
-            settings.OLLAMA_CONTROL_TIMEOUT_SECONDS,
-        ),
-        "ollama_unload_command": (
-            request.form.get("ollama_unload_command")
-            if request.form.get("ollama_unload_command") is not None
-            else settings.OLLAMA_UNLOAD_COMMAND
-        ),
-        "ollama_start_command": (
-            request.form.get("ollama_start_command")
-            if request.form.get("ollama_start_command") is not None
-            else settings.OLLAMA_START_COMMAND
-        ),
-        "ollama_reload_prompt": (
-            request.form.get("ollama_reload_prompt")
-            if request.form.get("ollama_reload_prompt") is not None
-            else settings.OLLAMA_RELOAD_PROMPT
-        ),
-        "ollama_gpu_handoff_wait_seconds": form_float(
-            "ollama_gpu_handoff_wait_seconds",
-            settings.OLLAMA_GPU_HANDOFF_WAIT_SECONDS,
-        ),
+        "vlm_gpu_orchestration": settings.VLM_GPU_ORCHESTRATION,
+        "ollama_unload_before_vlm": settings.OLLAMA_UNLOAD_BEFORE_VLM,
+        "ollama_reload_after_vlm": settings.OLLAMA_RELOAD_AFTER_VLM,
+        "ollama_control_mode": settings.OLLAMA_CONTROL_MODE,
+        "ollama_control_timeout_seconds": settings.OLLAMA_CONTROL_TIMEOUT_SECONDS,
+        "ollama_unload_command": settings.OLLAMA_UNLOAD_COMMAND,
+        "ollama_start_command": settings.OLLAMA_START_COMMAND,
+        "ollama_reload_prompt": settings.OLLAMA_RELOAD_PROMPT,
+        "ollama_gpu_handoff_wait_seconds": settings.OLLAMA_GPU_HANDOFF_WAIT_SECONDS,
         "categorization_enabled": as_bool(
             request.form.get("categorization_enabled"),
             settings.CATEGORIZATION_ENABLED,

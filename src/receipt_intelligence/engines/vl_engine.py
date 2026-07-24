@@ -8,10 +8,11 @@ is not safe enough. The output is evidence, not final receipt semantics.
 Supported modes:
   - backend="http_service": call a separate receipt-vlm HTTP service container.
   - backend="paddleocr_vl": legacy/local adapter, disabled by default in receipt-app.
-  - command: user-supplied command template with {image} and {output_json}.
+  - command: server-configured command template with {image} and {output_json}.
 
 The command mode is deliberately generic because PaddleOCR-VL CLI/API details can
-change between PaddleOCR releases. The app stays runnable without VLM installed.
+change between PaddleOCR releases. Commands are parsed into argument vectors and
+run without a shell. The app stays runnable without VLM installed.
 """
 
 from __future__ import annotations
@@ -25,6 +26,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any, Callable
+
+from receipt_intelligence.runtime.command_execution import expand_command_template
 
 
 def _save_json(path: Path, data: Any) -> None:
@@ -441,16 +444,19 @@ def _run_command_backend(
     command_template: str, image_path: Path, output_json_path: Path, timeout_seconds: float
 ) -> dict[str, Any]:
     started = time.perf_counter()
-    cmd = command_template.format(
-        image=str(image_path), output_json=str(output_json_path), output=str(output_json_path)
-    )
+    cmd: list[str] = []
     try:
-        # Allow a full shell command because users may need to call python -m ...
-        # or a custom wrapper script. This is local developer tooling, not exposed
-        # as a public web parameter.
+        cmd = expand_command_template(
+            command_template,
+            {
+                "image": str(image_path),
+                "output_json": str(output_json_path),
+                "output": str(output_json_path),
+            },
+        )
         proc = subprocess.run(
             cmd,
-            shell=True,
+            shell=False,
             text=True,
             capture_output=True,
             timeout=timeout_seconds,
@@ -470,7 +476,8 @@ def _run_command_backend(
         return {
             "status": "ok" if proc.returncode == 0 else "error",
             "backend": "command",
-            "command": cmd,
+            "command": shlex.join(cmd),
+            "argv": cmd,
             "returncode": proc.returncode,
             "stdout_tail": proc.stdout[-4000:],
             "stderr_tail": proc.stderr[-4000:],
@@ -481,7 +488,8 @@ def _run_command_backend(
         return {
             "status": "error",
             "backend": "command",
-            "command": cmd,
+            "command": shlex.join(cmd) if cmd else command_template,
+            "argv": cmd,
             "error": f"{type(exc).__name__}: {exc}",
             "duration_seconds": round(time.perf_counter() - started, 2),
         }

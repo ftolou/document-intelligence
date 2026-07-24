@@ -47,8 +47,8 @@
           <div class="grid">
             <div class="field">
               <label>Ollama URL</label>
-              <input name="ollama_url" id="ollama_url" />
-              <small>Docker users often need <code>http://host.docker.internal:11434</code>.</small>
+              <input id="ollama_url" disabled />
+              <small>Server-managed deployment setting.</small>
             </div>
             <div class="field">
               <label>Ollama model</label>
@@ -83,13 +83,13 @@
             </div>
             <div class="field">
               <label>VLM backend</label>
-              <input name="vlm_backend" id="vlm_backend" />
-              <small>Use <code>http_service</code>. The main app routes old <code>paddleocr_vl</code> values to the separate service unless local VLM is explicitly allowed.</small>
+              <input id="vlm_backend" disabled />
+              <small>Server-managed deployment setting.</small>
             </div>
             <div class="field">
               <label>VLM service URL</label>
-              <input name="vlm_service_url" id="vlm_service_url" />
-              <small>Default in Docker Compose: <code>http://receipt-vlm:7870</code>.</small>
+              <input id="vlm_service_url" disabled />
+              <small>Server-managed internal service endpoint.</small>
             </div>
           </div>
         </div>

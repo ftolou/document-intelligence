@@ -3,16 +3,19 @@
 
 This is optional and best-effort only. It supports two modes:
   - api: call the Ollama HTTP API and ask it to unload or warm-load a model
-  - command: run local shell commands to stop/start Ollama or another GPU consumer
+  - command: run trusted executable commands without a shell
 """
 
 from __future__ import annotations
 
 import json
+import shlex
 import subprocess
 import time
 import urllib.request
 from typing import Any
+
+from receipt_intelligence.runtime.command_execution import split_command
 
 
 def _json_post(url: str, payload: dict[str, Any], timeout: float) -> dict[str, Any]:
@@ -34,10 +37,18 @@ def _json_post(url: str, payload: dict[str, Any], timeout: float) -> dict[str, A
 
 def _run_command(cmd: str, timeout: float) -> dict[str, Any]:
     started = time.perf_counter()
-    proc = subprocess.run(cmd, shell=True, text=True, capture_output=True, timeout=timeout)
+    argv = split_command(cmd)
+    proc = subprocess.run(
+        argv,
+        shell=False,
+        text=True,
+        capture_output=True,
+        timeout=timeout,
+    )
     return {
         "status": "ok" if proc.returncode == 0 else "error",
-        "command": cmd,
+        "command": shlex.join(argv),
+        "argv": argv,
         "returncode": proc.returncode,
         "stdout_tail": proc.stdout[-4000:],
         "stderr_tail": proc.stderr[-4000:],

@@ -19,6 +19,9 @@ TARGETS = [
     "src/receipt_intelligence/services/review_service.py",
     "src/receipt_intelligence/storage",
     "src/receipt_intelligence/runtime",
+    "src/receipt_intelligence/engines/vl_engine.py",
+    "src/receipt_intelligence/services/ollama_control.py",
+    "src/receipt_intelligence/services/vlm_service.py",
     "src/receipt_intelligence/extraction/__init__.py",
     "src/receipt_intelligence/extraction/artifacts.py",
     "src/receipt_intelligence/extraction/config.py",
@@ -39,6 +42,7 @@ TARGETS = [
     "scripts/run_tests.py",
     "scripts/run_test_profile.py",
     "scripts/check_dependency_compatibility.py",
+    "scripts/check_security_boundaries.py",
     "scripts/run_quality_checks.py",
     "scripts/verify_runtime_layout.py",
 ]
@@ -47,6 +51,7 @@ if importlib.util.find_spec("ruff") is None:
     raise SystemExit("Ruff is not installed. Run: python -m pip install -r requirements/dev.txt")
 
 commands = [
+    [sys.executable, "scripts/check_security_boundaries.py"],
     [sys.executable, "-m", "ruff", "check", *TARGETS],
     [sys.executable, "-m", "ruff", "format", "--check", *TARGETS],
 ]
