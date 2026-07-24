@@ -33,7 +33,6 @@ from receipt_intelligence.rag_sql.formatter import (
 )
 from receipt_intelligence.rag_sql.models import StrictModel
 
-
 ANSWER_FORMAT_SCHEMA_VERSION = "rag_sql_answer_format_v1"
 _ALLOWED_EVIDENCE_FIELDS = frozenset(APPROVED_EVIDENCE_FIELDS - {"item_id"})
 _PRODUCT_IDENTITY_FIELDS = frozenset(

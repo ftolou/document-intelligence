@@ -15,8 +15,8 @@ from receipt_intelligence.application.errors import (
     UnsupportedResourceError,
 )
 from receipt_intelligence.application.ports.jobs import (
-    JobDispatchRequest,
     JobDispatcher,
+    JobDispatchRequest,
     JobProcessor,
     JobQueueFullError,
     JobRepository,

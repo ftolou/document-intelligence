@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 from receipt_intelligence.application.resources import artifact_reference
 from receipt_intelligence.storage.job_store import JobStore

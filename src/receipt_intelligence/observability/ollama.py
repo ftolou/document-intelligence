@@ -16,6 +16,8 @@ from receipt_intelligence.adapters.llm.ollama_gateway import (
 from receipt_intelligence.application.ports.llm import (
     GenerationResult,
     ModelCallMetrics,
+)
+from receipt_intelligence.application.ports.llm import (
     metrics_to_diagnostics as metrics_to_diagnostics,
 )
 

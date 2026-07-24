@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
@@ -180,7 +180,7 @@ def apply_human_review(
         if "review_status" not in correction:
             item.setdefault("review_status", review.get("status") or "reviewed")
 
-    reviewed_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    reviewed_at = datetime.now(UTC).isoformat(timespec="seconds")
     updated["human_review"] = {
         "status": review.get("status") or "needs_review",
         "reviewer": review.get("reviewer") or "",

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from receipt_intelligence.application.ports.model_calls import (
@@ -68,7 +68,7 @@ class ModelCallUseCases:
         since = None
         if hours is not None and hours > 0:
             since = (
-                datetime.now(timezone.utc) - timedelta(hours=hours)
+                datetime.now(UTC) - timedelta(hours=hours)
             ).isoformat(timespec="seconds").replace("+00:00", "Z")
         return ModelCallFilter(
             since=since,

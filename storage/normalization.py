@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 _WORD_RE = re.compile(r"[\wäöüÄÖÜß]+", re.UNICODE)
@@ -113,7 +113,7 @@ PARSER_ITEM_TYPES = {
 
 
 def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def normalize_text(value: Any) -> str:

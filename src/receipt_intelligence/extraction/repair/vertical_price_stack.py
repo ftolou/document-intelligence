@@ -25,8 +25,9 @@ import copy
 import json
 import re
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from PIL import Image, ImageFilter, ImageOps
 
@@ -1503,7 +1504,7 @@ def run_vertical_price_stack_recovery(
         after_abs = abs(float(attempt.get("after_diff", before_diff) or before_diff))
         # Prefer applied/balanced, then more paired rows.
         applied_bonus = 0 if attempt.get("applied") else 1
-        paired = int(((attempt.get("pairing") or {}).get("paired_count") or 0))
+        paired = int((attempt.get("pairing") or {}).get("paired_count") or 0)
         return (after_abs + applied_bonus * 1000.0, -paired, -int(attempt.get("amount_count") or 0))
 
     for evidence in evidence_sets:

@@ -33,7 +33,7 @@ def jsonable(value: Any) -> Any:
             continue
     if hasattr(value, "res"):
         try:
-            return jsonable(getattr(value, "res"))
+            return jsonable(value.res)
         except Exception:
             pass
     return str(value)

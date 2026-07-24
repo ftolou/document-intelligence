@@ -32,11 +32,11 @@ def build_extraction_metrics(
     """
 
     if context is not None:
-        config = getattr(context, "config")
-        run_id = str(getattr(config, "run_id"))
-        started_at = str(getattr(context, "started_at_utc"))
-        duration_ms = float(getattr(context, "duration_seconds")) * 1000.0
-        stages = tuple(getattr(context, "stage_trace"))
+        config = context.config
+        run_id = str(config.run_id)
+        started_at = str(context.started_at_utc)
+        duration_ms = float(context.duration_seconds) * 1000.0
+        stages = tuple(context.stage_trace)
 
     if run_id is None or started_at is None or duration_ms is None or stages is None:
         raise TypeError(

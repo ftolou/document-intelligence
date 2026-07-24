@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from receipt_intelligence.utils.text import normalize_text
@@ -115,7 +115,7 @@ PARSER_ITEM_TYPES = {
 
 
 def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def tokenize(value: Any) -> list[str]:

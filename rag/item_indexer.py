@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Iterable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
@@ -351,7 +351,7 @@ class ItemEmbeddingIndexer:
     ) -> None:
         if result.count != len(documents):
             raise ValueError("Embedding result count does not match document batch.")
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         records = [
             (
                 document.item_id,
@@ -415,7 +415,7 @@ class ItemEmbeddingIndexer:
                     indexed_count,
                     failed_count,
                     last_indexed_item_id,
-                    datetime.now(timezone.utc).isoformat(),
+                    datetime.now(UTC).isoformat(),
                     last_error,
                 ),
             )

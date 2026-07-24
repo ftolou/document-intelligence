@@ -29,7 +29,7 @@ class VlmHttpSettings:
     port: int
 
     @classmethod
-    def from_environment(cls) -> "VlmHttpSettings":
+    def from_environment(cls) -> VlmHttpSettings:
         package_dir = Path(__file__).resolve().parent
         project_root = Path(os.getenv("APP_PROJECT_ROOT", Path.cwd())).resolve()
         candidate_root = package_dir.parents[3]

@@ -31,6 +31,7 @@ from receipt_intelligence.rag_sql.schema_catalog import (
     StaticSchemaCatalog,
 )
 
+
 class RagSqlPlanningError(RuntimeError):
     """Raised when the LLM cannot produce a valid structured SQL plan."""
 

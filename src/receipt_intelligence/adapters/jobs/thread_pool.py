@@ -10,8 +10,8 @@ import uuid
 from concurrent.futures import Future, ThreadPoolExecutor
 
 from receipt_intelligence.application.ports.jobs import (
-    JobDispatchRequest,
     JobDispatcher,
+    JobDispatchRequest,
     JobProcessor,
     JobQueueFullError,
     JobRepository,

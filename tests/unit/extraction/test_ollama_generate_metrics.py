@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from receipt_intelligence.extraction.parsing import llm_parser
 from receipt_intelligence.adapters.llm import ollama_gateway
+from receipt_intelligence.extraction.parsing import llm_parser
 
 
 def test_ollama_generate_attaches_provider_metrics(monkeypatch) -> None:

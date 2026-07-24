@@ -18,6 +18,7 @@ from receipt_intelligence.application.ports.llm import (
 from receipt_intelligence.prompts import render_prompt_template
 from receipt_intelligence.rag_sql.models import QuestionAnalysisPayload, QuestionAnalysisResult
 
+
 class QuestionAnalysisError(RuntimeError):
     """Raised when no valid structured analysis is produced."""
 

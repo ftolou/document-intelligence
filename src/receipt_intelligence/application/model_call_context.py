@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from dataclasses import dataclass, replace
-from typing import Iterator
 
 
 @dataclass(frozen=True, slots=True)

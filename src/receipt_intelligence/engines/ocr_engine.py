@@ -19,9 +19,10 @@ os.environ.setdefault("FLAGS_use_onednn", "0")
 
 import json
 import time
+from collections.abc import Callable
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 from PIL import Image

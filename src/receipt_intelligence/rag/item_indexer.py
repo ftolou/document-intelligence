@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Protocol
 
 from receipt_intelligence.rag.item_documents import (
@@ -272,7 +272,7 @@ class ItemEmbeddingIndexer:
     ) -> None:
         if result.count != len(documents):
             raise ValueError("Embedding result count does not match document batch.")
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         self.repository.store_embeddings(
             [
                 StoredItemEmbedding(
@@ -305,7 +305,7 @@ class ItemEmbeddingIndexer:
                 indexed_count=indexed_count,
                 failed_count=failed_count,
                 last_indexed_item_id=last_indexed_item_id,
-                last_completed_at=datetime.now(timezone.utc).isoformat(),
+                last_completed_at=datetime.now(UTC).isoformat(),
                 last_error=last_error,
             )
         )

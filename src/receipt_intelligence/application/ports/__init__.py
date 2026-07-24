@@ -6,8 +6,8 @@ from receipt_intelligence.application.ports.events import (
     NullEventSink,
 )
 from receipt_intelligence.application.ports.jobs import (
-    JobDispatchRequest,
     JobDispatcher,
+    JobDispatchRequest,
     JobProcessor,
     JobQueueFullError,
     JobRepository,

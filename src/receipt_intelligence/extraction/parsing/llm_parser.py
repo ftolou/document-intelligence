@@ -50,7 +50,6 @@ from receipt_intelligence.extraction.evidence.spatial_document import (
 from receipt_intelligence.extraction.evidence.visual import visual_evidence_to_prompt_text
 from receipt_intelligence.prompts import render_prompt_template
 
-
 # Accept JSON/model amount strings with decimal comma or decimal dot, but OCR
 # amount extraction below uses extract_ocr_amounts() to avoid parsing dates like
 # 09.12 as money.
