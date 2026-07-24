@@ -1,5 +1,10 @@
 """Stable application ports implemented by infrastructure adapters."""
 
+from receipt_intelligence.application.ports.events import (
+    ApplicationEvent,
+    EventSink,
+    NullEventSink,
+)
 from receipt_intelligence.application.ports.jobs import (
     JobDispatchRequest,
     JobDispatcher,
@@ -15,6 +20,11 @@ from receipt_intelligence.application.ports.llm import (
     ModelCallMetrics,
     coerce_generation_result,
     metrics_to_diagnostics,
+)
+from receipt_intelligence.application.ports.model_calls import (
+    ModelCallFilter,
+    ModelCallRepository,
+    ModelPricingInput,
 )
 from receipt_intelligence.application.ports.model_lifecycle import (
     ModelLifecycleCoordinator,
@@ -32,6 +42,8 @@ from receipt_intelligence.application.ports.runtime import RuntimeInformation
 from receipt_intelligence.application.ports.vlm import VlmEngine, VlmRequest
 
 __all__ = [
+    "ApplicationEvent",
+    "EventSink",
     "GenerationRequest",
     "GenerationResult",
     "GenerationValue",
@@ -41,10 +53,14 @@ __all__ = [
     "JobQueueFullError",
     "JobRepository",
     "LlmGateway",
+    "ModelCallFilter",
     "ModelCallMetrics",
+    "ModelCallRepository",
+    "ModelPricingInput",
     "ModelLifecycleCoordinator",
     "ModelLifecycleRequest",
     "NoOpModelLifecycleCoordinator",
+    "NullEventSink",
     "OcrEngine",
     "OcrRequest",
     "ReceiptEditor",

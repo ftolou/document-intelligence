@@ -67,12 +67,22 @@ class ModelCallMetrics(BaseModel):
 class GenerationRequest:
     model: str
     prompt: str
+    operation: str = "generation"
+    attempt: int = 1
     num_ctx: int = 24384
     num_predict: int = 8192
     temperature: float = 0.0
     keep_alive: str | None = None
     timeout_seconds: float = 240.0
     format_json: bool = True
+
+    def __post_init__(self) -> None:
+        operation = str(self.operation or "").strip()
+        if not operation:
+            raise ValueError("GenerationRequest.operation must not be empty.")
+        if self.attempt < 1:
+            raise ValueError("GenerationRequest.attempt must be >= 1.")
+        object.__setattr__(self, "operation", operation)
 
 
 @dataclass(frozen=True, slots=True)

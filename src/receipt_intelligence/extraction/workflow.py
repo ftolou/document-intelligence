@@ -5,11 +5,11 @@ from __future__ import annotations
 import time
 from collections.abc import Iterable
 
+from receipt_intelligence.application.events import ExtractionRunEvent
 from receipt_intelligence.extraction.artifacts import copy_alias, save_json
 from receipt_intelligence.extraction.context import ExtractionContext
 from receipt_intelligence.extraction.stages.base import ExtractionStage
 from receipt_intelligence.extraction.state import ExtractionPhase
-from receipt_intelligence.observability.extraction import build_extraction_metrics
 from receipt_intelligence.observability.timing import elapsed_ms, utc_now_iso
 
 
@@ -78,13 +78,19 @@ class ReceiptExtractionWorkflow:
             paths["latest_extraction_stage_trace"] = stage_trace_alias
         metrics_path = paths.get("extraction_metrics")
         if metrics_path:
-            save_json(
-                metrics_path,
-                build_extraction_metrics(context, status=status, error=error),
-            )
             metrics_alias = context.config.result_dir / "latest_extraction_metrics.json"
-            copy_alias(metrics_path, metrics_alias)
             paths["latest_extraction_metrics"] = metrics_alias
+            context.dependencies.event_sink.publish(
+                ExtractionRunEvent(
+                    run_id=context.config.run_id,
+                    status=status,
+                    started_at=context.started_at_utc,
+                    occurred_at=utc_now_iso(),
+                    duration_ms=round(context.duration_seconds * 1000.0, 3),
+                    stages=tuple(dict(entry) for entry in context.stage_trace),
+                    error=error,
+                )
+            )
 
 
 def _phase_value(phase: ExtractionPhase | None) -> str | None:

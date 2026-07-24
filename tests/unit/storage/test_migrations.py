@@ -29,7 +29,7 @@ def test_fresh_database_applies_all_versioned_migrations(tmp_path: Path) -> None
             ).fetchall()
         }
 
-    assert versions == [1, 2, 3, 4, 5, 6]
+    assert versions == list(range(1, LATEST_SCHEMA_VERSION + 1))
     assert schema_version == str(LATEST_SCHEMA_VERSION)
     assert {
         "receipts",
@@ -40,6 +40,8 @@ def test_fresh_database_applies_all_versioned_migrations(tmp_path: Path) -> None
         "rag_index_state",
         "analytics_receipts",
         "analytics_purchase_items",
+        "model_calls",
+        "model_pricing",
     } <= tables
     assert database.migrations.current_version() == LATEST_SCHEMA_VERSION
 

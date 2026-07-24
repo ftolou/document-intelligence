@@ -13,6 +13,7 @@ from receipt_intelligence.storage.receipt_db import ReceiptDatabase
 from receipt_intelligence.web.dependencies import init_app_services
 from receipt_intelligence.web.routes.core import core_bp
 from receipt_intelligence.web.routes.jobs import jobs_bp
+from receipt_intelligence.web.routes.model_calls import model_calls_bp
 from receipt_intelligence.web.routes.query import query_bp
 from receipt_intelligence.web.routes.receipts import receipts_bp
 from receipt_intelligence.web.routes.review import review_bp
@@ -51,4 +52,5 @@ def create_app(
     app.register_blueprint(review_bp)
     app.register_blueprint(receipts_bp)
     app.register_blueprint(query_bp)
+    app.register_blueprint(model_calls_bp)
     return app

@@ -8,14 +8,18 @@ from dataclasses import dataclass
 from flask import Flask, current_app
 
 import receipt_intelligence.settings as settings
-from receipt_intelligence.application.ports import JobDispatcher, OcrEngine
+from receipt_intelligence.adapters.observability import JsonlEventSink
+from receipt_intelligence.adapters.storage.sqlite.model_calls import (
+    SQLiteModelCallRepository,
+)
+from receipt_intelligence.application.ports import EventSink, JobDispatcher, OcrEngine
 from receipt_intelligence.application.use_cases.jobs import JobUseCases
+from receipt_intelligence.application.use_cases.model_calls import ModelCallUseCases
 from receipt_intelligence.application.use_cases.query import AskReceipts, ReceiptQueryExecutor
 from receipt_intelligence.application.use_cases.receipts import ReceiptUseCases
 from receipt_intelligence.application.use_cases.reviews import ReviewUseCases
 from receipt_intelligence.application.use_cases.runtime import RuntimeUseCases
 from receipt_intelligence.composition import build_job_dispatcher, build_ocr_engine
-from receipt_intelligence.observability.query import QueryTelemetrySink
 from receipt_intelligence.runtime.paths import RuntimePaths
 from receipt_intelligence.services.database_receipt_editor import DatabaseReceiptEditor
 from receipt_intelligence.services.job_processing import JobProcessingService
@@ -36,6 +40,7 @@ class AppServices:
     runtime: RuntimeUseCases
     job_dispatcher: JobDispatcher
     query_executor: ReceiptQueryExecutor
+    model_calls: ModelCallUseCases
 
     def shutdown(self, *, wait: bool = True, cancel_futures: bool = False) -> None:
         self.job_dispatcher.shutdown(wait=wait, cancel_futures=cancel_futures)
@@ -49,7 +54,7 @@ def init_app_services(
     *,
     job_store: JobStore | None = None,
     receipt_db: ReceiptDatabase | None = None,
-    query_telemetry: QueryTelemetrySink | None = None,
+    query_telemetry: EventSink | None = None,
     receipt_query_service: ReceiptQueryExecutor | None = None,
     runtime_paths: RuntimePaths | None = None,
     ocr_engine: OcrEngine | None = None,
@@ -63,7 +68,10 @@ def init_app_services(
     )
     resolved_store = job_store or JobStore(settings.RESULTS_DIR)
     resolved_database = receipt_db or ReceiptDatabase(settings.RECEIPT_DB_PATH)
-    resolved_telemetry = query_telemetry or QueryTelemetrySink.from_path(
+    model_call_repository = SQLiteModelCallRepository(
+        resolved_database.db_path, enabled=settings.MODEL_CALL_TELEMETRY_ENABLED
+    )
+    resolved_telemetry = query_telemetry or JsonlEventSink(
         telemetry_path,
         enabled=settings.QUERY_TELEMETRY_ENABLED,
     )
@@ -75,6 +83,7 @@ def init_app_services(
 
         resolved_query_service = build_receipt_query_service_from_settings(
             telemetry_sink=resolved_telemetry,
+            model_call_sink=model_call_repository,
         )
     else:
         resolved_query_service = receipt_query_service
@@ -113,6 +122,7 @@ def init_app_services(
         runtime=RuntimeUseCases(RuntimeInformationService(resolved_database, resolved_paths)),
         job_dispatcher=resolved_dispatcher,
         query_executor=resolved_query_service,
+        model_calls=ModelCallUseCases(model_call_repository),
     )
     app.extensions[_EXTENSION_KEY] = services
     if settings.JOB_RECOVER_PENDING:

@@ -6,7 +6,7 @@ from typing import Any
 
 import receipt_intelligence.settings as settings
 from receipt_intelligence.app_version import app_version_payload, get_app_version
-from receipt_intelligence.observability.readiness import build_readiness_report
+from receipt_intelligence.runtime.readiness import build_readiness_report
 from receipt_intelligence.runtime.paths import RuntimePaths
 from receipt_intelligence.storage.receipt_db import ReceiptDatabase
 

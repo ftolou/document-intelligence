@@ -28,9 +28,9 @@ from receipt_intelligence.rag_sql.graph_support import (
     append_graph_trace,
     append_stage,
     error_response,
+    attach_model_call_summary,
     map_resolved_entity,
-    ollama_details,
-    ollama_summary,
+    model_call_details,
     terminal_response,
 )
 from receipt_intelligence.rag_sql.models import RagSqlResponse
@@ -115,7 +115,7 @@ class RagSqlGraphNodes:
                 "entity_count": len(analysis.entities),
                 "attempts": analysis.attempts,
                 "model": analysis.model,
-                **ollama_details(analysis.ollama_calls),
+                **model_call_details(analysis.ollama_calls),
             },
         )
         diagnostics["analysis"] = analysis.model_dump(mode="json")
@@ -187,7 +187,7 @@ class RagSqlGraphNodes:
             "total_candidates": search_result.total_candidates,
             "duration_ms": search_duration_ms,
             "model": search_result.model,
-            **ollama_details(search_result.ollama_calls),
+            **model_call_details(search_result.ollama_calls),
         }
         retrieval_diagnostics.append(retrieval_event)
         append_stage(
@@ -233,7 +233,7 @@ class RagSqlGraphNodes:
                 "uncertain_item_count": len(resolution.uncertain_item_ids),
                 "attempts": resolution.attempts,
                 "model": resolution.model,
-                **ollama_details(resolution.ollama_calls),
+                **model_call_details(resolution.ollama_calls),
             },
         )
         resolved_entities = list(state.get("resolved_entities") or [])
@@ -319,7 +319,7 @@ class RagSqlGraphNodes:
                 "attempts": plan.attempts,
                 "model": plan.model,
                 "result_shape": plan.result_shape,
-                **ollama_details(plan.ollama_calls),
+                **model_call_details(plan.ollama_calls),
             },
         )
         diagnostics["sql_plan"] = plan.model_dump(mode="json")
@@ -470,7 +470,7 @@ class RagSqlGraphNodes:
                 "model": repaired_plan.model,
                 "result_shape": repaired_plan.result_shape,
                 "validation_error": state.get("validation_error"),
-                **ollama_details(repaired_plan.ollama_calls),
+                **model_call_details(repaired_plan.ollama_calls),
             },
         )
         sql_plan_attempts = list(diagnostics.get("sql_plan_attempts") or [])
@@ -668,7 +668,7 @@ class RagSqlGraphNodes:
                 0.0,
                 {
                     "error": f"{type(exc).__name__}: {exc}",
-                    **ollama_details(exc.ollama_calls),
+                    **model_call_details(exc.ollama_calls),
                 },
             )
             append_graph_trace(diagnostics, node="format_answer_with_llm", route="finalize")
@@ -718,7 +718,7 @@ class RagSqlGraphNodes:
                 "model": result.model,
                 "attempts": result.attempts,
                 "value_count": len(result.values),
-                **ollama_details(result.ollama_calls),
+                **model_call_details(result.ollama_calls),
             },
         )
         append_graph_trace(diagnostics, node="format_answer_with_llm", route="validate_answer")
@@ -797,7 +797,7 @@ class RagSqlGraphNodes:
 
         append_graph_trace(diagnostics, node="finalize_response", route="terminal")
         diagnostics["duration_ms"] = (time.perf_counter() - state["started_at_perf"]) * 1000.0
-        diagnostics["ollama_summary"] = ollama_summary(diagnostics)
+        attach_model_call_summary(diagnostics)
         response = RagSqlResponse(
             question=state["question"],
             status=response_status,

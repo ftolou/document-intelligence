@@ -839,6 +839,7 @@ def categorize_receipt_items_llm(
                 GenerationRequest(
                     model=model,
                     prompt=prompt,
+                    operation="receipt_item_categorization",
                     num_ctx=num_ctx,
                     num_predict=num_predict,
                     temperature=0.0,

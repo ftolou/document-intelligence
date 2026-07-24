@@ -149,6 +149,8 @@ class CandidateResolver:
                     request=GenerationRequest(
                         model=self.config.model,
                         prompt=prompt,
+                        operation="rag_candidate_resolution",
+                        attempt=attempt,
                         num_ctx=self.config.num_ctx,
                         num_predict=self.config.num_predict,
                         temperature=0.0,

@@ -6,7 +6,7 @@ from pathlib import Path
 from receipt_intelligence.observability.query import QueryTelemetrySink
 
 
-def test_query_telemetry_writes_rag_sql_graph_event(tmp_path: Path) -> None:
+def test_query_telemetry_writes_provider_neutral_graph_event(tmp_path: Path) -> None:
     path = tmp_path / "query_events.jsonl"
     sink = QueryTelemetrySink.from_path(path)
     sink.record(
@@ -26,8 +26,9 @@ def test_query_telemetry_writes_rag_sql_graph_event(tmp_path: Path) -> None:
                     {"name": "validate_sql_attempt_1", "status": "done", "duration_ms": 0.5},
                     {"name": "execute_sql", "status": "done", "duration_ms": 1.0},
                 ],
-                "ollama_summary": {
+                "model_call_summary": {
                     "call_count": 2,
+                    "providers": {"ollama": 2},
                     "total_request_duration_ms": 10.0,
                     "total_load_duration_ms": 1.0,
                     "total_generation_duration_ms": 7.0,
@@ -47,7 +48,8 @@ def test_query_telemetry_writes_rag_sql_graph_event(tmp_path: Path) -> None:
     )
 
     event = json.loads(path.read_text(encoding="utf-8"))
-    assert event["schema_version"] == "query_execution_event_v5"
+    assert event["schema_version"] == "query_execution_event_v6"
+    assert event["event_name"] == "query.executed"
     assert event["query_id"] == "q_test"
     assert event["engine"] == "rag_sql"
     assert event["orchestrator"] == "langgraph"
@@ -55,6 +57,7 @@ def test_query_telemetry_writes_rag_sql_graph_event(tmp_path: Path) -> None:
     assert event["validation_attempts"] == 1
     assert event["repair_attempts"] == 0
     assert event["row_count"] == 1
-    assert event["ollama"]["call_count"] == 2
-    assert event["orchestrator"] == "langgraph"
+    assert event["model_calls"]["call_count"] == 2
+    assert event["model_calls"]["providers"] == {"ollama": 2}
+    assert "ollama" not in event
     assert "tool_calls" not in event

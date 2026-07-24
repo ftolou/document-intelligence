@@ -14,6 +14,11 @@ Replace this comment with a genuine, anonymized screenshot before publishing:
 ![Human review interface](docs/screenshots/04-human-review.png)
 -->
 
+
+## Model-call usage and cost
+
+The **Models** tab records provider-reported input/output tokens and timing for each instrumented LLM call. Configure input and output prices per one million tokens to calculate scenario costs without hardcoding provider pricing. See `docs/MODEL_CALL_DASHBOARD.md`.
+
 ## Why I built it
 
 I first worked on receipt understanding with a CRNN-based OCR pipeline. Character recognition was not the reason I stopped that project: the unresolved problem was semantic interpretation. A system still had to decide which lines were products, how quantities and discounts related to prices, and which values represented totals, payments, or taxes.

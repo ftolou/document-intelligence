@@ -1,7 +1,7 @@
-"""Application-owned observability helpers.
+"""Compatibility observability exports and lightweight timing helpers.
 
-The package intentionally avoids external telemetry dependencies. Runtime events
-are represented as JSON-compatible dictionaries and can be persisted as JSONL.
+New workflows publish typed application events through ``EventSink`` ports.
+Concrete persistence implementations live under ``adapters.observability``.
 """
 
 from receipt_intelligence.application.ports.llm import ModelCallMetrics

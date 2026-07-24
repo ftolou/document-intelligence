@@ -28,6 +28,7 @@
       <button type="button" class="tab-button" data-tab-target="batch" aria-selected="false"><span>Batch</span><small>Folder runner</small></button>
       <button type="button" class="tab-button" data-tab-target="review" aria-selected="false"><span>Review</span><small>Approval queue</small></button>
       <button type="button" class="tab-button" data-tab-target="ask" aria-selected="false"><span>Ask</span><small>Receipt analytics</small></button>
+      <button type="button" class="tab-button" data-tab-target="models" aria-selected="false"><span>Models</span><small>Tokens &amp; cost</small></button>
       <button type="button" class="tab-button" data-tab-target="data" aria-selected="false"><span>Receipt data</span><small>Maintenance</small></button>
     </nav>
 
@@ -320,6 +321,38 @@
           </div>
         </section>
 
+      </section>
+    </section>
+
+
+    <section class="tab-panel" id="tab-models" data-tab-panel="models" hidden>
+      <section class="model-dashboard">
+        <header class="section-hero">
+          <div><p class="section-kicker">LLM usage analytics</p><h2>Model calls, tokens &amp; estimated cost</h2><p class="sub">Each generation call is recorded with provider-reported input/output tokens and timing. Costs use your configured price per one million tokens.</p></div>
+          <button id="refresh-model-dashboard" type="button" class="button-secondary">Refresh</button>
+        </header>
+        <section class="card model-filter-bar">
+          <label>Range<select id="model-call-hours"><option value="1">1 hour</option><option value="24" selected>24 hours</option><option value="168">7 days</option><option value="720">30 days</option><option value="all">All</option></select></label>
+          <label>Provider<input id="model-call-provider" placeholder="ollama" /></label>
+          <label>Model<input id="model-call-model" placeholder="gemma4" /></label>
+          <label>Operation<input id="model-call-operation" placeholder="receipt_main_parse" /></label>
+          <label>Status<select id="model-call-status"><option value="">All</option><option value="completed">Completed</option><option value="failed">Failed</option></select></label>
+        </section>
+        <section id="model-call-summary" class="metric-card-grid"></section>
+        <section class="dashboard-grid">
+          <article class="card"><h3>Usage by operation</h3><div id="model-operation-summary" class="table-scroll"></div></article>
+          <article class="card"><h3>Pricing catalog</h3><p class="sub small">Enter hypothetical or provider prices per 1M tokens. Existing calls are recalculated immediately.</p>
+            <form id="model-pricing-form" class="pricing-form">
+              <input id="pricing-provider" placeholder="Provider" required />
+              <input id="pricing-model" placeholder="Model" required />
+              <input id="pricing-currency" value="EUR" maxlength="3" required />
+              <input id="pricing-input" type="number" step="0.000001" min="0" placeholder="Input / 1M" required />
+              <input id="pricing-output" type="number" step="0.000001" min="0" placeholder="Output / 1M" required />
+              <button type="submit">Save pricing</button>
+            </form><div id="model-pricing-list" class="table-scroll"></div>
+          </article>
+        </section>
+        <section class="card"><div class="row-between"><div><h3>Individual model calls</h3><p class="sub small">Prompt evaluation and generation durations come directly from the provider when available.</p></div><span id="model-call-count-badge" class="badge neutral">0 calls</span></div><div id="model-call-table" class="table-scroll"></div></section>
       </section>
     </section>
 

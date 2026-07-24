@@ -330,6 +330,7 @@ def run_table_interpreter(
                 GenerationRequest(
                     model=model,
                     prompt=prompt,
+                    operation="receipt_table_interpretation",
                     num_ctx=num_ctx,
                     num_predict=num_predict,
                     temperature=0.0,

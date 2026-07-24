@@ -79,26 +79,28 @@ def append_graph_trace(
     trace.append({"node": node, "route": route})
 
 
-def ollama_details(calls: object) -> dict[str, object]:
+def model_call_details(calls: object) -> dict[str, object]:
     if not isinstance(calls, (list, tuple)):
         return {}
     typed_calls = [call for call in calls if isinstance(call, ModelCallMetrics)]
     if not typed_calls:
         return {}
-    return {"ollama_calls": metrics_to_diagnostics(typed_calls)}
+    return {"model_calls": metrics_to_diagnostics(typed_calls)}
 
 
-def ollama_summary(diagnostics: dict[str, object]) -> dict[str, object]:
+def model_call_summary(diagnostics: dict[str, object]) -> dict[str, object]:
     stages = diagnostics.get("stages")
     if not isinstance(stages, list):
-        return {"call_count": 0}
+        return {"call_count": 0, "providers": {}}
 
     calls: list[dict[str, object]] = []
     for stage in stages:
         if not isinstance(stage, dict):
             continue
         stage_name = str(stage.get("name") or "")
-        stage_calls = stage.get("ollama_calls")
+        stage_calls = stage.get("model_calls")
+        if not isinstance(stage_calls, list):
+            stage_calls = stage.get("ollama_calls")
         if not isinstance(stage_calls, list):
             continue
         for index, call in enumerate(stage_calls, start=1):
@@ -108,8 +110,14 @@ def ollama_summary(diagnostics: dict[str, object]) -> dict[str, object]:
     def total(field: str) -> float:
         return round(sum(float(call.get(field) or 0.0) for call in calls), 3)
 
+    providers: dict[str, int] = {}
+    for call in calls:
+        provider = str(call.get("provider") or "unknown")
+        providers[provider] = providers.get(provider, 0) + 1
+
     return {
         "call_count": len(calls),
+        "providers": providers,
         "total_request_duration_ms": total("request_duration_ms"),
         "total_provider_duration_ms": total("total_duration_ms"),
         "total_load_duration_ms": total("load_duration_ms"),
@@ -117,6 +125,26 @@ def ollama_summary(diagnostics: dict[str, object]) -> dict[str, object]:
         "total_generation_duration_ms": total("eval_duration_ms"),
         "calls": calls,
     }
+
+
+def attach_model_call_summary(diagnostics: dict[str, object]) -> dict[str, object]:
+    summary = model_call_summary(diagnostics)
+    diagnostics["model_call_summary"] = summary
+    # Compatibility for clients that still read the historical provider-specific key.
+    diagnostics["ollama_summary"] = summary
+    return summary
+
+
+def ollama_details(calls: object) -> dict[str, object]:
+    """Deprecated alias for :func:`model_call_details`."""
+
+    return model_call_details(calls)
+
+
+def ollama_summary(diagnostics: dict[str, object]) -> dict[str, object]:
+    """Deprecated alias for :func:`model_call_summary`."""
+
+    return model_call_summary(diagnostics)
 
 
 def terminal_response(
@@ -129,7 +157,7 @@ def terminal_response(
     clarification_question: str | None = None,
 ) -> RagSqlResponse:
     diagnostics["duration_ms"] = (time.perf_counter() - started) * 1000.0
-    diagnostics["ollama_summary"] = ollama_summary(diagnostics)
+    attach_model_call_summary(diagnostics)
     return RagSqlResponse(
         question=question,
         status=status,  # type: ignore[arg-type]
@@ -146,7 +174,7 @@ def error_response(
     diagnostics: dict[str, object],
     started: float,
 ) -> RagSqlResponse:
-    exception_calls = getattr(exc, "ollama_calls", [])
+    exception_calls = getattr(exc, "model_calls", getattr(exc, "ollama_calls", []))
     append_stage(
         diagnostics,
         error_code,
@@ -154,11 +182,11 @@ def error_response(
         0.0,
         {
             "error": f"{type(exc).__name__}: {exc}",
-            **ollama_details(exception_calls),
+            **model_call_details(exception_calls),
         },
     )
     diagnostics["duration_ms"] = (time.perf_counter() - started) * 1000.0
-    diagnostics["ollama_summary"] = ollama_summary(diagnostics)
+    attach_model_call_summary(diagnostics)
     return RagSqlResponse(
         question=question,
         status="error",
@@ -176,6 +204,9 @@ __all__ = [
     "append_stage",
     "error_response",
     "map_resolved_entity",
+    "attach_model_call_summary",
+    "model_call_details",
+    "model_call_summary",
     "ollama_details",
     "ollama_summary",
     "terminal_response",

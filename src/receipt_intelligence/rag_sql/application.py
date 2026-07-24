@@ -7,7 +7,9 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from receipt_intelligence.observability.query import QueryTelemetrySink
+from receipt_intelligence.application.events import query_execution_event_from_payload
+from receipt_intelligence.application.model_call_context import bind_model_call_context
+from receipt_intelligence.application.ports.events import EventSink
 from receipt_intelligence.observability.timing import utc_now_iso
 from receipt_intelligence.rag_sql.orchestration.contracts import RAG_SQL_GRAPH_VERSION
 from receipt_intelligence.rag_sql.runtime import (
@@ -21,14 +23,15 @@ class ReceiptQueryService:
     """Execute receipt questions through RAG-SQL and attach app metadata."""
 
     runtime: RagSqlRuntime
-    telemetry_sink: QueryTelemetrySink | None = None
+    telemetry_sink: EventSink | None = None
 
     def execute(self, question: str, *, limit: int = 25) -> dict[str, Any]:
         query_id = f"q_{uuid.uuid4().hex}"
         started_at = utc_now_iso()
         started_perf = time.perf_counter()
 
-        response = self.runtime.execute(question)
+        with bind_model_call_context(trace_id=query_id, query_id=query_id):
+            response = self.runtime.execute(question)
         payload = response.model_dump(mode="json")
         diagnostics = payload.setdefault("diagnostics", {})
         orchestrator_name = str(
@@ -67,7 +70,9 @@ class ReceiptQueryService:
             "sql_generation_by_llm": True,
         }
         if self.telemetry_sink is not None:
-            self.telemetry_sink.record(payload)
+            self.telemetry_sink.publish(
+                query_execution_event_from_payload(payload, occurred_at=utc_now_iso())
+            )
         return payload
 
     def close(self) -> None:
@@ -78,10 +83,11 @@ class ReceiptQueryService:
 
 def build_receipt_query_service_from_settings(
     *,
-    telemetry_sink: QueryTelemetrySink | None = None,
+    telemetry_sink: EventSink | None = None,
+    model_call_sink: EventSink | None = None,
 ) -> ReceiptQueryService:
     return ReceiptQueryService(
-        runtime=build_rag_sql_runtime_from_settings(),
+        runtime=build_rag_sql_runtime_from_settings(event_sink=model_call_sink),
         telemetry_sink=telemetry_sink,
     )
 

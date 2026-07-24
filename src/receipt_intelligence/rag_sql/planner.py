@@ -188,6 +188,8 @@ class RagSqlPlanner:
                     request=GenerationRequest(
                         model=self.config.model,
                         prompt=prompt,
+                        operation="rag_sql_planning",
+                        attempt=attempt,
                         num_ctx=self.config.num_ctx,
                         num_predict=self.config.num_predict,
                         temperature=0.0,

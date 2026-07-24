@@ -55,6 +55,8 @@ TARGETS = [
     "scripts/check_application_boundaries.py",
     "scripts/check_job_dispatch_boundaries.py",
     "scripts/check_rag_sql_composition.py",
+    "scripts/check_observability_boundaries.py",
+    "scripts/check_model_call_observability.py",
     "scripts/run_quality_checks.py",
     "scripts/verify_runtime_layout.py",
 ]
@@ -72,6 +74,8 @@ commands = [
     [sys.executable, "scripts/check_application_boundaries.py"],
     [sys.executable, "scripts/check_job_dispatch_boundaries.py"],
     [sys.executable, "scripts/check_rag_sql_composition.py"],
+    [sys.executable, "scripts/check_observability_boundaries.py"],
+    [sys.executable, "scripts/check_model_call_observability.py"],
     [sys.executable, "-m", "ruff", "check", *TARGETS],
     [sys.executable, "-m", "ruff", "format", "--check", *TARGETS],
 ]

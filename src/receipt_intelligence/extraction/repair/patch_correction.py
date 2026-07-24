@@ -307,6 +307,8 @@ def run_patch_correction_pass(
                     GenerationRequest(
                         model=model,
                         prompt=attempt_prompt,
+                        operation="receipt_patch_repair",
+                        attempt=attempt,
                         num_ctx=max(8192, min(num_ctx, 18432)),
                         num_predict=max(1024, min(num_predict, 2048)),
                         temperature=0.0,

@@ -970,3 +970,19 @@ button:hover:not(:disabled) { transform: translateY(-1px); }
   .receipt-data-actions { align-items: stretch; flex-direction: column; }
   .receipt-data-actions button { width: 100%; }
 }
+
+/* Model-call usage and cost dashboard */
+.model-filter-bar { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; align-items:end; }
+.model-filter-bar label { display:flex; flex-direction:column; gap:6px; }
+.metric-card-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(165px,1fr)); gap:12px; margin-bottom:18px; }
+.metric-card { background:#111827; border:1px solid #243044; border-radius:14px; padding:16px; }
+.metric-card span { display:block; color:#94a3b8; font-size:12px; text-transform:uppercase; letter-spacing:.05em; }
+.metric-card strong { display:block; margin-top:6px; font-size:24px; font-variant-numeric:tabular-nums; }
+.dashboard-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(360px,.8fr); gap:18px; }
+.pricing-form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin:14px 0; }
+.pricing-form button { margin:0; grid-column:1/-1; }
+.model-call-table { min-width:1100px; }
+.model-call-table td, .model-call-table th { white-space:nowrap; font-variant-numeric:tabular-nums; }
+.usage-bar { height:8px; border-radius:999px; background:#1e293b; overflow:hidden; min-width:110px; }
+.usage-bar > span { display:block; height:100%; background:#2563eb; }
+@media (max-width:900px) { .dashboard-grid { grid-template-columns:1fr; } .pricing-form { grid-template-columns:1fr; } }

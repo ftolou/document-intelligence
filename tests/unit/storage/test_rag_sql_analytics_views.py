@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from receipt_intelligence.storage.migrations import LATEST_SCHEMA_VERSION
 from receipt_intelligence.storage.receipt_db import ReceiptDatabase
 
 
@@ -19,7 +20,7 @@ def test_rag_sql_analytics_views_exist_on_fresh_database(tmp_path: Path) -> None
         ).fetchone()["value"]
 
     assert {"analytics_receipts", "analytics_purchase_items"} <= views
-    assert version == "6"
+    assert version == str(LATEST_SCHEMA_VERSION)
 
 
 def test_purchase_item_view_exposes_reviewed_product_semantics(tmp_path: Path) -> None:

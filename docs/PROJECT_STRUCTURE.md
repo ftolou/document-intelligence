@@ -10,12 +10,12 @@ document-intelligence-pipeline/
 │   │   ├── repair/         bounded re-OCR and validation-gated repair
 │   │   ├── categorization/ item categorization after extraction
 │   │   └── stages/         explicit extraction workflow stages
-│   ├── observability/      timing, JSONL telemetry, and readiness checks
+│   ├── observability/      compatibility serializers and timing helpers
 │   ├── pipeline/           stable integrated pipeline entry point only
 │   ├── rag_sql/            Query contracts, semantic resolution, safe SQL, formatting, and isolated orchestration adapters
-│   ├── runtime/            canonical runtime paths and job manifests
-│   ├── application/        ports, resource contracts, and explicit use cases
-│   ├── adapters/           LLM/OCR/VLM, storage, lifecycle, and job dispatch adapters
+│   ├── runtime/            canonical paths, readiness, and job manifests
+│   ├── application/        ports, neutral events, resource contracts, and use cases
+│   ├── adapters/           model, storage, jobs, lifecycle, and event-sink adapters
 │   ├── services/           reusable application workflow implementations
 │   ├── storage/            SQLite repositories and migrations
 │   └── web/                Flask transport, presenters, and blueprint adapters

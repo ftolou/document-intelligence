@@ -72,6 +72,16 @@ The optional answer-formatting model may normalize ambiguous reviewed evidence,
 but it cannot bypass the evidence validator. Runtime ownership and shutdown are
 documented in [RAG-SQL runtime lifecycle](RAG_SQL_RUNTIME_LIFECYCLE.md).
 
+## Observability boundary
+
+Extraction and query services emit typed application events through a neutral
+`EventSink` port. JSON snapshots and JSONL persistence are outer adapters, so
+feature workflows do not depend on logging backends or provider-specific metric
+types. Model-call diagnostics expose neutral provider, model, token, and timing
+fields; historical Ollama keys remain compatibility aliases only. Readiness is a
+runtime concern under `runtime/`, not an observability dependency on storage.
+See [Observability and readiness](operations/OBSERVABILITY.md).
+
 ## Runtime services
 
 ```text

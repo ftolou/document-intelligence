@@ -31,7 +31,7 @@ class _StubRuntime:
                     {"name": "validate_sql_attempt_1", "status": "done", "duration_ms": 0.5},
                     {"name": "execute_sql", "status": "done", "duration_ms": 1.0},
                 ],
-                "ollama_summary": {"call_count": 2},
+                "model_call_summary": {"call_count": 2, "providers": {"ollama": 2}},
             },
         )
 
@@ -56,3 +56,4 @@ def test_application_service_exposes_and_persists_graph_metrics(tmp_path: Path) 
     assert event["engine"] == "rag_sql"
     assert event["orchestrator"] == "langgraph"
     assert event["row_count"] == 1
+    assert event["model_calls"]["call_count"] == 2

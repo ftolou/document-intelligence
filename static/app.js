@@ -68,6 +68,9 @@ function setActiveTab(tabName) {
     refreshReceiptDbSummary().catch(() => {});
     refreshReceiptDbList().catch(() => {});
   }
+  if (target === 'models' && typeof loadModelDashboard === 'function') {
+    loadModelDashboard().catch(() => {});
+  }
 }
 
 function initializeTabs() {
@@ -1787,6 +1790,85 @@ form.addEventListener('submit', async (e) => {
   } finally {
     submitButton.disabled = false;
   }
+});
+
+const modelDashboardRefreshButton = document.getElementById('refresh-model-dashboard');
+const modelPricingForm = document.getElementById('model-pricing-form');
+
+function modelDashboardQuery() {
+  const params = new URLSearchParams();
+  for (const [id, name] of [
+    ['model-call-hours', 'hours'], ['model-call-provider', 'provider'],
+    ['model-call-model', 'model'], ['model-call-operation', 'operation'],
+    ['model-call-status', 'status'],
+  ]) {
+    const value = document.getElementById(id)?.value?.trim();
+    if (value) params.set(name, value);
+  }
+  return params.toString();
+}
+
+function compactNumber(value) {
+  return new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 2 }).format(Number(value || 0));
+}
+
+function metricCard(label, value) {
+  return `<article class="metric-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(value))}</strong></article>`;
+}
+
+function formatEstimatedCost(value, currency) {
+  if (value === null || value === undefined) return 'unpriced';
+  return new Intl.NumberFormat(undefined, { style: 'currency', currency: currency || 'EUR', minimumFractionDigits: 4, maximumFractionDigits: 8 }).format(Number(value));
+}
+
+async function loadModelDashboard() {
+  const query = modelDashboardQuery();
+  const [summaryRes, callsRes, pricingRes] = await Promise.all([
+    fetch(`/api/model-calls/summary?${query}`),
+    fetch(`/api/model-calls?${query}&limit=200`),
+    fetch('/api/model-pricing'),
+  ]);
+  if (!summaryRes.ok || !callsRes.ok || !pricingRes.ok) throw new Error('Model dashboard could not be loaded.');
+  const summary = await summaryRes.json();
+  const calls = (await callsRes.json()).calls || [];
+  const pricing = (await pricingRes.json()).pricing || [];
+  document.getElementById('model-call-summary').innerHTML = [
+    metricCard('Calls', compactNumber(summary.call_count)),
+    metricCard('Input tokens', compactNumber(summary.input_tokens)),
+    metricCard('Output tokens', compactNumber(summary.output_tokens)),
+    metricCard('Estimated cost', formatEstimatedCost(summary.estimated_cost, summary.currency)),
+    metricCard('Average duration', summary.average_duration_ms == null ? '—' : `${(summary.average_duration_ms / 1000).toFixed(2)} s`),
+    metricCard('P95 duration', summary.p95_duration_ms == null ? '—' : `${(summary.p95_duration_ms / 1000).toFixed(2)} s`),
+    metricCard('Generation speed', summary.average_generated_tokens_per_second == null ? '—' : `${summary.average_generated_tokens_per_second.toFixed(1)} tok/s`),
+    metricCard('Unpriced calls', compactNumber(summary.unpriced_call_count)),
+  ].join('');
+  const maxTokens = Math.max(1, ...(summary.by_operation || []).map((row) => Number(row.input_tokens || 0) + Number(row.output_tokens || 0)));
+  document.getElementById('model-operation-summary').innerHTML = `<table><thead><tr><th>Operation</th><th>Calls</th><th>Tokens</th><th>Avg.</th><th>Cost</th></tr></thead><tbody>${(summary.by_operation || []).map((row) => {
+    const tokens = Number(row.input_tokens || 0) + Number(row.output_tokens || 0);
+    return `<tr><td><code>${escapeHtml(row.name)}</code><div class="usage-bar"><span style="width:${Math.max(2, tokens / maxTokens * 100).toFixed(1)}%"></span></div></td><td>${row.call_count}</td><td>${compactNumber(tokens)}</td><td>${(Number(row.average_duration_ms || 0) / 1000).toFixed(2)} s</td><td>${formatEstimatedCost(row.estimated_cost, summary.currency)}</td></tr>`;
+  }).join('')}</tbody></table>`;
+  document.getElementById('model-pricing-list').innerHTML = pricing.length ? `<table><thead><tr><th>Provider/model</th><th>Input / 1M</th><th>Output / 1M</th></tr></thead><tbody>${pricing.map((row) => `<tr><td>${escapeHtml(row.provider)}/${escapeHtml(row.model)}<br><small>${escapeHtml(row.currency)}</small></td><td>${row.input_price_per_million}</td><td>${row.output_price_per_million}</td></tr>`).join('')}</tbody></table>` : '<p class="sub small">No prices configured. Token metrics are still recorded.</p>';
+  document.getElementById('model-call-count-badge').textContent = `${calls.length} calls`;
+  document.getElementById('model-call-table').innerHTML = `<table class="model-call-table"><thead><tr><th>Time</th><th>Operation</th><th>Provider/model</th><th>Input</th><th>Output</th><th>Total</th><th>Prompt eval</th><th>Generation</th><th>tok/s</th><th>Cost</th><th>Status</th></tr></thead><tbody>${calls.map((call) => `<tr><td>${escapeHtml(new Date(call.recorded_at).toLocaleString())}</td><td><code>${escapeHtml(call.operation)}</code>${call.attempt > 1 ? `<br><small>attempt ${call.attempt}</small>` : ''}</td><td>${escapeHtml(call.provider)}/${escapeHtml(call.model || 'unknown')}</td><td>${call.input_tokens ?? '—'}</td><td>${call.output_tokens ?? '—'}</td><td>${(Number(call.duration_ms || 0) / 1000).toFixed(2)} s</td><td>${call.prompt_evaluation_duration_ms == null ? '—' : `${(call.prompt_evaluation_duration_ms / 1000).toFixed(2)} s`}</td><td>${call.generation_duration_ms == null ? '—' : `${(call.generation_duration_ms / 1000).toFixed(2)} s`}</td><td>${call.generated_tokens_per_second ?? '—'}</td><td>${formatEstimatedCost(call.estimated_cost, call.currency)}</td><td><span class="badge ${call.status === 'completed' ? 'ok' : 'bad'}">${escapeHtml(call.status)}</span></td></tr>`).join('')}</tbody></table>`;
+}
+
+if (modelDashboardRefreshButton) modelDashboardRefreshButton.addEventListener('click', () => loadModelDashboard().catch((error) => alert(error.message)));
+for (const id of ['model-call-hours', 'model-call-provider', 'model-call-model', 'model-call-operation', 'model-call-status']) {
+  document.getElementById(id)?.addEventListener('change', () => loadModelDashboard().catch(() => {}));
+}
+if (modelPricingForm) modelPricingForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const payload = {
+    provider: document.getElementById('pricing-provider').value,
+    model: document.getElementById('pricing-model').value,
+    currency: document.getElementById('pricing-currency').value,
+    input_price_per_million: Number(document.getElementById('pricing-input').value),
+    output_price_per_million: Number(document.getElementById('pricing-output').value),
+  };
+  const response = await fetch('/api/model-pricing', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  const body = await response.json();
+  if (!response.ok) return alert(body.error || 'Pricing could not be saved.');
+  await loadModelDashboard();
 });
 
 initializeTabs();

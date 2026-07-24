@@ -7,13 +7,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from receipt_intelligence.adapters.llm import OllamaGateway
+from receipt_intelligence.adapters.llm import ObservedLlmGateway, OllamaGateway
 from receipt_intelligence.adapters.storage.sqlite.analytical_query import (
     SQLiteAnalyticalQueryRepository,
 )
 from receipt_intelligence.adapters.storage.sqlite.semantic_search import (
     SQLiteSemanticSearchRepository,
 )
+from receipt_intelligence.application.ports.events import EventSink
 from receipt_intelligence.rag.candidate_resolver import CandidateResolver, CandidateResolverConfig
 from receipt_intelligence.rag.embedding_client import OllamaEmbeddingClient
 from receipt_intelligence.rag.item_retriever import EmbeddingClient, ItemSemanticRetriever
@@ -97,6 +98,7 @@ class RagSqlRuntime:
         engine: RagSqlExecutor | None = None,
         embedding_client: EmbeddingClient | None = None,
         engine_factory: RagSqlEngineFactory | None = None,
+        event_sink: EventSink | None = None,
     ) -> None:
         if engine is not None and (embedding_client is not None or engine_factory is not None):
             raise ValueError(
@@ -122,7 +124,12 @@ class RagSqlRuntime:
 
         resolved_factory = engine_factory or build_rag_sql_engine
         try:
-            self._engine = resolved_factory(config, resolved_embedding_client)
+            if engine_factory is None:
+                self._engine = build_rag_sql_engine(
+                    config, resolved_embedding_client, event_sink=event_sink
+                )
+            else:
+                self._engine = resolved_factory(config, resolved_embedding_client)
         except Exception:
             self.close()
             raise
@@ -166,10 +173,16 @@ def build_rag_sql_engine(
     embedding_client: EmbeddingClient,
     *,
     orchestrator_factory: RagSqlOrchestratorFactory | None = None,
+    event_sink: EventSink | None = None,
 ) -> RagSqlEngine:
     """Compose one reusable engine from stable adapters and policies."""
 
-    llm_gateway = OllamaGateway(config.ollama_url)
+    base_gateway = OllamaGateway(config.ollama_url)
+    llm_gateway = (
+        ObservedLlmGateway(base_gateway, event_sink)
+        if event_sink is not None
+        else base_gateway
+    )
     retriever = ItemSemanticRetriever(
         repository=SQLiteSemanticSearchRepository(config.database_path),
         embedding_client=embedding_client,
@@ -287,10 +300,15 @@ def build_rag_sql_runtime_config_from_settings() -> RagSqlRuntimeConfig:
     )
 
 
-def build_rag_sql_runtime_from_settings() -> RagSqlRuntime:
+def build_rag_sql_runtime_from_settings(
+    *,
+    event_sink: EventSink | None = None,
+) -> RagSqlRuntime:
     """Compose the process-scoped RAG-SQL runtime once at application startup."""
 
-    return RagSqlRuntime(build_rag_sql_runtime_config_from_settings())
+    return RagSqlRuntime(
+        build_rag_sql_runtime_config_from_settings(), event_sink=event_sink
+    )
 
 
 __all__ = [

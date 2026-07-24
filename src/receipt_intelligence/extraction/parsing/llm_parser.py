@@ -885,6 +885,7 @@ def ollama_generate(
         GenerationRequest(
             model=model,
             prompt=prompt,
+            operation="legacy_receipt_generation",
             num_ctx=num_ctx,
             num_predict=num_predict,
             temperature=temperature,
@@ -1254,7 +1255,7 @@ def run_llm_main_parser(
         )
 
     previous_error_for_prompt: str | None = None
-    for spec in attempt_specs:
+    for attempt_index, spec in enumerate(attempt_specs):
         prompt = build_prompt(
             context,
             prompt_profile=spec["profile"],
@@ -1270,6 +1271,8 @@ def run_llm_main_parser(
                     GenerationRequest(
                         model=model,
                         prompt=prompt,
+                        operation="receipt_main_parse",
+                        attempt=attempt_index + 1,
                         num_ctx=num_ctx,
                         num_predict=int(spec["num_predict"]),
                         keep_alive=keep_alive,
