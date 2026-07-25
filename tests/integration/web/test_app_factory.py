@@ -328,7 +328,7 @@ def test_database_review_put_updates_sqlite_without_artifacts() -> None:
         )
 
         with patch(
-            "receipt_intelligence.services.database_receipt_editor.settings.RAG_EMBEDDING_ENABLED",
+            "receipt_intelligence.services.semantic_index_service.settings.RAG_EMBEDDING_ENABLED",
             False,
         ):
             response = app.test_client().put(
