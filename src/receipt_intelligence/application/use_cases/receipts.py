@@ -121,9 +121,7 @@ class ReceiptUseCases:
     def delete_all(self, *, confirmation: str, include_review_queue: bool) -> dict[str, Any]:
         if confirmation != "DELETE_ALL_RECEIPTS":
             raise InvalidRequestError("confirmation required: DELETE_ALL_RECEIPTS")
-        result = self._receipt_db.delete_all_receipt_data(
-            include_review_queue=include_review_queue
-        )
+        result = self._receipt_db.delete_all_receipt_data(include_review_queue=include_review_queue)
         return {"ok": True, "deleted": result, "summary": self._receipt_db.summary()}
 
 

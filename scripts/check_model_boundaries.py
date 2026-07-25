@@ -16,7 +16,9 @@ def scan_forbidden(package: str, forbidden: tuple[str, ...]) -> None:
         source = path.read_text(encoding="utf-8")
         for token in forbidden:
             if token in source:
-                violations.append(f"{path.relative_to(ROOT)} contains forbidden dependency {token!r}")
+                violations.append(
+                    f"{path.relative_to(ROOT)} contains forbidden dependency {token!r}"
+                )
 
 
 scan_forbidden(

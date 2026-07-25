@@ -352,9 +352,7 @@ class JobProcessingService:
                 child_id = f"{batch_id}_{index:03d}"
                 child_dir = self.store.job_dir(child_id)
                 child_dir.mkdir(parents=True, exist_ok=True)
-                safe_name = safe_filename(
-                    source_path.name, fallback=f"receipt_{index:03d}.jpg"
-                )
+                safe_name = safe_filename(source_path.name, fallback=f"receipt_{index:03d}.jpg")
                 image_copy = child_dir / safe_name
                 shutil.copy2(source_path, image_copy)
                 self.store.add_event(

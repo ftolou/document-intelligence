@@ -29,9 +29,7 @@ def _receipt() -> dict:
                 "source_line_ids": ["line_002"],
             }
         ],
-        "payments": [
-            {"method": "card", "amount": 5.0, "source_line_ids": ["line_003"]}
-        ],
+        "payments": [{"method": "card", "amount": 5.0, "source_line_ids": ["line_003"]}],
         "validation": {
             "import_decision": "reject",
             "balanced": False,

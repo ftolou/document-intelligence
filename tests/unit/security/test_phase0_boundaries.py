@@ -53,7 +53,9 @@ def test_ollama_command_runner_uses_argument_vector_without_shell(monkeypatch) -
     assert captured["shell"] is False
 
 
-def test_vlm_command_template_expands_paths_as_single_arguments(monkeypatch, tmp_path: Path) -> None:
+def test_vlm_command_template_expands_paths_as_single_arguments(
+    monkeypatch, tmp_path: Path
+) -> None:
     captured: dict[str, object] = {}
     image = tmp_path / "receipt image.jpg"
     image.write_bytes(b"image")

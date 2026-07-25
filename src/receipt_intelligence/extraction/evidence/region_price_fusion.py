@@ -328,10 +328,7 @@ def _fallback_same_band_candidates(
         for line in lines
         if str(line.get("role_hint") or "") == "product_or_item_text"
         and _PRODUCT_WORD_RE.search(str(line.get("text") or ""))
-        and (
-            not eligible_product_ids
-            or str(line.get("id") or "") in eligible_product_ids
-        )
+        and (not eligible_product_ids or str(line.get("id") or "") in eligible_product_ids)
     ]
     clean_amounts = [
         line
@@ -376,8 +373,7 @@ def _fallback_same_band_candidates(
             (
                 abs(_line_center_y(damaged) - py)
                 for damaged in damaged_amounts
-                if _line_center_x(damaged) > px
-                and abs(_line_center_y(damaged) - py) <= y_tolerance
+                if _line_center_x(damaged) > px and abs(_line_center_y(damaged) - py) <= y_tolerance
             ),
             default=None,
         )
@@ -501,13 +497,17 @@ def build_region_item_price_candidates(
             eligible_product_ids=eligible_product_ids or None,
         )
     )
-    candidates.sort(key=lambda candidate: (_float(candidate.get("y_center")), candidate["candidate_id"]))
+    candidates.sort(
+        key=lambda candidate: (_float(candidate.get("y_center")), candidate["candidate_id"])
+    )
     for index, candidate in enumerate(candidates):
         candidate["candidate_id"] = f"region_price_{index:03d}"
     return _match_candidates_to_spatial_rows(candidates, spatial_rows or [])
 
 
-def region_price_candidates_to_prompt_text(candidates: list[JsonObject], *, limit: int = 120) -> str:
+def region_price_candidates_to_prompt_text(
+    candidates: list[JsonObject], *, limit: int = 120
+) -> str:
     if not candidates:
         return "none"
     lines: list[str] = []

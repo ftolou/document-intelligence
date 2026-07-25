@@ -107,13 +107,11 @@ def test_health_config_and_database_summary_are_available() -> None:
 
         with (
             patch(
-                "receipt_intelligence.services.runtime_information.settings."
-                "READINESS_PROBE_OLLAMA",
+                "receipt_intelligence.services.runtime_information.settings.READINESS_PROBE_OLLAMA",
                 False,
             ),
             patch(
-                "receipt_intelligence.services.runtime_information.settings."
-                "READINESS_PROBE_VLM",
+                "receipt_intelligence.services.runtime_information.settings.READINESS_PROBE_VLM",
                 False,
             ),
         ):

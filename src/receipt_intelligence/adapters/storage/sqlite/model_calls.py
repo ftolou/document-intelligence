@@ -47,22 +47,32 @@ class SQLiteModelCallRepository:
                     )
                     """,
                     (
-                        record["call_id"], record["recorded_at"], record["started_at"],
-                        record.get("trace_id"), record.get("job_id"),
-                        record.get("receipt_id"), record.get("query_id"),
-                        record["operation"], record["provider"], record.get("model"),
-                        record["endpoint"], record["status"],
+                        record["call_id"],
+                        record["recorded_at"],
+                        record["started_at"],
+                        record.get("trace_id"),
+                        record.get("job_id"),
+                        record.get("receipt_id"),
+                        record.get("query_id"),
+                        record["operation"],
+                        record["provider"],
+                        record.get("model"),
+                        record["endpoint"],
+                        record["status"],
                         int(record.get("attempt") or 1),
                         float(record.get("duration_ms") or 0.0),
-                        record.get("input_tokens"), record.get("output_tokens"),
-                        record.get("input_characters"), record.get("output_characters"),
+                        record.get("input_tokens"),
+                        record.get("output_tokens"),
+                        record.get("input_characters"),
+                        record.get("output_characters"),
                         record.get("token_source") or "unavailable",
                         record.get("model_total_duration_ms"),
                         record.get("model_load_duration_ms"),
                         record.get("prompt_evaluation_duration_ms"),
                         record.get("generation_duration_ms"),
                         record.get("configured_context_window"),
-                        record.get("stop_reason"), record.get("error"),
+                        record.get("stop_reason"),
+                        record.get("error"),
                         json.dumps(record.get("attributes") or {}, ensure_ascii=False),
                     ),
                 )
@@ -90,7 +100,9 @@ class SQLiteModelCallRepository:
 
         records = [_row_to_call(row) for row in rows]
         durations = sorted(float(record["duration_ms"]) for record in records)
-        priced_costs = [record["estimated_cost"] for record in records if record["estimated_cost"] is not None]
+        priced_costs = [
+            record["estimated_cost"] for record in records if record["estimated_cost"] is not None
+        ]
         total_input = sum(int(record["input_tokens"] or 0) for record in records)
         total_output = sum(int(record["output_tokens"] or 0) for record in records)
         completed = sum(1 for record in records if record["status"] == "completed")
@@ -118,9 +130,7 @@ class SQLiteModelCallRepository:
                 ]
             ),
             "estimated_cost": (
-                round(sum(float(value) for value in priced_costs), 8)
-                if priced_costs
-                else None
+                round(sum(float(value) for value in priced_costs), 8) if priced_costs else None
             ),
             "priced_call_count": len(priced_costs),
             "unpriced_call_count": unpriced,
@@ -294,12 +304,8 @@ def _group_records(records: Sequence[dict[str, Any]], key: str) -> list[dict[str
                 "call_count": len(group),
                 "input_tokens": sum(int(item["input_tokens"] or 0) for item in group),
                 "output_tokens": sum(int(item["output_tokens"] or 0) for item in group),
-                "average_duration_ms": _average(
-                    [float(item["duration_ms"]) for item in group]
-                ),
-                "estimated_cost": (
-                    round(sum(float(cost) for cost in costs), 8) if costs else None
-                ),
+                "average_duration_ms": _average([float(item["duration_ms"]) for item in group]),
+                "estimated_cost": (round(sum(float(cost) for cost in costs), 8) if costs else None),
                 "priced_call_count": len(costs),
                 "failed_call_count": sum(1 for item in group if item["status"] == "failed"),
             }

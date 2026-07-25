@@ -53,9 +53,7 @@ class SpatialOverviewStage:
             str(context.spatial_document_map.get("canvas") or ""),
         )
 
-        context.spatial_overview_result = build_geometry_only_overview(
-            context.spatial_document_map
-        )
+        context.spatial_overview_result = build_geometry_only_overview(context.spatial_document_map)
         save_json(context.paths["spatial_overview"], context.spatial_overview_result)
         context.emit(
             "spatial_overview",

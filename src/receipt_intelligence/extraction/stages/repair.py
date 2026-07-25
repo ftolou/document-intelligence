@@ -352,7 +352,6 @@ class RepairAndCorrectionStage:
                 warning_count=len(result.get("warnings") or []),
             )
 
-
     @staticmethod
     def _select_candidate(
         context: ExtractionContext,

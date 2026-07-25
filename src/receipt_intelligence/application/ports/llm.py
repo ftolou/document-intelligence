@@ -124,8 +124,7 @@ def coerce_generation_result(value: GenerationValue) -> GenerationResult:
     if isinstance(value, str):
         return GenerationResult(text=value)
     raise TypeError(
-        "LLM generator must return GenerationResult or str, "
-        f"got {type(value).__name__}."
+        f"LLM generator must return GenerationResult or str, got {type(value).__name__}."
     )
 
 

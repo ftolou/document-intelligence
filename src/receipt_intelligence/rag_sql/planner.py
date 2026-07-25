@@ -72,6 +72,7 @@ class RagSqlPlannerConfig:
         if self.maximum_rows <= 0 or self.maximum_rows > 1000:
             raise ValueError("maximum_rows must be between 1 and 1000.")
 
+
 class RagSqlPlanner:
     def __init__(
         self,

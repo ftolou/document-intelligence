@@ -101,9 +101,7 @@ class RagSqlRuntime:
         event_sink: EventSink | None = None,
     ) -> None:
         if engine is not None and (embedding_client is not None or engine_factory is not None):
-            raise ValueError(
-                "engine cannot be combined with embedding_client or engine_factory."
-            )
+            raise ValueError("engine cannot be combined with embedding_client or engine_factory.")
 
         self.config = config
         self._closed = False
@@ -179,9 +177,7 @@ def build_rag_sql_engine(
 
     base_gateway = OllamaGateway(config.ollama_url)
     llm_gateway = (
-        ObservedLlmGateway(base_gateway, event_sink)
-        if event_sink is not None
-        else base_gateway
+        ObservedLlmGateway(base_gateway, event_sink) if event_sink is not None else base_gateway
     )
     retriever = ItemSemanticRetriever(
         repository=SQLiteSemanticSearchRepository(config.database_path),
@@ -306,9 +302,7 @@ def build_rag_sql_runtime_from_settings(
 ) -> RagSqlRuntime:
     """Compose the process-scoped RAG-SQL runtime once at application startup."""
 
-    return RagSqlRuntime(
-        build_rag_sql_runtime_config_from_settings(), event_sink=event_sink
-    )
+    return RagSqlRuntime(build_rag_sql_runtime_config_from_settings(), event_sink=event_sink)
 
 
 __all__ = [

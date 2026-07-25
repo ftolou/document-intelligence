@@ -116,9 +116,7 @@ class SQLiteAnalyticalQueryRepository:
         if action == sqlite3.SQLITE_FUNCTION:
             function_name = str(arg2 or arg1 or "").casefold()
             return (
-                sqlite3.SQLITE_OK
-                if function_name in ALLOWED_SQL_FUNCTIONS
-                else sqlite3.SQLITE_DENY
+                sqlite3.SQLITE_OK if function_name in ALLOWED_SQL_FUNCTIONS else sqlite3.SQLITE_DENY
             )
 
         return sqlite3.SQLITE_DENY

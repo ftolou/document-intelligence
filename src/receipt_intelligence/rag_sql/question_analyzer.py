@@ -59,6 +59,7 @@ class QuestionAnalyzerConfig:
         if self.maximum_entities <= 0 or self.maximum_entities > 4:
             raise ValueError("maximum_entities must be between 1 and 4.")
 
+
 class RagSqlQuestionAnalyzer:
     def __init__(
         self,

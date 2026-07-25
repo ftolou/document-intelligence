@@ -49,17 +49,13 @@ def main() -> int:
     violations: list[str] = []
     for path in sorted(ROUTES.glob("*.py")):
         for module in imported_modules(path):
-            if module in FORBIDDEN_ROUTE_MODULES or module.startswith(
-                FORBIDDEN_ROUTE_PREFIXES
-            ):
+            if module in FORBIDDEN_ROUTE_MODULES or module.startswith(FORBIDDEN_ROUTE_PREFIXES):
                 violations.append(f"{path.relative_to(ROOT)} imports {module}")
 
     for path in sorted((SRC / "application" / "use_cases").glob("*.py")):
         for module in imported_modules(path):
             if module.startswith(FORBIDDEN_USE_CASE_PREFIXES):
-                violations.append(
-                    f"{path.relative_to(ROOT)} imports outward dependency {module}"
-                )
+                violations.append(f"{path.relative_to(ROOT)} imports outward dependency {module}")
 
     for directory in (SRC / "application", SRC / "services"):
         for path in sorted(directory.rglob("*.py")):

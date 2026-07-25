@@ -164,9 +164,7 @@ class CandidateResolver:
                 )
                 if generation.metrics is not None:
                     ollama_calls.append(generation.metrics)
-                payload = CandidateResolutionPayload.model_validate(
-                    parse_json_from_llm(generation)
-                )
+                payload = CandidateResolutionPayload.model_validate(parse_json_from_llm(generation))
                 _validate_payload_against_candidates(payload, records, entity)
                 return _map_resolution(
                     payload,

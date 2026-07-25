@@ -1265,7 +1265,6 @@ def visual_evidence_to_prompt_text(evidence: dict[str, Any]) -> str:
         )
         parts.append(json.dumps(payment_recon[:20], ensure_ascii=False, indent=2))
 
-
     table_arbitration = (
         evidence.get("table_arbitration")
         if isinstance(evidence.get("table_arbitration"), dict)

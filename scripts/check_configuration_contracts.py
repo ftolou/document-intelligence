@@ -9,15 +9,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = ROOT / "src" / "receipt_intelligence" / "extraction" / "config.py"
 PIPELINE_PATH = (
-    ROOT
-    / "src"
-    / "receipt_intelligence"
-    / "pipeline"
-    / "integrated_receipt_pipeline.py"
+    ROOT / "src" / "receipt_intelligence" / "pipeline" / "integrated_receipt_pipeline.py"
 )
-JOB_SERVICE_PATH = (
-    ROOT / "src" / "receipt_intelligence" / "services" / "job_processing.py"
-)
+JOB_SERVICE_PATH = ROOT / "src" / "receipt_intelligence" / "services" / "job_processing.py"
 
 violations: list[str] = []
 
@@ -41,9 +35,7 @@ for node in config_tree.body:
         violations.append("ExtractionConfig must remain a dataclass")
         break
     keyword_values = {
-        keyword.arg: keyword.value
-        for keyword in dataclass_call.keywords
-        if keyword.arg is not None
+        keyword.arg: keyword.value for keyword in dataclass_call.keywords if keyword.arg is not None
     }
     frozen = keyword_values.get("frozen")
     if not isinstance(frozen, ast.Constant) or frozen.value is not True:

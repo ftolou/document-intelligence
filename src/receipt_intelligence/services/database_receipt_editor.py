@@ -42,9 +42,7 @@ class DatabaseReceiptEditor:
             raise KeyError("receipt not found")
         record = self.receipt_db.get_receipt_review_record(receipt_id) or {}
         job_id = str(record.get("job_id") or "").strip()
-        image_reference = (
-            self.review_service.database_image_reference(record) if job_id else None
-        )
+        image_reference = self.review_service.database_image_reference(record) if job_id else None
         artifacts = {"receipt_image": image_reference} if image_reference else {}
         review = (
             receipt.get("human_review") if isinstance(receipt.get("human_review"), dict) else None
@@ -82,9 +80,7 @@ class DatabaseReceiptEditor:
         )
         database_record = self.receipt_db.get_receipt_review_record(receipt_id) or {}
         job_id = str(
-            database_record.get("job_id")
-            or (current.get("_database") or {}).get("job_id")
-            or ""
+            database_record.get("job_id") or (current.get("_database") or {}).get("job_id") or ""
         ).strip()
         finalization = self.review_service.finalize_human_review(
             job_id,
@@ -136,9 +132,7 @@ class DatabaseReceiptEditor:
                 },
                 "validation": fresh.get("validation"),
                 "review_finalization": {
-                    key: value
-                    for key, value in finalization.items()
-                    if key != "receipt"
+                    key: value for key, value in finalization.items() if key != "receipt"
                 },
                 "semantic_index": indexing,
                 "artifact_mirror": mirror,

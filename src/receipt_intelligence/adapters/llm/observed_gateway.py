@@ -64,7 +64,7 @@ class ObservedLlmGateway:
                     output_characters=0,
                     configured_context_window=request.num_ctx,
                     error=f"{type(exc).__name__}: {exc}",
-                )
+                ),
             )
             raise
 
@@ -82,7 +82,7 @@ class ObservedLlmGateway:
                 result=result,
                 metrics=metrics,
                 fallback_provider=_provider_name(self.delegate),
-            )
+            ),
         )
         return result
 
@@ -130,15 +130,11 @@ def _success_event(
         model_total_duration_ms=_ns_to_ms(
             metrics.total_duration_ns if metrics is not None else None
         ),
-        model_load_duration_ms=_ns_to_ms(
-            metrics.load_duration_ns if metrics is not None else None
-        ),
+        model_load_duration_ms=_ns_to_ms(metrics.load_duration_ns if metrics is not None else None),
         prompt_evaluation_duration_ms=_ns_to_ms(
             metrics.prompt_eval_duration_ns if metrics is not None else None
         ),
-        generation_duration_ms=_ns_to_ms(
-            metrics.eval_duration_ns if metrics is not None else None
-        ),
+        generation_duration_ms=_ns_to_ms(metrics.eval_duration_ns if metrics is not None else None),
         configured_context_window=request.num_ctx,
         stop_reason=metrics.done_reason if metrics is not None else None,
     )

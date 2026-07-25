@@ -84,8 +84,12 @@ def _line_hints(text: str, amount_count: int) -> list[str]:
         hints.append("payment_or_change")
     if _TABLE_HEADER_RE.search(text) and len(_TABLE_HEADER_RE.findall(text)) >= 2:
         hints.append("possible_table_header")
-    if amount_count and _PRODUCT_WORD_RE.search(text) and not any(
-        hint in hints for hint in ("total_or_subtotal", "tax_or_net_gross", "payment_or_change")
+    if (
+        amount_count
+        and _PRODUCT_WORD_RE.search(text)
+        and not any(
+            hint in hints for hint in ("total_or_subtotal", "tax_or_net_gross", "payment_or_change")
+        )
     ):
         hints.append("possible_item_row")
     if not hints:
@@ -350,15 +354,12 @@ def _build_geometric_row_groups(rows: list[JsonObject]) -> list[JsonObject]:
     return groups
 
 
-def _geometric_groups_to_prompt_text(
-    groups: list[JsonObject], *, max_groups: int
-) -> str:
+def _geometric_groups_to_prompt_text(groups: list[JsonObject], *, max_groups: int) -> str:
     lines: list[str] = []
     for group in groups[:max_groups]:
         source_ids = ",".join(str(value) for value in group.get("source_line_ids") or [])
         lines.append(
-            f"[{group.get('group_id')} y={_float(group.get('y_center')):.4f} "
-            f"lines={source_ids}]"
+            f"[{group.get('group_id')} y={_float(group.get('y_center')):.4f} lines={source_ids}]"
         )
         for cell in group.get("cells") or []:
             if not isinstance(cell, dict):
@@ -395,9 +396,14 @@ def _hypotheses_to_prompt_text(hypotheses: JsonObject) -> str:
 def build_spatial_canvas(rows: list[JsonObject], *, width: int = 112) -> str:
     """Render normalized x positions into a compact monospace page overview."""
     width = max(72, min(160, int(width)))
-    header = " " * 13 + "0.0" + " " * max(1, width // 2 - 6) + "0.5" + " " * max(
-        1, width // 2 - 6
-    ) + "1.0"
+    header = (
+        " " * 13
+        + "0.0"
+        + " " * max(1, width // 2 - 6)
+        + "0.5"
+        + " " * max(1, width // 2 - 6)
+        + "1.0"
+    )
     output = [header[: width + 13]]
     for row in rows:
         line_id = str(row.get("line_id") or row.get("row_id") or "line")

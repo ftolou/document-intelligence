@@ -27,9 +27,7 @@ class QueryTelemetrySink(JsonlEventSink):
         return cls(path, enabled=enabled)
 
     def record(self, response: dict[str, Any]) -> None:
-        self.publish(
-            query_execution_event_from_payload(response, occurred_at=utc_now_iso())
-        )
+        self.publish(query_execution_event_from_payload(response, occurred_at=utc_now_iso()))
 
 
 __all__ = ["QueryTelemetrySink"]

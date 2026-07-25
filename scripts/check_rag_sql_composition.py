@@ -48,8 +48,7 @@ execute_methods = (
     [
         node
         for node in runtime_classes[0].body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and node.name == "execute"
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "execute"
     ]
     if len(runtime_classes) == 1
     else []
@@ -68,9 +67,7 @@ else:
     )
     for token in forbidden_constructors:
         if token in execute_source:
-            violations.append(
-                f"RagSqlRuntime.execute composes per-request dependency {token[:-1]}"
-            )
+            violations.append(f"RagSqlRuntime.execute composes per-request dependency {token[:-1]}")
 
 runtime_source = runtime_path.read_text(encoding="utf-8")
 for required in (
@@ -92,9 +89,9 @@ init_source = (PACKAGE / "__init__.py").read_text(encoding="utf-8")
 if "from receipt_intelligence.rag_sql" in init_source:
     violations.append("rag_sql/__init__.py must retain lazy exports only")
 
-web_dependencies = (
-    ROOT / "src" / "receipt_intelligence" / "web" / "dependencies.py"
-).read_text(encoding="utf-8")
+web_dependencies = (ROOT / "src" / "receipt_intelligence" / "web" / "dependencies.py").read_text(
+    encoding="utf-8"
+)
 if "query_executor=resolved_query_service" not in web_dependencies:
     violations.append("AppServices must retain the managed query executor")
 if 'getattr(self.query_executor, "close", None)' not in web_dependencies:

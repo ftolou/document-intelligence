@@ -69,9 +69,7 @@ def status(job_id: str):
 
 @jobs_bp.get("/api/jobs")
 def jobs():
-    return jsonify(
-        {"jobs": present_resources(get_app_services().jobs.list_jobs(limit=25))}
-    )
+    return jsonify({"jobs": present_resources(get_app_services().jobs.list_jobs(limit=25))})
 
 
 @jobs_bp.get("/api/jobs/<job_id>/manifest")

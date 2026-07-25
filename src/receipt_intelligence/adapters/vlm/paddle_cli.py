@@ -13,9 +13,7 @@ from typing import Any
 from receipt_intelligence.application.ports.vlm import VlmEngine, VlmRequest
 
 
-def run_paddle_cli(
-    image_path: Path, result_dir: Path, timeout_seconds: float
-) -> dict[str, Any]:
+def run_paddle_cli(image_path: Path, result_dir: Path, timeout_seconds: float) -> dict[str, Any]:
     """Run PaddleOCR-VL via the doc_parser CLI.
 
     V14.7.9 locks the service to the standalone-tested route on this machine:

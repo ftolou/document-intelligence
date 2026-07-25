@@ -300,6 +300,9 @@ READINESS_REQUIRE_VLM = os.getenv("READINESS_REQUIRE_VLM", "0").lower() in {
 }
 READINESS_TIMEOUT_SECONDS = float(os.getenv("READINESS_TIMEOUT_SECONDS", "2"))
 
-MODEL_CALL_TELEMETRY_ENABLED = os.getenv(
-    "MODEL_CALL_TELEMETRY_ENABLED", "1"
-).lower() in {"1", "true", "yes", "on"}
+MODEL_CALL_TELEMETRY_ENABLED = os.getenv("MODEL_CALL_TELEMETRY_ENABLED", "1").lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}

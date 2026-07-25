@@ -39,9 +39,7 @@ NET_RE = re.compile(r"\b(NETTO|NET|OHNE\s+MWST|OHNE\s+UST|TAXABLE)\b", re.IGNORE
 TAX_RE = re.compile(r"\b(MWST|M\.?W\.?ST|UST|U\.?ST|STEUER|VAT|TAX|IVA|TVA)\b", re.IGNORECASE)
 PERCENT_RE = re.compile(r"\b\d{1,2}(?:[,.]\d)?\s*%")
 GROSS_RE = re.compile(r"\b(BRUTTO|GROSS|INKL\.?|INCL\.?|MIT\s+MWST)\b", re.IGNORECASE)
-NON_AMBIGUOUS_GROSS_RE = re.compile(
-    r"\b(BRUTTO|INKL\.?|INCL\.?|MIT\s+MWST)\b", re.IGNORECASE
-)
+NON_AMBIGUOUS_GROSS_RE = re.compile(r"\b(BRUTTO|INKL\.?|INCL\.?|MIT\s+MWST)\b", re.IGNORECASE)
 PAYMENT_RE = re.compile(
     r"\b(BAR|CASH|GEGEBEN|PAID|ZAHLUNG|KARTENZAHLUNG|LASTSCHRIFT|EC|GIROCARD|KARTE|CARD|VISA|MASTERCARD|MAESTRO|DEBIT|CREDIT|PAYPAL)\b",
     re.IGNORECASE,
@@ -621,9 +619,7 @@ FOOTER_BOUNDARY_RE = re.compile(
     r"\b(SUMME|BONSUMME|BON\s*SUMME|GESAMT|TOTAL|ENDSUMME|ZU\s*ZAHLEN|AMOUNT\s*DUE|BAR|CASH|GEGEBEN|R[ÜUO]CKGELD|RUECKGELD|CHANGE|MWST|UST|VAT|TAX|STEUER|NETTO|BRUTTO)\b",
     re.IGNORECASE,
 )
-TAX_TABLE_HEADER_RE = re.compile(
-    r"\b(MWST|UST|VAT|TAX|STEUER|NETTO|BRUTTO)\b", re.IGNORECASE
-)
+TAX_TABLE_HEADER_RE = re.compile(r"\b(MWST|UST|VAT|TAX|STEUER|NETTO|BRUTTO)\b", re.IGNORECASE)
 
 
 def _footer_boundary_index(rows: list[dict[str, Any]]) -> int:
@@ -654,19 +650,13 @@ def build_do_not_output_as_item_candidates(rows: list[dict[str, Any]]) -> list[d
         if CHANGE_RE.search(text):
             reasons.append("change_row")
         discount_like = bool(
-            DISCOUNT_RE.search(text)
-            or "discount_keyword" in tags
-            or "negative_amount" in tags
+            DISCOUNT_RE.search(text) or "discount_keyword" in tags or "negative_amount" in tags
         )
         if not discount_like and (
-            TAX_TABLE_HEADER_RE.search(text)
-            or TAX_RE.search(text)
-            or "tax_keyword" in tags
+            TAX_TABLE_HEADER_RE.search(text) or TAX_RE.search(text) or "tax_keyword" in tags
         ):
             reasons.append("tax_or_tax_table_row")
-        if not discount_like and (
-            NET_RE.search(text) or NON_AMBIGUOUS_GROSS_RE.search(text)
-        ):
+        if not discount_like and (NET_RE.search(text) or NON_AMBIGUOUS_GROSS_RE.search(text)):
             reasons.append("net_or_gross_row")
         if TOTAL_RE.search(text):
             reasons.append("total_row")

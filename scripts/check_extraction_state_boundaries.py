@@ -30,9 +30,7 @@ required_artifacts = {
     "FinalizationArtifacts",
 }
 state_tree = ast.parse((EXTRACTION / "state.py").read_text(encoding="utf-8"))
-defined_classes = {
-    node.name for node in state_tree.body if isinstance(node, ast.ClassDef)
-}
+defined_classes = {node.name for node in state_tree.body if isinstance(node, ast.ClassDef)}
 missing = sorted(required_artifacts - defined_classes)
 if missing:
     errors.append(f"Missing typed extraction artifact classes: {', '.join(missing)}")

@@ -149,9 +149,7 @@ def test_executor_authorizer_denies_direct_storage_table_access(tmp_path: Path) 
 
 
 def test_executor_reports_missing_database_through_query_boundary(tmp_path: Path) -> None:
-    executor = ReadOnlySqlExecutor(
-        SQLiteAnalyticalQueryRepository(tmp_path / "missing.db")
-    )
+    executor = ReadOnlySqlExecutor(SQLiteAnalyticalQueryRepository(tmp_path / "missing.db"))
 
     with pytest.raises(SqlExecutionError, match="does not exist"):
         executor.execute(_plan("SELECT 1 AS value", {}))

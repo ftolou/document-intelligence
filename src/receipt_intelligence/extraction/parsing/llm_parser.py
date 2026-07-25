@@ -1044,6 +1044,7 @@ def build_prompt(
         ),
     )
 
+
 def ollama_generate(
     *,
     ollama_url: str,
@@ -1466,9 +1467,7 @@ def run_llm_main_parser(
                         timeout_seconds=timeout,
                         format_json=bool(spec["format_json"]),
                         response_json_schema=(
-                            receipt_response_json_schema()
-                            if bool(spec["format_json"])
-                            else None
+                            receipt_response_json_schema() if bool(spec["format_json"]) else None
                         ),
                     )
                 )
@@ -1484,9 +1483,7 @@ def run_llm_main_parser(
                         timeout=timeout,
                         format_json=bool(spec["format_json"]),
                         response_json_schema=(
-                            receipt_response_json_schema()
-                            if bool(spec["format_json"])
-                            else None
+                            receipt_response_json_schema() if bool(spec["format_json"]) else None
                         ),
                     )
                 )

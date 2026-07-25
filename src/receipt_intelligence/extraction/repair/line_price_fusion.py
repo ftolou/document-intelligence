@@ -62,9 +62,7 @@ def _candidate_matches(
             semantic = description_similarity(candidate_description, _item_description(item))
             if semantic < 0.78:
                 continue
-            order_distance = abs(
-                item_index / item_count - candidate_index / candidate_count
-            )
+            order_distance = abs(item_index / item_count - candidate_index / candidate_count)
             score = semantic - min(0.08, order_distance * 0.08)
             scored.append((score, item_index))
         if not scored:
@@ -184,9 +182,9 @@ def repair_receipt_line_prices(
         item = items[item_index]
         new_total = round(float(candidate["line_total"]), 2)
         old_total = _float(item.get("line_total"))
-        exact_description = normalize_description(candidate.get("description")) == normalize_description(
-            _item_description(item)
-        )
+        exact_description = normalize_description(
+            candidate.get("description")
+        ) == normalize_description(_item_description(item))
         strong_match = exact_description or match_score >= 0.92
         if not strong_match:
             continue

@@ -39,9 +39,7 @@ def build_extraction_metrics(
         stages = tuple(context.stage_trace)
 
     if run_id is None or started_at is None or duration_ms is None or stages is None:
-        raise TypeError(
-            "build_extraction_metrics requires either context or explicit run fields."
-        )
+        raise TypeError("build_extraction_metrics requires either context or explicit run fields.")
 
     return ExtractionRunEvent(
         run_id=run_id,

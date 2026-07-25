@@ -98,10 +98,9 @@ def test_extraction_main_parser_accepts_fake_gateway(tmp_path: Path) -> None:
     assert len(gateway.requests) == 1
     assert gateway.requests[0].model == "test-model"
     assert gateway.requests[0].response_json_schema is not None
-    assert (
-        gateway.requests[0].response_json_schema["properties"]["schema_version"]["enum"]
-        == ["v14_6_llm_receipt_1"]
-    )
+    assert gateway.requests[0].response_json_schema["properties"]["schema_version"]["enum"] == [
+        "v14_6_llm_receipt_1"
+    ]
 
 
 def test_vlm_request_does_not_expose_backend_configuration() -> None:

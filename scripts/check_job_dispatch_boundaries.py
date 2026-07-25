@@ -33,27 +33,19 @@ def main() -> int:
             modules = _imports(path)
             for module in modules:
                 if module == "threading" or module.startswith("concurrent.futures"):
-                    violations.append(
-                        f"{path.relative_to(ROOT)} imports worker primitive {module}"
-                    )
+                    violations.append(f"{path.relative_to(ROOT)} imports worker primitive {module}")
             text = path.read_text(encoding="utf-8-sig")
             if "threading.Thread(" in text or "ThreadPoolExecutor(" in text:
-                violations.append(
-                    f"{path.relative_to(ROOT)} creates background workers directly"
-                )
+                violations.append(f"{path.relative_to(ROOT)} creates background workers directly")
 
     for path in sorted(SRC.rglob("*.py")):
         if path.is_relative_to(MANAGED_ADAPTER):
             continue
         text = path.read_text(encoding="utf-8-sig")
         if "threading.Thread(" in text or "ThreadPoolExecutor(" in text:
-            violations.append(
-                f"{path.relative_to(ROOT)} creates workers outside adapters/jobs"
-            )
+            violations.append(f"{path.relative_to(ROOT)} creates workers outside adapters/jobs")
 
-    use_case = (SRC / "application" / "use_cases" / "jobs.py").read_text(
-        encoding="utf-8-sig"
-    )
+    use_case = (SRC / "application" / "use_cases" / "jobs.py").read_text(encoding="utf-8-sig")
     for marker in ("JobDispatcher", "JobDispatchRequest", "self._dispatcher.submit"):
         if marker not in use_case:
             violations.append(f"job use case is missing dispatcher boundary: {marker}")
@@ -61,9 +53,7 @@ def main() -> int:
     processor = (SRC / "services" / "job_processing.py").read_text(encoding="utf-8-sig")
     for marker in ('state="done"', 'state="error"', 'state="running"'):
         if marker in processor:
-            violations.append(
-                f"job processor owns persisted lifecycle transition {marker}"
-            )
+            violations.append(f"job processor owns persisted lifecycle transition {marker}")
 
     store = (SRC / "storage" / "job_store.py").read_text(encoding="utf-8-sig")
     for field in (

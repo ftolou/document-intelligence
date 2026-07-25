@@ -15,10 +15,7 @@ for path in SRC.rglob("*.py"):
     relative = path.relative_to(ROOT).as_posix()
     if "CREATE TABLE" in text and "model_calls" in text and "storage" not in relative:
         violations.append(f"{relative}: feature code owns model-call schema")
-    if (
-        path.name in {"ollama_gateway.py", "observed_gateway.py"}
-        and "price_per_million" in text
-    ):
+    if path.name in {"ollama_gateway.py", "observed_gateway.py"} and "price_per_million" in text:
         violations.append(f"{relative}: model adapter contains pricing policy")
 
 for path in SRC.rglob("*.py"):
@@ -30,12 +27,8 @@ for path in SRC.rglob("*.py"):
         if isinstance(function, ast.Name) and function.id == "GenerationRequest":
             if not any(keyword.arg == "operation" for keyword in node.keywords):
                 relative = path.relative_to(ROOT).as_posix()
-                violations.append(
-                    f"{relative}:{node.lineno}: GenerationRequest lacks operation"
-                )
+                violations.append(f"{relative}:{node.lineno}: GenerationRequest lacks operation")
 
 if violations:
-    raise SystemExit(
-        "Model-call observability violations:\n- " + "\n- ".join(violations)
-    )
+    raise SystemExit("Model-call observability violations:\n- " + "\n- ".join(violations))
 print("Model-call observability boundaries passed.")

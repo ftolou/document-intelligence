@@ -60,6 +60,7 @@ def test_review_presenter_adds_http_edit_link() -> None:
     assert payload["save_url"] == "/api/receipt-db/receipts/42/review"
     assert payload["save_method"] == "PUT"
 
+
 class _JobStore:
     def __init__(self, root: Path) -> None:
         self.root = root

@@ -43,9 +43,7 @@ def receipt_db_receipts():
     except (TypeError, ValueError):
         limit = 200
     try:
-        return jsonify(
-            {"receipts": get_app_services().receipts.list_receipts(limit=limit)}
-        )
+        return jsonify({"receipts": get_app_services().receipts.list_receipts(limit=limit)})
     except Exception as exc:
         return unexpected_error_response(exc)
 

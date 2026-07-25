@@ -266,9 +266,7 @@ class ReviewService:
 
         updated = _deep_copy_json(receipt)
         previous_validation = (
-            dict(updated.get("validation"))
-            if isinstance(updated.get("validation"), dict)
-            else {}
+            dict(updated.get("validation")) if isinstance(updated.get("validation"), dict) else {}
         )
         original_parse_status = str(updated.get("parse_status") or "partial")
         if requested == "approved" and original_parse_status == "failed":
@@ -315,9 +313,7 @@ class ReviewService:
                 continue
             item_status = str(item.get("review_status") or "").strip().lower()
             if effective_status == "approved" and item_status != "rejected":
-                item["review_status"] = (
-                    "corrected" if item_status == "corrected" else "approved"
-                )
+                item["review_status"] = "corrected" if item_status == "corrected" else "approved"
             elif approval_blocked and item_status == "approved":
                 item["review_status"] = "needs_review"
 
@@ -329,9 +325,7 @@ class ReviewService:
             "effective_status": effective_status,
             "approval_blocked": approval_blocked,
             "human_override": validation_override,
-            "blocking_issue_codes": [
-                str(issue.get("code") or "") for issue in blocking_issues
-            ],
+            "blocking_issue_codes": [str(issue.get("code") or "") for issue in blocking_issues],
             "ocr_context_source": context_source,
         }
         updated["validation"] = report
@@ -348,12 +342,8 @@ class ReviewService:
                 "approval_blocked": approval_blocked,
                 "validation_override": validation_override,
                 "original_parse_status": original_parse_status,
-                "remaining_issue_codes": [
-                    str(issue.get("code") or "") for issue in issues
-                ],
-                "blocking_issue_codes": [
-                    str(issue.get("code") or "") for issue in blocking_issues
-                ],
+                "remaining_issue_codes": [str(issue.get("code") or "") for issue in issues],
+                "blocking_issue_codes": [str(issue.get("code") or "") for issue in blocking_issues],
             }
         )
         updated["human_review"] = human_review

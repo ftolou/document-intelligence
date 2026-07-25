@@ -31,8 +31,7 @@ class OllamaGateway(LlmGateway):
             )
         except Exception as exc:
             raise RuntimeError(
-                f"Ollama is not reachable at {self.base_url}: "
-                f"{type(exc).__name__}: {exc}"
+                f"Ollama is not reachable at {self.base_url}: {type(exc).__name__}: {exc}"
             ) from exc
 
         payload: dict[str, Any] = {
@@ -95,13 +94,9 @@ def model_metrics_from_ollama_payload(
         total_duration_ns=_optional_nonnegative_int(payload.get("total_duration")),
         load_duration_ns=_optional_nonnegative_int(payload.get("load_duration")),
         prompt_eval_count=_optional_nonnegative_int(payload.get("prompt_eval_count")),
-        prompt_eval_duration_ns=_optional_nonnegative_int(
-            payload.get("prompt_eval_duration")
-        ),
+        prompt_eval_duration_ns=_optional_nonnegative_int(payload.get("prompt_eval_duration")),
         eval_count=(
-            _optional_nonnegative_int(payload.get("eval_count"))
-            if endpoint == "generate"
-            else None
+            _optional_nonnegative_int(payload.get("eval_count")) if endpoint == "generate" else None
         ),
         eval_duration_ns=(
             _optional_nonnegative_int(payload.get("eval_duration"))

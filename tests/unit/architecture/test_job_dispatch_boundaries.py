@@ -17,14 +17,10 @@ def test_web_and_use_cases_do_not_create_threads() -> None:
             for node in ast.walk(tree):
                 if isinstance(node, ast.Import):
                     for alias in node.names:
-                        if alias.name == "threading" or alias.name.startswith(
-                            "concurrent.futures"
-                        ):
+                        if alias.name == "threading" or alias.name.startswith("concurrent.futures"):
                             violations.append(str(path.relative_to(ROOT)))
                 elif isinstance(node, ast.ImportFrom) and node.module:
-                    if node.module == "threading" or node.module.startswith(
-                        "concurrent.futures"
-                    ):
+                    if node.module == "threading" or node.module.startswith("concurrent.futures"):
                         violations.append(str(path.relative_to(ROOT)))
     assert violations == []
 

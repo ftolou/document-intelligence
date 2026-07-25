@@ -130,9 +130,7 @@ class ReviewUseCases:
             encoding="utf-8",
         )
         human_review = (
-            approved.get("human_review")
-            if isinstance(approved.get("human_review"), dict)
-            else {}
+            approved.get("human_review") if isinstance(approved.get("human_review"), dict) else {}
         )
         record = {
             "job_id": job_id,
@@ -238,9 +236,7 @@ class ReviewUseCases:
                         "requested_status": record.get("requested_status"),
                         "review_status": record.get("status"),
                         "approval_blocked": record.get("approval_blocked"),
-                        "import_decision": (record.get("validation") or {}).get(
-                            "import_decision"
-                        ),
+                        "import_decision": (record.get("validation") or {}).get("import_decision"),
                         "changed_fields": changed,
                         "semantic_index_status": semantic_index.get("status"),
                     },

@@ -207,9 +207,9 @@ class FinalizationStage:
                     else None
                 ),
                 "mode": (context.spatial_overview_result or {}).get("mode"),
-                "geometric_row_group_count": (
-                    context.spatial_overview_result or {}
-                ).get("geometric_row_group_count"),
+                "geometric_row_group_count": (context.spatial_overview_result or {}).get(
+                    "geometric_row_group_count"
+                ),
                 "document_map_artifact": str(context.paths["spatial_document_map"]),
                 "overview_artifact": str(context.paths["spatial_overview"]),
             },
@@ -226,9 +226,7 @@ class FinalizationStage:
                 "duration_seconds": llm_result.get("duration_seconds"),
                 "json_retry_count": config.json_retry_count,
                 "format_json": config.format_json,
-                "response_schema_enforced": bool(
-                    llm_result.get("response_schema_enforced")
-                ),
+                "response_schema_enforced": bool(llm_result.get("response_schema_enforced")),
                 "attempts": llm_result.get("attempts"),
             },
             "right_column_reocr": self._reocr_meta(context),

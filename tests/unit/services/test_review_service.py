@@ -127,9 +127,7 @@ def _reviewable_receipt(*, merchant_name: str | None, parse_status: str = "faile
                 "source_line_ids": ["line_002"],
             }
         ],
-        "payments": [
-            {"method": "card", "amount": 5.0, "source_line_ids": ["line_003"]}
-        ],
+        "payments": [{"method": "card", "amount": 5.0, "source_line_ids": ["line_003"]}],
         "validation": {
             "import_decision": "reject",
             "issues": [{"code": "MISSING_MERCHANT", "severity": "medium"}],

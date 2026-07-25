@@ -105,6 +105,9 @@ def test_active_code_contains_no_versioned_pipeline_imports() -> None:
     assert (ROOT / "scripts" / "run_receipt_folder.py").is_file()
     assert (ROOT / "scripts" / "run_receipt_images_folder.py").is_file()
 
+
 def test_obsolete_spatial_reconstruction_files_are_removed() -> None:
-    remaining = [path.relative_to(ROOT) for path in OBSOLETE_SPATIAL_PIPELINE_FILES if path.exists()]
+    remaining = [
+        path.relative_to(ROOT) for path in OBSOLETE_SPATIAL_PIPELINE_FILES if path.exists()
+    ]
     assert remaining == []

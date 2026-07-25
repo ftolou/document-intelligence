@@ -41,11 +41,7 @@ def split_command(command: str) -> list[str]:
         argv = shlex.split(text, posix=False)
         argv = [
             argument[1:-1]
-            if (
-                len(argument) >= 2
-                and argument[0] == argument[-1]
-                and argument[0] in {"\"", "'"}
-            )
+            if (len(argument) >= 2 and argument[0] == argument[-1] and argument[0] in {'"', "'"})
             else argument
             for argument in argv
         ]

@@ -47,12 +47,8 @@ class ModelCallUseCases:
                 provider=str(payload.get("provider") or ""),
                 model=str(payload.get("model") or ""),
                 currency=str(payload.get("currency") or "EUR"),
-                input_price_per_million=float(
-                    payload.get("input_price_per_million") or 0
-                ),
-                output_price_per_million=float(
-                    payload.get("output_price_per_million") or 0
-                ),
+                input_price_per_million=float(payload.get("input_price_per_million") or 0),
+                output_price_per_million=float(payload.get("output_price_per_million") or 0),
             )
         )
 
@@ -68,8 +64,10 @@ class ModelCallUseCases:
         since = None
         if hours is not None and hours > 0:
             since = (
-                datetime.now(UTC) - timedelta(hours=hours)
-            ).isoformat(timespec="seconds").replace("+00:00", "Z")
+                (datetime.now(UTC) - timedelta(hours=hours))
+                .isoformat(timespec="seconds")
+                .replace("+00:00", "Z")
+            )
         return ModelCallFilter(
             since=since,
             provider=provider,

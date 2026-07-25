@@ -26,9 +26,9 @@ for path in SRC_ROOT.rglob("*.py"):
                     f"{path.relative_to(ROOT)}:{node.lineno}: shell=True is forbidden"
                 )
 
-request_source = (
-    ROOT / "src" / "receipt_intelligence" / "web" / "request_parsing.py"
-).read_text(encoding="utf-8")
+request_source = (ROOT / "src" / "receipt_intelligence" / "web" / "request_parsing.py").read_text(
+    encoding="utf-8"
+)
 for field in (
     "ollama_url",
     "vlm_service_url",
@@ -55,12 +55,7 @@ for field in (
         )
 
 vlm_service_source = (
-    ROOT
-    / "src"
-    / "receipt_intelligence"
-    / "entrypoints"
-    / "vlm_http"
-    / "app.py"
+    ROOT / "src" / "receipt_intelligence" / "entrypoints" / "vlm_http" / "app.py"
 ).read_text(encoding="utf-8")
 for field in ("backend", "runner", "command", "timeout_seconds", "max_side_limit"):
     fragment = f'payload.get("{field}")'

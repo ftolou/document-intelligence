@@ -32,9 +32,7 @@ def _line(
         "y_center": y + 25,
         "amounts": [] if amount is None else [{"raw": text.split()[0], "value": amount}],
         "damaged_amount_candidate": (
-            {"raw": text, "value": None, "status": "damaged_amount_token"}
-            if damaged
-            else None
+            {"raw": text, "value": None, "status": "damaged_amount_token"} if damaged else None
         ),
         "role_hint": role,
     }

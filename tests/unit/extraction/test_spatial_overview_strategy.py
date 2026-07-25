@@ -135,6 +135,4 @@ def test_geometry_only_overview_records_that_no_llm_call_was_made() -> None:
     assert overview["status"] == "geometry_only"
     assert overview["mode"] == "deterministic_geometry"
     assert overview["llm_call_performed"] is False
-    assert overview["geometric_row_group_count"] == len(
-        document["geometric_row_groups"]
-    )
+    assert overview["geometric_row_group_count"] == len(document["geometric_row_groups"])

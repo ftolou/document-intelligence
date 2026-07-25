@@ -7,7 +7,7 @@ from pathlib import Path
 
 def test_core_rag_sql_imports_do_not_require_langgraph() -> None:
     root = Path(__file__).resolve().parents[3]
-    code = r'''
+    code = r"""
 import builtins
 import importlib
 import sys
@@ -30,7 +30,7 @@ for module_name in (
 ):
     importlib.import_module(module_name)
 assert not any(name == "langgraph" or name.startswith("langgraph.") for name in sys.modules)
-'''
+"""
     subprocess.run(
         [sys.executable, "-c", code],
         cwd=root,

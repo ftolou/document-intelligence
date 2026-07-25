@@ -23,9 +23,7 @@ def _filters() -> dict[str, str | None]:
 
 @model_calls_bp.get("/api/model-calls/summary")
 def model_call_summary():
-    return jsonify(
-        get_app_services().model_calls.summary(hours=_hours(), **_filters())
-    )
+    return jsonify(get_app_services().model_calls.summary(hours=_hours(), **_filters()))
 
 
 @model_calls_bp.get("/api/model-calls")

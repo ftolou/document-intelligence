@@ -51,8 +51,7 @@ for forbidden in (
 ):
     if forbidden in entrypoint_source:
         violations.append(
-            "VLM HTTP transport selects or invokes a concrete backend directly: "
-            f"{forbidden}"
+            f"VLM HTTP transport selects or invokes a concrete backend directly: {forbidden}"
         )
 if "analysis_service.execute(" not in entrypoint_source:
     violations.append("VLM HTTP transport must call VlmAnalysisService.execute()")
@@ -71,9 +70,7 @@ for path in application_root.rglob("*.py"):
                         f"{path.relative_to(ROOT)} imports infrastructure adapter {alias.name}"
                     )
         if module and module.startswith("receipt_intelligence.adapters"):
-            violations.append(
-                f"{path.relative_to(ROOT)} imports infrastructure adapter {module}"
-            )
+            violations.append(f"{path.relative_to(ROOT)} imports infrastructure adapter {module}")
 
 adapters_init = (PACKAGE / "adapters" / "vlm" / "__init__.py").read_text(encoding="utf-8")
 if "ConfiguredVlmEngine" in adapters_init or "legacy_vlm" in adapters_init:
