@@ -94,7 +94,7 @@ async function loadConfig() {
   if (!res.ok) throw new Error(`Config load failed: ${res.status}`);
   appConfig = await res.json();
 
-  for (const key of ['ollama_url', 'model', 'extraction_strategy', 'num_ctx', 'num_predict', 'ocr_lang', 'ocr_device', 'vlm_backend', 'vlm_service_url', 'categorization_model', 'categorization_num_ctx', 'categorization_num_predict']) {
+  for (const key of ['ollama_url', 'model', 'num_ctx', 'num_predict', 'ocr_lang', 'ocr_device', 'vlm_backend', 'vlm_service_url', 'categorization_model', 'categorization_num_ctx', 'categorization_num_predict']) {
     const input = document.getElementById(key);
     if (input && appConfig[key] !== undefined) input.value = appConfig[key];
   }
@@ -1111,7 +1111,7 @@ function renderRagDiagnostics(diagnostics) {
   const stages = Array.isArray(diagnostics.stages) ? diagnostics.stages : [];
   const resolvedEntities = Array.isArray(diagnostics.resolved_entities) ? diagnostics.resolved_entities : [];
   const validatedSql = diagnostics.validated_sql || null;
-  const ollama = diagnostics.ollama_summary || {};
+  const ollama = diagnostics.model_call_summary || diagnostics.ollama_summary || {};
   const stageRows = stages.map((stage, index) => `<tr>
     <td class="numeric">${index + 1}</td>
     <td><code>${escapeHtml(formatPlain(stage.name))}</code></td>

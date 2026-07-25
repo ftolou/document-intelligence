@@ -204,18 +204,15 @@ affected item. Price, quantity, VAT, date, and merchant edits remain SQL-only up
 This matters because a line such as `PFAND 0.25` should be treated as a `deposit` row type, while a line such as `HEAD&SHOULDERS CLASSIC` should be treated as a normal `item` row type with product category `Personal Care / personal_care` or a more specific derived category such as `personal_care/shampoo` in the database/RAG layer.
 
 
-## Table-derived item fields
+## Item pricing fields
 
-When the dedicated table interpreter finds extra item-level columns, the final receipt may contain additional fields such as:
+The geometry-first main parser may populate additional item-level pricing fields such as:
 
 - `original_price`
 - `discount_amount`
 - `tax_code`
-- `table_interpretation_source_row_id`
 
-These fields are important for receipt analytics and later RAG/DB import because they separate product identity from pricing context. Product categories should be reviewed against the clean product description, not against discount/coupon context cells.
+These fields separate product identity from pricing context for receipt analytics and later RAG/DB import. Product categories should be reviewed against the clean product description, not against discount, coupon or loyalty text.
 
-
-## Phase 2.2 refinement
-
-See `docs/archive/historical-patch-notes/archive/historical-patch-notes/TABLE_INTERPRETATION_REFINEMENTS.md` for the product-description/line-note separation, settlement/tender refinement, and printed-change validation added in `v1.6-phase2-table-refinement`.
+Historical table-interpretation refinements are retained under
+`docs/archive/historical-patch-notes/TABLE_INTERPRETATION_REFINEMENTS.md`.

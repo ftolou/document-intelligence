@@ -39,7 +39,7 @@ def _source_ids(record: dict[str, Any]) -> list[str]:
     for value in record.get("source_line_ids") or []:
         if value is not None:
             values.append(str(value))
-    for field in ("table_interpretation_source_row_id", "row_id", "layout_row_id", "id"):
+    for field in ("row_id", "layout_row_id", "id"):
         value = record.get(field)
         if value is not None and str(value).strip():
             values.append(str(value))

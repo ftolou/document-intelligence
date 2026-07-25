@@ -26,24 +26,12 @@ class ExtractionConfig:
     model: str
 
     tolerance: float = 0.03
-    skip_row_llm: bool = False
-    active_line_repair: bool = False
-    max_repair_passes: int = 0
-    max_repair_rois: int = 0
-    max_repair_variants: int = 0
     max_reocr_images: int = 0
-    repair_time_budget_seconds: float = 0.0
     repair_ocr_min_score: float = 0.20
     ocr_lang: str = "german"
     ocr_device: str = "cpu"
-    ocr_det_model: str | None = None
-    ocr_rec_model: str | None = "latin_PP-OCRv5_mobile_rec"
     progress_callback: ProgressCallback | None = None
 
-    extraction_strategy: str = "current"
-    spatial_overview_num_ctx: int = 16384
-    spatial_overview_num_predict: int = 4096
-    spatial_overview_timeout_seconds: float = 180.0
     spatial_canvas_width: int = 112
 
     max_lines_for_llm: int = 260
@@ -85,18 +73,6 @@ class ExtractionConfig:
         object.__setattr__(self, "result_dir", Path(self.result_dir))
         if self.source_image_path is not None:
             object.__setattr__(self, "source_image_path", Path(self.source_image_path))
-        strategy = (self.extraction_strategy or "current").strip().lower()
-        if strategy not in {"current", "spatial_overview"}:
-            raise ValueError(
-                "extraction_strategy must be 'current' or 'spatial_overview'"
-            )
-        object.__setattr__(self, "extraction_strategy", strategy)
-        if self.spatial_overview_num_ctx < 1024:
-            raise ValueError("spatial_overview_num_ctx must be >= 1024")
-        if self.spatial_overview_num_predict < 256:
-            raise ValueError("spatial_overview_num_predict must be >= 256")
-        if self.spatial_overview_timeout_seconds <= 0:
-            raise ValueError("spatial_overview_timeout_seconds must be > 0")
         if not 72 <= self.spatial_canvas_width <= 160:
             raise ValueError("spatial_canvas_width must be between 72 and 160")
 

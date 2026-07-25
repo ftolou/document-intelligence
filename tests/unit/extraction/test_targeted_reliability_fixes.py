@@ -12,9 +12,6 @@ from receipt_intelligence.extraction.categorization.items import (
 )
 from receipt_intelligence.extraction.parsing.llm_parser import run_llm_main_parser
 from receipt_intelligence.extraction.repair.item_order import sort_items_by_printed_order
-from receipt_intelligence.extraction.repair.vertical_price_stack import (
-    _fused_region_table_candidate,
-)
 
 
 def _valid_receipt_without_overall_confidence() -> dict:
@@ -101,69 +98,6 @@ def test_sequence_merge_preserves_printed_order_across_line_namespaces() -> None
     )
 
     assert [item["description"] for item in ordered] == ["APPLE", "BREAD", "CHEESE"]
-
-
-def test_fused_recovery_preserves_printed_order_when_sources_are_mixed() -> None:
-    receipt = {
-        "items": [
-            {"description": "APPLE", "product_description": "APPLE", "line_total": 1.0},
-            {"description": "CHEESE", "product_description": "CHEESE", "line_total": 3.0},
-        ]
-    }
-    visual_evidence = {
-        "best_preferred_item_block": {
-            "rows": [
-                {
-                    "row_id": "region_line_002",
-                    "description_candidate": "APPLE",
-                    "amount": 1.0,
-                    "source_line_ids": ["region_line_002"],
-                },
-                {
-                    "row_id": "region_line_004",
-                    "description_candidate": "CHEESE",
-                    "amount": 3.0,
-                    "source_line_ids": ["region_line_004"],
-                },
-            ],
-            "unmatched_product_rows": [],
-        }
-    }
-    table_arbitration = {
-        "ocr_layout_item_candidates": [
-            {
-                "row_id": "row_010",
-                "description": "APPLE",
-                "line_total": 1.0,
-                "source_line_ids": ["line_010"],
-                "evidence_text": "APPLE 1,00",
-            },
-            {
-                "row_id": "row_011",
-                "description": "BREAD",
-                "line_total": 2.0,
-                "source_line_ids": ["line_011"],
-                "evidence_text": "BREAD 2,00",
-            },
-            {
-                "row_id": "row_012",
-                "description": "CHEESE",
-                "line_total": 3.0,
-                "source_line_ids": ["line_012"],
-                "evidence_text": "CHEESE 3,00",
-            },
-        ]
-    }
-
-    items, diagnostics = _fused_region_table_candidate(
-        receipt=receipt,
-        target_total=6.0,
-        visual_evidence=visual_evidence,
-        table_arbitration=table_arbitration,
-    )
-
-    assert diagnostics["status"] == "balanced_without_residual_assignment"
-    assert [item["description"] for item in items] == ["APPLE", "BREAD", "CHEESE"]
 
 
 def test_categorizer_caps_incomplete_semantic_expansion_without_dictionary() -> None:

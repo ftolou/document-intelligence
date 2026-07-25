@@ -85,9 +85,6 @@ def _compact_visual_summary(visual_evidence: dict[str, Any] | None) -> dict[str,
     arbitration = (
         ve.get("table_arbitration") if isinstance(ve.get("table_arbitration"), dict) else {}
     )
-    table_interpretation = (
-        ve.get("table_interpretation") if isinstance(ve.get("table_interpretation"), dict) else {}
-    )
     return {
         "summary": ve.get("summary") or {},
         "table_arbitration": {
@@ -102,19 +99,6 @@ def _compact_visual_summary(visual_evidence: dict[str, Any] | None) -> dict[str,
             "product_percent_not_tax_rows": _strip_trace_fields(
                 (arbitration.get("product_percent_not_tax_rows") or [])[:12]
             ),
-        },
-        "table_interpretation": {
-            "status": table_interpretation.get("status"),
-            "tables": [
-                {
-                    "source_table_id": t.get("source_table_id"),
-                    "table_type": t.get("table_type"),
-                    "rows": _strip_trace_fields((t.get("rows") or [])[:30]),
-                }
-                for t in (table_interpretation.get("tables") or [])[:2]
-                if isinstance(t, dict)
-            ],
-            "settlement": _strip_trace_fields(table_interpretation.get("settlement")),
         },
         "payment_change_lines": _strip_trace_fields((ve.get("payment_change_lines") or [])[:10]),
         "total_payment_reconciliation_candidates": _strip_trace_fields(

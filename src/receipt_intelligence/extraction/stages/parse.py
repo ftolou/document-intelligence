@@ -1,4 +1,4 @@
-"""Main LLM parsing, table assembly and initial deterministic validation."""
+"""Main LLM parsing and initial deterministic validation."""
 
 from __future__ import annotations
 
@@ -10,11 +10,6 @@ from receipt_intelligence.extraction.evidence.compact import (
 )
 from receipt_intelligence.extraction.evidence.grouped import build_grouped_evidence
 from receipt_intelligence.extraction.parsing.llm_parser import run_llm_main_parser
-from receipt_intelligence.extraction.parsing.table_assembler import (
-    assemble_receipt_from_table_interpretation,
-    compact_visual_evidence_for_main_parser,
-    merge_authoritative_table_items,
-)
 from receipt_intelligence.extraction.state import ExtractionPhase
 from receipt_intelligence.extraction.validation.consistency import (
     apply_consistency_postprocess,
@@ -48,20 +43,7 @@ class MainParsingStage:
             format_json=config.format_json,
         )
 
-        if config.extraction_strategy == "spatial_overview":
-            # In the experimental path VLM output is explicitly secondary.  Do
-            # not inject the legacy "authoritative table" guidance.
-            main_parser_visual_evidence = context.visual_evidence
-        else:
-            main_parser_visual_evidence = (
-                compact_visual_evidence_for_main_parser(
-                    context.visual_evidence,
-                    table_interpretation=context.table_interpretation_result,
-                    arbitration=context.table_arbitration_result,
-                )
-                if context.visual_evidence
-                else None
-            )
+        main_parser_visual_evidence = context.visual_evidence
         context.llm_result = run_llm_main_parser(
             ocr_json_path=config.ocr_json_path,
             ollama_url=config.ollama_url,
@@ -76,8 +58,6 @@ class MainParsingStage:
             visual_evidence=main_parser_visual_evidence,
             prebuilt_ocr_context=context.preliminary_ocr_context,
             spatial_document_map=context.spatial_document_map,
-            spatial_overview=context.spatial_overview_result,
-            extraction_strategy=config.extraction_strategy,
             llm_gateway=context.dependencies.llm_gateway,
         )
 
@@ -100,7 +80,6 @@ class MainParsingStage:
         write_text(paths["llm_main_raw"], llm_result["raw_output"])
         save_json(paths["receipt_llm_main"], context.receipt)
 
-        self._apply_table_assembly(context)
         self._apply_consistency_postprocess(context)
 
         if llm_result.get("error"):
@@ -135,68 +114,6 @@ class MainParsingStage:
         context.final_receipt = context.receipt
         context.final_report = context.report
         return context
-
-    def _apply_table_assembly(self, context: ExtractionContext) -> None:
-        if context.config.extraction_strategy == "spatial_overview":
-            context.table_assembly_report = {
-                "attempted": False,
-                "changed": False,
-                "reason": "disabled_for_spatial_overview_strategy",
-            }
-            save_json(context.paths["table_assembly_report"], context.table_assembly_report)
-            return
-        if context.table_interpretation_result is None:
-            return
-        llm_result = context.llm_result
-        receipt = context.receipt
-        if llm_result.get("error"):
-            recovered_error = llm_result.get("error")
-            receipt = assemble_receipt_from_table_interpretation(
-                table_interpretation=context.table_interpretation_result,
-                arbitration=context.table_arbitration_result,
-                base_receipt=receipt,
-                reason="main_parser_failed_recovered_from_llm_table_interpretation",
-            )
-            llm_result["recovered_error"] = recovered_error
-            llm_result["error"] = None
-            context.table_assembly_report = {
-                "attempted": True,
-                "changed": True,
-                "mode": "assembled_after_main_parser_failure",
-                "recovered_error": recovered_error,
-            }
-            context.emit(
-                "table_assembly",
-                "done",
-                (
-                    "Main parser failed; assembled a provisional receipt from dedicated "
-                    "LLM table interpretation."
-                ),
-                recovered_error=recovered_error,
-                item_count=len(receipt.get("items") or []),
-            )
-        else:
-            receipt, report = merge_authoritative_table_items(
-                receipt,
-                context.table_interpretation_result,
-                context.table_arbitration_result,
-            )
-            report["attempted"] = True
-            context.table_assembly_report = report
-            if report.get("changed"):
-                context.emit(
-                    "table_assembly",
-                    "done",
-                    (
-                        "Replaced weak main-parser item rows with authoritative LLM table "
-                        "interpretation/arbitration rows."
-                    ),
-                    item_count=len(receipt.get("items") or []),
-                    source=report.get("source"),
-                )
-        context.receipt = receipt
-        save_json(context.paths["receipt_table_assembled"], receipt)
-        save_json(context.paths["table_assembly_report"], context.table_assembly_report)
 
     def _apply_consistency_postprocess(self, context: ExtractionContext) -> None:
         llm_result = context.llm_result

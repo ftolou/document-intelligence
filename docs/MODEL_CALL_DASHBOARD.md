@@ -14,8 +14,8 @@ model load time, prompt-evaluation time, generation time, stop reason, model,
 operation and attempt. Calls are correlated with extraction job IDs or query IDs.
 Failed calls are recorded as well, without changing exception behavior.
 
-The stable operation names include `receipt_main_parse`,
-`receipt_table_interpretation`, `receipt_patch_repair`,
+The stable operation names include `receipt_main_parse_spatial`,
+`receipt_patch_repair`,
 `receipt_item_categorization`, `rag_sql_question_analysis`,
 `rag_candidate_resolution`, `rag_sql_planning`, and
 `rag_sql_answer_formatting`.

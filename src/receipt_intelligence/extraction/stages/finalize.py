@@ -58,12 +58,8 @@ class FinalizationStage:
             "app_version": get_app_version(),
             "workflow": "ReceiptExtractionWorkflow",
             "staged_execution": True,
-            "extraction_strategy": config.extraction_strategy,
             "spatial_overview_used": bool(llm_result.get("spatial_overview_used")),
             "spatial_geometry_used": bool(llm_result.get("spatial_geometry_used")),
-            "spatial_overview_llm_call_performed": bool(
-                (context.spatial_overview_result or {}).get("llm_call_performed")
-            ),
             "response_schema_enforced": bool(llm_result.get("response_schema_enforced")),
             "no_deterministic_fallback": True,
             "llm_error": llm_result.get("error"),
@@ -199,22 +195,18 @@ class FinalizationStage:
                 "metrics_artifact": str(context.paths["extraction_metrics"]),
             },
             "architecture": (
-                "OCR/VLM evidence -> strategy-selected geometry-preserving representation -> "
-                "schema-constrained main LLM parser -> validation -> strategy-gated repair -> "
-                "validated patch-only correction -> item categorization"
+                "OCR/VLM evidence -> spatial geometry -> schema-constrained main LLM parser "
+                "-> validation -> bounded re-OCR -> validated patch-only correction -> "
+                "item categorization"
             ),
-            "extraction_strategy": config.extraction_strategy,
             "spatial_overview": {
-                "enabled": config.extraction_strategy == "spatial_overview",
+                "enabled": True,
                 "status": (
                     context.spatial_overview_result.get("status")
                     if context.spatial_overview_result
                     else None
                 ),
                 "mode": (context.spatial_overview_result or {}).get("mode"),
-                "llm_call_performed": bool(
-                    (context.spatial_overview_result or {}).get("llm_call_performed")
-                ),
                 "geometric_row_group_count": (
                     context.spatial_overview_result or {}
                 ).get("geometric_row_group_count"),
@@ -223,20 +215,6 @@ class FinalizationStage:
             },
             "no_deterministic_semantic_parser": True,
             "no_deterministic_fallback": True,
-            "old_v13_arguments_ignored": {
-                "skip_row_llm": config.skip_row_llm,
-                "active_line_repair": config.active_line_repair,
-                "max_repair_passes": config.max_repair_passes,
-                "max_repair_rois": config.max_repair_rois,
-                "max_repair_variants": config.max_repair_variants,
-                "max_reocr_images": config.max_reocr_images,
-                "repair_time_budget_seconds": config.repair_time_budget_seconds,
-                "repair_ocr_min_score": config.repair_ocr_min_score,
-                "ocr_lang": config.ocr_lang,
-                "ocr_device": config.ocr_device,
-                "ocr_det_model": config.ocr_det_model,
-                "ocr_rec_model": config.ocr_rec_model,
-            },
             "llm": {
                 "model": config.model,
                 "ollama_url": config.ollama_url,
@@ -254,8 +232,6 @@ class FinalizationStage:
                 "attempts": llm_result.get("attempts"),
             },
             "right_column_reocr": self._reocr_meta(context),
-            "right_column_recovery": self._right_column_meta(context),
-            "vertical_price_stack_recovery": self._vertical_stack_meta(context),
             "vlm": {
                 "enabled": config.vlm_enabled,
                 "backend": config.vlm_backend,
@@ -269,9 +245,7 @@ class FinalizationStage:
                 if config.source_image_path
                 else None,
             },
-            "table_interpretation": self._table_interpretation_meta(context),
             "table_arbitration": self._table_arbitration_meta(context),
-            "table_assembly": context.table_assembly_report,
             "consistency_postprocess": {
                 "actions": context.postprocess_actions,
                 "action_count": len(context.postprocess_actions),
@@ -322,47 +296,6 @@ class FinalizationStage:
             "attempted": result is not None,
             "status": result.get("status") if result else None,
             "evidence_line_count": result.get("evidence_line_count") if result else None,
-        }
-
-    @staticmethod
-    def _right_column_meta(context: ExtractionContext) -> dict[str, Any]:
-        result = context.right_column_recovery_result
-        return {
-            "attempted": result is not None,
-            "status": result.get("status") if result else None,
-            "applied": bool(result.get("applied")) if result else False,
-            "before_diff": result.get("before_diff") if result else None,
-            "after_diff": result.get("after_diff") if result else None,
-            "selected_addition_count": len(result.get("selected_additions") or []) if result else 0,
-            "replacement_count": len(result.get("replacement_actions") or []) if result else 0,
-        }
-
-    @staticmethod
-    def _vertical_stack_meta(context: ExtractionContext) -> dict[str, Any]:
-        result = context.vertical_price_stack_recovery_result
-        return {
-            "attempted": result is not None,
-            "status": result.get("status") if result else None,
-            "applied": bool(result.get("applied")) if result else False,
-            "mode": result.get("mode") if result else None,
-            "before_diff": result.get("before_diff") if result else None,
-            "after_diff": result.get("after_diff") if result else None,
-            "candidate_item_count": result.get("candidate_item_count") if result else 0,
-            "amount_count": (
-                (result.get("price_stack_crop") or {}).get("amount_count") if result else None
-            ),
-        }
-
-    @staticmethod
-    def _table_interpretation_meta(context: ExtractionContext) -> dict[str, Any]:
-        result = context.table_interpretation_result
-        return {
-            "attempted": result is not None,
-            "status": result.get("status") if result else None,
-            "table_count": len(result.get("tables") or []) if result else 0,
-            "overall_confidence": result.get("overall_confidence") if result else None,
-            "duration_seconds": result.get("duration_seconds") if result else None,
-            "warnings": result.get("warnings") if result else [],
         }
 
     @staticmethod

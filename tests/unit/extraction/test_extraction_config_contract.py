@@ -76,16 +76,34 @@ def test_compatibility_entry_point_rejects_unknown_keywords_before_execution(
         )
 
 
-def test_spatial_overview_strategy_is_normalized_and_validated(tmp_path: Path) -> None:
+def test_spatial_canvas_width_is_validated(tmp_path: Path) -> None:
     request = ExtractionRequest(
         **required_values(tmp_path),
-        extraction_strategy="Spatial_Overview",
+        spatial_canvas_width=120,
     )
+    assert request.spatial_canvas_width == 120
 
-    assert request.extraction_strategy == "spatial_overview"
-
-    with pytest.raises(ValueError, match="extraction_strategy"):
+    with pytest.raises(ValueError, match="spatial_canvas_width"):
         ExtractionRequest(
             **required_values(tmp_path),
-            extraction_strategy="unknown",
+            spatial_canvas_width=40,
         )
+
+
+@pytest.mark.parametrize(
+    "option_name",
+    [
+        "extraction_strategy",
+        "skip_row_llm",
+        "active_line_repair",
+        "max_repair_passes",
+        "max_repair_rois",
+        "max_repair_variants",
+        "repair_time_budget_seconds",
+        "ocr_det_model",
+        "ocr_rec_model",
+    ],
+)
+def test_obsolete_extraction_options_are_rejected(option_name: str) -> None:
+    with pytest.raises(TypeError, match="Unsupported extraction option"):
+        normalize_extraction_arguments({option_name: True})

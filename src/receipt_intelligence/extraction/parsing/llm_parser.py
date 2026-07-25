@@ -45,9 +45,9 @@ from receipt_intelligence.extraction.evidence.layout import (
     extract_ocr_amounts,
 )
 from receipt_intelligence.extraction.evidence.spatial_document import (
+    build_spatial_document_map,
     spatial_document_to_prompt_text,
 )
-from receipt_intelligence.extraction.evidence.visual import visual_evidence_to_prompt_text
 from receipt_intelligence.prompts import render_prompt_template
 
 # Accept JSON/model amount strings with decimal comma or decimal dot, but OCR
@@ -649,7 +649,6 @@ def receipt_schema_for_prompt() -> dict[str, Any]:
                 "tax_code": "string or null, optional suffix/marker such as a/b/A/B",
                 "category": "item | discount | deposit | refund | unknown",
                 "source_line_ids": ["line_000"],
-                "table_interpretation_source_row_id": "string or null, optional",
                 "confidence": "0..1",
                 "notes": "string or null",
             }
@@ -722,7 +721,6 @@ def _compact_schema_for_prompt() -> dict[str, Any]:
                 "tax_code": None,
                 "category": "item|discount|deposit|refund|unknown",
                 "source_line_ids": [],
-                "table_interpretation_source_row_id": None,
                 "confidence": 0.0,
                 "notes": None,
             }
@@ -808,7 +806,6 @@ def _strict_output_schema_for_prompt() -> dict[str, Any]:
                 "tax_code": None,
                 "category": "item|discount|deposit|refund|unknown",
                 "source_line_ids": [],
-                "table_interpretation_source_row_id": None,
                 "confidence": 0.0,
                 "notes": None,
             }
@@ -878,7 +875,6 @@ def receipt_response_json_schema() -> dict[str, Any]:
                 "enum": ["item", "discount", "deposit", "refund", "unknown"],
             },
             "source_line_ids": source_ids,
-            "table_interpretation_source_row_id": nullable_string,
             "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
             "notes": nullable_string,
         },
@@ -898,7 +894,6 @@ def receipt_response_json_schema() -> dict[str, Any]:
             "tax_code",
             "category",
             "source_line_ids",
-            "table_interpretation_source_row_id",
             "confidence",
             "notes",
         ],
@@ -1019,10 +1014,8 @@ def build_prompt(
     previous_error: str | None = None,
     visual_evidence: dict[str, Any] | None = None,
     spatial_document_map: dict[str, Any] | None = None,
-    spatial_overview: dict[str, Any] | None = None,
-    extraction_strategy: str = "current",
 ) -> str:
-    """Build either the current compact prompt or the spatial-overview prompt."""
+    """Build the geometry-first receipt extraction prompt."""
     retry_note = ""
     has_visual = bool(
         visual_evidence and visual_evidence.get("status") in {"ok", "no_amounts_found"}
@@ -1042,28 +1035,17 @@ def build_prompt(
     schema = _strict_output_schema_for_prompt()
     error_block = f"\nPrevious rejection reason: {previous_error}\n" if previous_error else ""
 
-    if extraction_strategy == "spatial_overview" and isinstance(spatial_document_map, dict):
-        return render_prompt_template(
-            "main_receipt_parser_spatial.txt",
-            RETRY_NOTE=retry_note,
-            ERROR_BLOCK=error_block,
-            SCHEMA_JSON=json.dumps(schema, ensure_ascii=False, indent=2),
-            SPATIAL_EVIDENCE=spatial_document_to_prompt_text(
-                spatial_document_map,
-                max_rows=max_rows,
-            ),
-        )
-
-    evidence = build_compact_evidence(ocr_context, max_rows=max_rows)
-    evidence_text = compact_evidence_to_prompt_text(evidence)
-    visual_text = visual_evidence_to_prompt_text(visual_evidence) if has_visual else ""
+    if not isinstance(spatial_document_map, dict):
+        raise ValueError("The main receipt parser requires a spatial document map.")
     return render_prompt_template(
-        "main_receipt_parser.txt",
+        "main_receipt_parser_spatial.txt",
         RETRY_NOTE=retry_note,
         ERROR_BLOCK=error_block,
         SCHEMA_JSON=json.dumps(schema, ensure_ascii=False, indent=2),
-        VISUAL_TEXT=visual_text,
-        EVIDENCE_TEXT=evidence_text,
+        SPATIAL_EVIDENCE=spatial_document_to_prompt_text(
+            spatial_document_map,
+            max_rows=max_rows,
+        ),
     )
 
 def ollama_generate(
@@ -1291,12 +1273,6 @@ def normalize_llm_receipt(obj: dict[str, Any]) -> dict[str, Any]:
         item["line_total"] = _num_or_none(item.get("line_total"))
         item["tax_rate"] = _num_or_none(item.get("tax_rate"))
         item["tax_code"] = str(item.get("tax_code") or "").strip() or None
-        item["table_interpretation_source_row_id"] = (
-            str(
-                item.get("table_interpretation_source_row_id") or item.get("source_row_id") or ""
-            ).strip()
-            or None
-        )
         item["category"] = str(item.get("category") or "item")
         item["source_line_ids"] = _list_of_str(item.get("source_line_ids"))
         try:
@@ -1416,8 +1392,6 @@ def run_llm_main_parser(
     visual_evidence: dict[str, Any] | None = None,
     prebuilt_ocr_context: dict[str, Any] | None = None,
     spatial_document_map: dict[str, Any] | None = None,
-    spatial_overview: dict[str, Any] | None = None,
-    extraction_strategy: str = "current",
     llm_gateway: LlmGateway | None = None,
 ) -> dict[str, Any]:
     started = time.perf_counter()
@@ -1428,6 +1402,11 @@ def run_llm_main_parser(
         context = build_ocr_context(ocr, max_lines=max_lines)
     if visual_evidence:
         context["visual_evidence_lines"] = _visual_evidence_line_registry(visual_evidence)
+    if spatial_document_map is None:
+        spatial_document_map = build_spatial_document_map(
+            context,
+            visual_evidence=visual_evidence,
+        )
 
     attempts: list[dict[str, Any]] = []
     receipt: dict[str, Any] | None = None
@@ -1473,8 +1452,6 @@ def run_llm_main_parser(
             previous_error=previous_error_for_prompt,
             visual_evidence=visual_evidence,
             spatial_document_map=spatial_document_map,
-            spatial_overview=spatial_overview,
-            extraction_strategy=extraction_strategy,
         )
         raw_text = ""
         attempt_error = None
@@ -1485,11 +1462,7 @@ def run_llm_main_parser(
                     GenerationRequest(
                         model=model,
                         prompt=prompt,
-                        operation=(
-                            "receipt_main_parse_spatial"
-                            if extraction_strategy == "spatial_overview"
-                            else "receipt_main_parse"
-                        ),
+                        operation="receipt_main_parse_spatial",
                         attempt=attempt_index + 1,
                         num_ctx=num_ctx,
                         num_predict=int(spec["num_predict"]),
@@ -1589,13 +1562,8 @@ def run_llm_main_parser(
         "visual_evidence_used": bool(
             visual_evidence and visual_evidence.get("status") in {"ok", "no_amounts_found"}
         ),
-        "extraction_strategy": extraction_strategy,
-        "spatial_overview_used": bool(
-            extraction_strategy == "spatial_overview" and spatial_document_map
-        ),
-        "spatial_geometry_used": bool(
-            extraction_strategy == "spatial_overview" and spatial_document_map
-        ),
+        "spatial_overview_used": bool(spatial_document_map),
+        "spatial_geometry_used": bool(spatial_document_map),
         "response_schema_enforced": response_schema_enforced,
     }
 

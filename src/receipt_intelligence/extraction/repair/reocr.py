@@ -80,7 +80,9 @@ def _norm_bbox(line: dict[str, Any]) -> tuple[float, float, float, float] | None
 
 def _line_index(ocr_context: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {
-        str(l.get("line_id")): l for l in (ocr_context.get("lines") or []) if isinstance(l, dict)
+        str(line.get("line_id")): line
+        for line in (ocr_context.get("lines") or [])
+        if isinstance(line, dict)
     }
 
 
@@ -179,7 +181,7 @@ def _crop_right_column(
             W, H = img.size
             ys = []
             hs = []
-            for x, y, w, h in cand.get("bboxes") or []:
+            for _x, y, _w, h in cand.get("bboxes") or []:
                 ys.append(y)
                 hs.append(h)
             if not ys:
@@ -350,7 +352,7 @@ def reocr_evidence_to_visual_evidence(
         ],
         "summary": {
             "line_count": len(lines),
-            "amount_line_count": len([l for l in lines if l.get("amounts")]),
+            "amount_line_count": len([line for line in lines if line.get("amounts")]),
             "has_payment_like": False,
             "has_change_like": False,
             "has_tax_like": False,

@@ -548,7 +548,7 @@ def _build_structured_tables(
     raw_tables = _extract_structured_tables_from_obj(raw)
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for ti, tbl in enumerate(raw_tables[:max_tables]):
+    for tbl in raw_tables[:max_tables]:
         rows_raw = tbl.get("rows_raw") or []
         context = _infer_table_context(rows_raw)
         normalized_rows: list[dict[str, Any]] = []
@@ -1035,7 +1035,7 @@ def build_visual_evidence(
     issue_codes = [
         str(i.get("code")) for i in validation_report.get("issues") or [] if isinstance(i, dict)
     ]
-    amount_lines = [l for l in lines if l.get("amounts")]
+    amount_lines = [line for line in lines if line.get("amounts")]
     quantity_hint_rows = [
         r
         for r in table_rows
@@ -1096,11 +1096,11 @@ def build_visual_evidence(
             "total_payment_reconciliation_candidate_count": len(
                 total_payment_reconciliation_candidates
             ),
-            "has_payment_like": any("payment_like" in (l.get("tags") or []) for l in lines)
+            "has_payment_like": any("payment_like" in (line.get("tags") or []) for line in lines)
             or any("possible_payment" in (r.get("role_hints") or []) for r in table_rows),
-            "has_change_like": any("change_like" in (l.get("tags") or []) for l in lines)
+            "has_change_like": any("change_like" in (line.get("tags") or []) for line in lines)
             or any("possible_change" in (r.get("role_hints") or []) for r in table_rows),
-            "has_tax_like": any("tax_like" in (l.get("tags") or []) for l in lines)
+            "has_tax_like": any("tax_like" in (line.get("tags") or []) for line in lines)
             or any("possible_tax_context" in (r.get("role_hints") or []) for r in table_rows),
         },
         "structured_tables": structured_tables[:8],
@@ -1115,14 +1115,14 @@ def build_visual_evidence(
         "lines": lines[:80],
         "amount_lines": amount_lines[:60],
         "payment_change_lines": [
-            l
-            for l in lines
-            if set(l.get("tags") or []).intersection({"payment_like", "change_like"})
+            line
+            for line in lines
+            if set(line.get("tags") or []).intersection({"payment_like", "change_like"})
         ][:60],
-        "tax_like_lines": [l for l in lines if "tax_like" in (l.get("tags") or [])][:40],
+        "tax_like_lines": [line for line in lines if "tax_like" in (line.get("tags") or [])][:40],
         "item_price_like_lines": []
         if structured_tables
-        else [l for l in lines if "item_price_like" in (l.get("tags") or [])][:100],
+        else [line for line in lines if "item_price_like" in (line.get("tags") or [])][:100],
         "engine_error": vlm_result.get("error") if isinstance(vlm_result, dict) else None,
     }
     text = visual_evidence_to_prompt_text(evidence)
@@ -1265,17 +1265,6 @@ def visual_evidence_to_prompt_text(evidence: dict[str, Any]) -> str:
         )
         parts.append(json.dumps(payment_recon[:20], ensure_ascii=False, indent=2))
 
-    table_interpretation = (
-        evidence.get("table_interpretation")
-        if isinstance(evidence.get("table_interpretation"), dict)
-        else None
-    )
-    if table_interpretation:
-        parts.append("\nDEDICATED TABLE INTERPRETATION (HIGH-PRIORITY intermediate artifact):")
-        parts.append(
-            "Use this to separate clean product descriptions from discount/context columns, infer headerless table semantics, and preserve raw VLM rows for traceability. If it conflicts with raw evidence or arithmetic, mark uncertainty rather than inventing."
-        )
-        parts.append(json.dumps(table_interpretation, ensure_ascii=False, indent=2))
 
     table_arbitration = (
         evidence.get("table_arbitration")

@@ -41,7 +41,6 @@ class VisualArtifacts:
     visual_result: JsonObject | None = None
     visual_evidence: JsonObject | None = None
     region_reocr_result: JsonObject | None = None
-    table_interpretation_result: JsonObject | None = None
     table_arbitration_result: JsonObject | None = None
 
 
@@ -62,9 +61,6 @@ class ParsingArtifacts:
     ocr_context: JsonObject | None = None
     compact_evidence: JsonObject | None = None
     grouped_evidence: JsonObject | None = None
-    table_assembly_report: JsonObject = field(
-        default_factory=lambda: {"attempted": False, "changed": False}
-    )
     postprocess_actions: list[JsonObject] = field(default_factory=list)
     initial_report: JsonObject | None = None
     current_report: JsonObject | None = None
@@ -77,8 +73,6 @@ class RepairArtifacts:
     selected_receipt: JsonObject
     selected_report: JsonObject
     reocr_result: JsonObject | None = None
-    right_column_recovery_result: JsonObject | None = None
-    vertical_price_stack_recovery_result: JsonObject | None = None
     patch_correction_result: JsonObject | None = None
     corrected_report: JsonObject | None = None
     correction_used: bool = False

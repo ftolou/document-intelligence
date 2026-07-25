@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from collections.abc import Mapping
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 from urllib.parse import unquote, urlparse
 
 from receipt_intelligence.extraction.validation.receipt import validate_receipt
 from receipt_intelligence.services.artifact_service import artifact_resource
-from receipt_intelligence.storage.job_store import JobStore
 from receipt_intelligence.services.semantic_index_service import SemanticIndexUpdater
+from receipt_intelligence.storage.job_store import JobStore
 from receipt_intelligence.storage.receipt_db import ReceiptDatabase
 
 
@@ -115,7 +116,6 @@ def apply_human_review(
         "unit",
         "vat_rate",
         "tax_code",
-        "table_interpretation_source_row_id",
         "review_status",
     }
     item_numeric_fields = {
@@ -179,7 +179,7 @@ def apply_human_review(
         if "review_status" not in correction:
             item.setdefault("review_status", review.get("status") or "reviewed")
 
-    reviewed_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    reviewed_at = datetime.now(UTC).isoformat(timespec="seconds")
     updated["human_review"] = {
         "status": review.get("status") or "needs_review",
         "reviewer": review.get("reviewer") or "",

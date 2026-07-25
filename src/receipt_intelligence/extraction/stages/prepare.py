@@ -28,11 +28,10 @@ class PreparationStage:
             "running",
             (
                 f"{get_app_version()} staged pipeline started: OCR/VLM evidence -> "
-                f"{config.extraction_strategy} representation -> LLM parse -> validation -> "
+                "spatial geometry -> LLM parse -> validation -> "
                 "optional patch-only targeted correction -> optional item categorization."
             ),
             workflow="ReceiptExtractionWorkflow",
-            extraction_strategy=config.extraction_strategy,
         )
 
         try:

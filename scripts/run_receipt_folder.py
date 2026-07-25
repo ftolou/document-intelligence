@@ -34,12 +34,6 @@ def main() -> int:
     parser.add_argument("--out-dir", type=Path, default=Path("var/reports/receipt_batch"))
     parser.add_argument("--ollama-url", default="http://localhost:11434")
     parser.add_argument("--model", default="gemma4")
-    parser.add_argument(
-        "--extraction-strategy",
-        choices=("current", "spatial_overview"),
-        default="current",
-        help="Select the legacy compact path or the experimental geometry-first path.",
-    )
     parser.add_argument("--tolerance", type=float, default=0.03)
     parser.add_argument("--num-ctx", type=int, default=24384)
     parser.add_argument("--num-predict", type=int, default=8192)
@@ -68,7 +62,6 @@ def main() -> int:
             run_id=run_id,
             ollama_url=args.ollama_url,
             model=args.model,
-            extraction_strategy=args.extraction_strategy,
             tolerance=args.tolerance,
             num_ctx=args.num_ctx,
             num_predict=args.num_predict,

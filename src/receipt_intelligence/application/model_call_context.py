@@ -29,14 +29,14 @@ class ModelCallContext:
         )
 
 
-_CURRENT_MODEL_CALL_CONTEXT: ContextVar[ModelCallContext] = ContextVar(
+_CURRENT_MODEL_CALL_CONTEXT: ContextVar[ModelCallContext | None] = ContextVar(
     "receipt_intelligence_model_call_context",
-    default=ModelCallContext(),
+    default=None,
 )
 
 
 def current_model_call_context() -> ModelCallContext:
-    return _CURRENT_MODEL_CALL_CONTEXT.get()
+    return _CURRENT_MODEL_CALL_CONTEXT.get() or ModelCallContext()
 
 
 @contextmanager
@@ -58,7 +58,7 @@ def bind_model_call_context(
             query_id=query_id,
         )
     )
-    token: Token[ModelCallContext] = _CURRENT_MODEL_CALL_CONTEXT.set(updated)
+    token: Token[ModelCallContext | None] = _CURRENT_MODEL_CALL_CONTEXT.set(updated)
     try:
         yield updated
     finally:

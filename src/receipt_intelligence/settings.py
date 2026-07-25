@@ -40,12 +40,6 @@ LLM_TIMEOUT_SECONDS = float(os.getenv("LLM_TIMEOUT_SECONDS", "300"))
 LLM_JSON_RETRY_COUNT = int(os.getenv("LLM_JSON_RETRY_COUNT", "1"))
 OLLAMA_FORMAT_JSON = os.getenv("OLLAMA_FORMAT_JSON", "1").lower() in {"1", "true", "yes"}
 MAX_LINES_FOR_LLM = int(os.getenv("MAX_LINES_FOR_LLM", "220"))
-EXTRACTION_STRATEGY = os.getenv("EXTRACTION_STRATEGY", "current").strip().lower()
-SPATIAL_OVERVIEW_NUM_CTX = int(os.getenv("SPATIAL_OVERVIEW_NUM_CTX", "16384"))
-SPATIAL_OVERVIEW_NUM_PREDICT = int(os.getenv("SPATIAL_OVERVIEW_NUM_PREDICT", "4096"))
-SPATIAL_OVERVIEW_TIMEOUT_SECONDS = float(
-    os.getenv("SPATIAL_OVERVIEW_TIMEOUT_SECONDS", "180")
-)
 SPATIAL_CANVAS_WIDTH = int(os.getenv("SPATIAL_CANVAS_WIDTH", "112"))
 
 # RAG semantic item-embedding index. The index is derived and rebuildable;

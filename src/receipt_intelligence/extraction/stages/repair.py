@@ -19,12 +19,6 @@ from receipt_intelligence.extraction.repair.reocr import (
     reocr_evidence_to_visual_evidence,
     run_bounded_right_column_reocr,
 )
-from receipt_intelligence.extraction.repair.right_column import (
-    run_right_column_recovery,
-)
-from receipt_intelligence.extraction.repair.vertical_price_stack import (
-    run_vertical_price_stack_recovery,
-)
 from receipt_intelligence.extraction.state import ExtractionPhase
 from receipt_intelligence.extraction.support import (
     merge_visual_evidence,
@@ -54,11 +48,6 @@ class RepairAndCorrectionStage:
             and not llm_result.get("error")
         ):
             self._run_bounded_reocr(context)
-            if config.extraction_strategy == "spatial_overview":
-                self._skip_legacy_item_reconstruction(context)
-            else:
-                self._run_right_column_recovery(context)
-                self._run_vertical_price_stack_recovery(context)
             self._run_late_vlm_if_needed(context)
             self._run_patch_correction(context)
         elif not config.correction_enabled:
@@ -77,32 +66,6 @@ class RepairAndCorrectionStage:
                 {"status": "skipped", "message": "VLM layer not triggered."},
             )
         return context
-
-    def _skip_legacy_item_reconstruction(self, context: ExtractionContext) -> None:
-        reason = "disabled_for_spatial_overview_semantic_safety"
-        context.right_column_recovery_result = {
-            "status": "skipped",
-            "applied": False,
-            "reason": reason,
-        }
-        context.vertical_price_stack_recovery_result = {
-            "status": "skipped",
-            "applied": False,
-            "reason": reason,
-        }
-        save_json(context.paths["right_column_recovery"], context.right_column_recovery_result)
-        save_json(
-            context.paths["vertical_price_stack_recovery"],
-            context.vertical_price_stack_recovery_result,
-        )
-        context.emit(
-            "spatial_repair_policy",
-            "done",
-            (
-                "Spatial-overview strategy kept the parsed semantic rows stable; legacy "
-                "right-column and full price-stack item reconstruction were disabled."
-            ),
-        )
 
     def _run_bounded_reocr(self, context: ExtractionContext) -> None:
         config = context.config
@@ -143,144 +106,6 @@ class RepairAndCorrectionStage:
             write_text(
                 context.paths["visual_evidence_text"],
                 visual_evidence_to_prompt_text(context.visual_evidence),
-            )
-
-    def _run_right_column_recovery(self, context: ExtractionContext) -> None:
-        config = context.config
-        context.emit(
-            "right_column_recovery",
-            "running",
-            (
-                "Checking whether bounded right-column re-OCR can safely improve "
-                "item-total reconciliation."
-            ),
-        )
-        context.right_column_recovery_result = run_right_column_recovery(
-            receipt=context.receipt,
-            validation_report=context.report,
-            ocr_context=context.ocr_context,
-            reocr_result=context.reocr_result,
-            table_arbitration=context.table_arbitration_result,
-            tolerance=config.tolerance,
-        )
-        result = context.right_column_recovery_result
-        save_json(
-            context.paths["right_column_recovery"],
-            {key: value for key, value in result.items() if key != "receipt"},
-        )
-        if result.get("applied") and isinstance(result.get("receipt"), dict):
-            recovered_receipt = result["receipt"]
-            save_json(context.paths["receipt_right_column_recovered"], recovered_receipt)
-            recovered_report = validate_receipt(
-                recovered_receipt,
-                context.ocr_context,
-                tolerance=config.tolerance,
-            )
-            save_json(
-                context.paths["validation_report_right_column_recovered"],
-                recovered_report,
-            )
-            if report_score(recovered_report) > report_score(context.report):
-                self._select_candidate(context, recovered_receipt, recovered_report)
-                context.emit(
-                    "right_column_recovery",
-                    "done",
-                    "Right-column recovery improved validation and was selected.",
-                    before_difference=result.get("before_diff"),
-                    after_difference=result.get("after_diff"),
-                    selected_addition_count=len(result.get("selected_additions") or []),
-                    replacement_count=len(result.get("replacement_actions") or []),
-                )
-            else:
-                context.emit(
-                    "right_column_recovery",
-                    "done",
-                    (
-                        "Right-column recovery produced a candidate receipt but did not "
-                        "improve validation enough; original receipt kept."
-                    ),
-                    status_detail=result.get("status"),
-                )
-        else:
-            context.emit(
-                "right_column_recovery",
-                result.get("status", "done"),
-                "Right-column recovery did not apply changes.",
-                reason=result.get("reason"),
-                before_difference=result.get("before_diff"),
-            )
-
-    def _run_vertical_price_stack_recovery(self, context: ExtractionContext) -> None:
-        if not should_run_visual_layer(context.report):
-            return
-        config = context.config
-        context.emit(
-            "vertical_price_stack_recovery",
-            "running",
-            (
-                "Checking whether a full right-side price-stack crop can safely improve "
-                "item-total reconciliation."
-            ),
-        )
-        context.vertical_price_stack_recovery_result = run_vertical_price_stack_recovery(
-            receipt=context.receipt,
-            validation_report=context.report,
-            ocr_context=context.ocr_context,
-            image_path=config.source_image_path,
-            result_dir=config.result_dir,
-            run_id=config.run_id,
-            lang=config.ocr_lang,
-            device=config.ocr_device,
-            min_score=config.repair_ocr_min_score or 0.20,
-            tolerance=config.tolerance,
-            visual_evidence=context.visual_evidence,
-            table_arbitration=context.table_arbitration_result,
-            progress_callback=config.progress_callback,
-        )
-        result = context.vertical_price_stack_recovery_result
-        save_json(
-            context.paths["vertical_price_stack_recovery"],
-            {key: value for key, value in result.items() if key != "receipt"},
-        )
-        if result.get("applied") and isinstance(result.get("receipt"), dict):
-            recovered_receipt = result["receipt"]
-            save_json(context.paths["receipt_vertical_price_stack_recovered"], recovered_receipt)
-            recovered_report = validate_receipt(
-                recovered_receipt,
-                context.ocr_context,
-                tolerance=config.tolerance,
-            )
-            save_json(
-                context.paths["validation_report_vertical_price_stack_recovered"],
-                recovered_report,
-            )
-            if report_score(recovered_report) > report_score(context.report):
-                self._select_candidate(context, recovered_receipt, recovered_report)
-                context.emit(
-                    "vertical_price_stack_recovery",
-                    "done",
-                    "Vertical price-stack recovery improved validation and was selected.",
-                    before_difference=result.get("before_diff"),
-                    after_difference=result.get("after_diff"),
-                    mode=result.get("mode"),
-                )
-            else:
-                context.emit(
-                    "vertical_price_stack_recovery",
-                    "done",
-                    (
-                        "Vertical price-stack recovery produced a candidate receipt but did "
-                        "not improve validation enough; original receipt kept."
-                    ),
-                    status_detail=result.get("status"),
-                )
-        else:
-            context.emit(
-                "vertical_price_stack_recovery",
-                result.get("status", "done"),
-                "Vertical price-stack recovery did not apply changes.",
-                reason=result.get("reason"),
-                before_difference=result.get("before_diff"),
             )
 
     def _run_late_vlm_if_needed(self, context: ExtractionContext) -> None:
@@ -400,7 +225,6 @@ class RepairAndCorrectionStage:
             {key: value for key, value in result.items() if key not in {"prompt", "raw_output"}},
         )
 
-        selected = False
         patch_actions: list[dict[str, Any]] = []
         patch_postprocess_actions: list[dict[str, Any]] = []
         if result.get("status") == "ok" and result.get("patches"):
@@ -424,7 +248,6 @@ class RepairAndCorrectionStage:
             context.corrected_report = patch_report
             if report_score(patch_report) > report_score(context.report):
                 self._select_candidate(context, patch_receipt, patch_report)
-                selected = True
                 context.emit(
                     "llm_patch_correction",
                     "done",
@@ -457,32 +280,6 @@ class RepairAndCorrectionStage:
                 warning_count=len(result.get("warnings") or []),
             )
 
-        if not selected:
-            save_json(
-                context.paths["receipt_llm_corrected"],
-                {
-                    "status": "skipped",
-                    "mode": "patch_only",
-                    "reason": "full_receipt_rewrite_disabled",
-                    "receipt_unchanged": True,
-                    "patch_status": result.get("status"),
-                    "patch_count": len(result.get("patches") or []),
-                    "patch_warnings": result.get("warnings") or [],
-                },
-            )
-            write_text(
-                context.paths["correction_prompt"],
-                "Full receipt correction rewrite disabled. Patch-only correction is active.\n",
-            )
-            write_text(context.paths["correction_raw"], "")
-            context.emit(
-                "llm_correction",
-                "skipped",
-                (
-                    "Full receipt JSON correction rewrite disabled; patch-only result did not "
-                    "improve validation, so the original receipt was kept."
-                ),
-            )
 
     @staticmethod
     def _select_candidate(

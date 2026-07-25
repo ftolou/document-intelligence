@@ -110,7 +110,6 @@ class StagedExtractionWorkflowTests(unittest.TestCase):
             "spatial_overview_used": True,
             "spatial_geometry_used": True,
             "response_schema_enforced": True,
-            "extraction_strategy": "spatial_overview",
             "duration_seconds": 0.01,
         }
 
@@ -154,19 +153,13 @@ class StagedExtractionWorkflowTests(unittest.TestCase):
                     run_id="spatial-1",
                     ollama_url="http://ollama",
                     model="gemma",
-                    extraction_strategy="spatial_overview",
                     vlm_enabled=False,
                     correction_enabled=False,
                     categorization_enabled=False,
                 )
 
-            self.assertEqual(parser_call.call_args.kwargs["extraction_strategy"], "spatial_overview")
             self.assertIsNotNone(parser_call.call_args.kwargs["spatial_document_map"])
-            self.assertEqual(result["pipeline_meta"]["extraction_strategy"], "spatial_overview")
             self.assertTrue(result["pipeline_meta"]["spatial_overview"]["enabled"])
-            self.assertFalse(
-                result["pipeline_meta"]["spatial_overview"]["llm_call_performed"]
-            )
             self.assertEqual(
                 result["pipeline_meta"]["spatial_overview"]["mode"],
                 "deterministic_geometry",

@@ -21,17 +21,11 @@ The compatibility adapter recognizes only these historical aliases:
 Supplying both an alias and its canonical name is an error. Internal application services must use the canonical typed API rather than the compatibility adapter.
 
 
-## Extraction strategy
+## Spatial extraction
 
-`extraction_strategy` accepts:
+The geometry-first extraction path is now the only supported path. OCR coordinates are
+preserved in a spatial document map and passed to the schema-constrained main receipt LLM.
+There is no extraction-strategy toggle and no separate overview LLM call.
 
-- `current`: the existing compact OCR/VLM/table path.
-- `spatial_overview`: the experimental geometry-first path described in `SPATIAL_OVERVIEW_EXTRACTION.md`.
-
-The active spatial tuning field is:
-
-- `spatial_canvas_width`
-
-The historical fields `spatial_overview_num_ctx`, `spatial_overview_num_predict`, and `spatial_overview_timeout_seconds` remain accepted for configuration compatibility, but the spatial strategy no longer performs a separate overview LLM call and therefore does not use them.
-
-The corresponding environment variables use uppercase names, for example `EXTRACTION_STRATEGY=spatial_overview`. Invalid strategies and unsafe canvas settings are rejected by the immutable configuration contract.
+`SPATIAL_CANVAS_WIDTH` controls the rendered geometry canvas width. Values from 72 to 160
+are accepted.

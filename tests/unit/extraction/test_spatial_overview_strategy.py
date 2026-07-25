@@ -7,7 +7,6 @@ from receipt_intelligence.extraction.evidence.spatial_document import (
 from receipt_intelligence.extraction.parsing.llm_parser import build_ocr_context, build_prompt
 from receipt_intelligence.extraction.parsing.spatial_overview import (
     build_geometry_only_overview,
-    normalize_spatial_overview,
 )
 
 
@@ -119,8 +118,6 @@ def test_spatial_main_prompt_makes_geometry_primary_not_table_authority() -> Non
     prompt = build_prompt(
         context,
         spatial_document_map=document,
-        spatial_overview={"schema_version": "spatial_overview_1", "status": "partial"},
-        extraction_strategy="spatial_overview",
     )
 
     assert "GEOMETRIC ROW GROUPS" in prompt
@@ -128,43 +125,6 @@ def test_spatial_main_prompt_makes_geometry_primary_not_table_authority() -> Non
     assert "treat its item rows as AUTHORITATIVE" not in prompt
     assert "A position or article number must not become quantity" in prompt
     assert "STRICT DO-NOT-OUTPUT-AS-ITEM ROWS" not in prompt
-
-
-def test_spatial_overview_drops_invented_line_ids() -> None:
-    context = _ocr_context()
-    document = build_spatial_document_map(context)
-    valid_line_id = document["rows"][0]["line_id"]
-
-    overview = normalize_spatial_overview(
-        {
-            "schema_version": "spatial_overview_1",
-            "status": "ok",
-            "sections": [
-                {
-                    "section_id": "items",
-                    "type": "items",
-                    "y_start": 0.1,
-                    "y_end": 0.8,
-                    "source_line_ids": [valid_line_id, "invented_line"],
-                    "confidence": 0.9,
-                }
-            ],
-            "tables": [],
-            "line_annotations": [
-                {
-                    "line_id": "invented_line",
-                    "row_type": "product",
-                    "confidence": 1.0,
-                }
-            ],
-            "warnings": [],
-            "overall_confidence": 0.8,
-        },
-        document,
-    )
-
-    assert overview["sections"][0]["source_line_ids"] == [valid_line_id]
-    assert overview["line_annotations"] == []
 
 
 def test_geometry_only_overview_records_that_no_llm_call_was_made() -> None:
@@ -178,5 +138,3 @@ def test_geometry_only_overview_records_that_no_llm_call_was_made() -> None:
     assert overview["geometric_row_group_count"] == len(
         document["geometric_row_groups"]
     )
-    assert overview["prompt"] == ""
-    assert overview["raw_output"] == ""

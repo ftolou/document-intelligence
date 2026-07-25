@@ -8,6 +8,7 @@ import json
 import sys
 import uuid
 from pathlib import Path
+from typing import Any
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 SRC_DIR = ROOT_DIR / "src"
@@ -15,9 +16,8 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
-from typing import Any
 
-from receipt_intelligence.pipeline.integrated_receipt_pipeline import (
+from receipt_intelligence.pipeline.integrated_receipt_pipeline import (  # noqa: E402
     run_integrated_receipt_pipeline,
 )
 
@@ -57,12 +57,6 @@ def main() -> int:
     parser.add_argument("--run-id", default=None)
     parser.add_argument("--ollama-url", default="http://localhost:11434")
     parser.add_argument("--model", default="gemma4")
-    parser.add_argument(
-        "--extraction-strategy",
-        choices=("current", "spatial_overview"),
-        default="current",
-        help="Select the legacy compact path or the experimental geometry-first path.",
-    )
     parser.add_argument("--tolerance", type=float, default=0.03)
     parser.add_argument("--max-lines-for-llm", type=int, default=260)
     parser.add_argument("--num-ctx", type=int, default=24384)
@@ -93,13 +87,6 @@ def main() -> int:
     )
     parser.add_argument("--vlm-timeout-seconds", type=float, default=240.0)
     parser.add_argument("--disable-vlm-correction", action="store_true")
-    # Compatibility-only flags from older versions. They are accepted so old
-    # scripts do not break, but V14 ignores them by design.
-    parser.add_argument("--skip-row-llm", action="store_true")
-    parser.add_argument("--active-line-repair", action="store_true")
-    parser.add_argument("--max-repair-passes", type=int, default=0)
-    parser.add_argument("--max-repair-rois", type=int, default=0)
-    parser.add_argument("--max-repair-variants", type=int, default=0)
     args = parser.parse_args()
 
     run_id = args.run_id or uuid.uuid4().hex[:12]
@@ -109,13 +96,7 @@ def main() -> int:
         run_id=run_id,
         ollama_url=args.ollama_url,
         model=args.model,
-        extraction_strategy=args.extraction_strategy,
         tolerance=args.tolerance,
-        skip_row_llm=args.skip_row_llm,
-        active_line_repair=args.active_line_repair,
-        max_repair_passes=args.max_repair_passes,
-        max_repair_rois=args.max_repair_rois,
-        max_repair_variants=args.max_repair_variants,
         max_lines_for_llm=args.max_lines_for_llm,
         num_ctx=args.num_ctx,
         num_predict=args.num_predict,
@@ -149,7 +130,7 @@ def main() -> int:
                 "llm_prompt": str(paths.get("llm_main_prompt")),
                 "llm_raw": str(paths.get("llm_main_raw")),
                 "visual_evidence": str(paths.get("visual_evidence")),
-                "correction_raw": str(paths.get("correction_raw")),
+                "correction_patch_raw": str(paths.get("correction_patch_raw")),
             },
             ensure_ascii=False,
             indent=2,

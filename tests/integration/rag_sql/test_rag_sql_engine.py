@@ -637,7 +637,7 @@ def test_engine_can_disable_validation_repair(tmp_path: Path) -> None:
     assert planner.repair_calls == 0
 
 
-def test_engine_exposes_ollama_stage_metrics_and_summary(tmp_path: Path) -> None:
+def test_engine_exposes_model_stage_metrics_and_summary(tmp_path: Path) -> None:
     db, _ = _database(tmp_path)
     analysis_call = OllamaCallMetrics(
         endpoint="generate",
@@ -726,9 +726,9 @@ def test_engine_exposes_ollama_stage_metrics_and_summary(tmp_path: Path) -> None
     stages = response.diagnostics["stages"]
     analyze_stage = next(stage for stage in stages if stage["name"] == "analyze_question")
     planner_stage = next(stage for stage in stages if stage["name"] == "generate_sql")
-    assert analyze_stage["ollama_calls"][0]["load_duration_ms"] == 300.0
-    assert planner_stage["ollama_calls"][0]["load_duration_ms"] == 0.0
-    summary = response.diagnostics["ollama_summary"]
+    assert analyze_stage["model_calls"][0]["load_duration_ms"] == 300.0
+    assert planner_stage["model_calls"][0]["load_duration_ms"] == 0.0
+    summary = response.diagnostics["model_call_summary"]
     assert summary["call_count"] == 2
     assert summary["total_load_duration_ms"] == 300.0
     assert summary["total_prompt_eval_duration_ms"] == 500.0

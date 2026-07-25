@@ -1,4 +1,4 @@
-"""Canonical receipt-wide spatial evidence for the experimental parser path.
+"""Canonical receipt-wide spatial evidence for the receipt parser.
 
 The existing OCR context preserves line boxes, but the compact main-parser
 prompt intentionally flattens them.  This module keeps the original geometry
@@ -225,7 +225,6 @@ def _cluster_amount_columns(rows: list[JsonObject]) -> list[JsonObject]:
 
 def _compact_visual_hypotheses(
     visual_evidence: JsonObject | None,
-    table_interpretation: JsonObject | None,
     arbitration: JsonObject | None,
 ) -> JsonObject:
     hypotheses: JsonObject = {}
@@ -256,13 +255,6 @@ def _compact_visual_hypotheses(
             "status": visual_evidence.get("status"),
             "summary": visual_evidence.get("summary") or {},
             "structured_tables": tables,
-        }
-    if isinstance(table_interpretation, dict):
-        hypotheses["table_interpretation"] = {
-            "status": table_interpretation.get("status"),
-            "overall_confidence": table_interpretation.get("overall_confidence"),
-            "tables": table_interpretation.get("tables") or [],
-            "warnings": (table_interpretation.get("warnings") or [])[:8],
         }
     if isinstance(arbitration, dict):
         hypotheses["table_arbitration"] = {
@@ -438,7 +430,6 @@ def build_spatial_document_map(
     ocr_context: JsonObject,
     *,
     visual_evidence: JsonObject | None = None,
-    table_interpretation: JsonObject | None = None,
     arbitration: JsonObject | None = None,
     canvas_width: int = 112,
 ) -> JsonObject:
@@ -492,7 +483,6 @@ def build_spatial_document_map(
         "amount_column_candidates": _cluster_amount_columns(rows),
         "hypotheses": _compact_visual_hypotheses(
             visual_evidence,
-            table_interpretation,
             arbitration,
         ),
         "evidence_policy": {

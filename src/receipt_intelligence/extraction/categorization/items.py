@@ -264,7 +264,6 @@ def _looks_ocr_noisy_or_ambiguous_description(description: Any) -> tuple[bool, l
     if not text:
         return True, ["empty_description"]
     tokens = _tokenize_description(text)
-    alpha_chars = [ch for ch in text if ch.isalpha()]
     if len(text) <= 3:
         reasons.append("very_short_description")
     if len(tokens) == 1 and len(text) <= 5:

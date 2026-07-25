@@ -801,7 +801,6 @@ def _apply_final_price_overrides(
             continue
         fy = float(fp.get("y_center") or 0.0)
         best_prod = None
-        best_idx = None
         for idx, prod in enumerate(ordered_products):
             pid = str(prod.get("id"))
             if pid in used_product_ids or pid not in rows_by_id:
@@ -819,7 +818,6 @@ def _apply_final_price_overrides(
             # rows_by_id, so they do not steal the group.
             if fy < next_y:
                 best_prod = prod
-                best_idx = idx
         if best_prod is None:
             continue
         pid = str(best_prod.get("id"))
@@ -922,7 +920,6 @@ def _build_preferred_item_block(
     used_amount_line_ids: set[str] = set()
     used_vlm_ids: set[str] = set()
     median_h = _median_line_height(records)
-    y_tol = max(14.0, median_h * 1.05)
     vlm_amount_rows = _extract_vlm_item_amount_rows(visual_evidence)
     product_bounds = _product_y_bounds(product_lines, boundary_y=boundary_y)
     ordered_products_for_links = sorted(

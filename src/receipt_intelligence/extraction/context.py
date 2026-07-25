@@ -182,14 +182,6 @@ class ExtractionContext:
         self.require_visual().region_reocr_result = value
 
     @property
-    def table_interpretation_result(self) -> JsonObject | None:
-        return self.visual.table_interpretation_result if self.visual is not None else None
-
-    @table_interpretation_result.setter
-    def table_interpretation_result(self, value: JsonObject | None) -> None:
-        self.require_visual().table_interpretation_result = value
-
-    @property
     def table_arbitration_result(self) -> JsonObject | None:
         return self.visual.table_arbitration_result if self.visual is not None else None
 
@@ -259,14 +251,6 @@ class ExtractionContext:
         self.require_parsed().grouped_evidence = value
 
     @property
-    def table_assembly_report(self) -> JsonObject:
-        return self.require_parsed().table_assembly_report
-
-    @table_assembly_report.setter
-    def table_assembly_report(self, value: JsonObject) -> None:
-        self.require_parsed().table_assembly_report = value
-
-    @property
     def postprocess_actions(self) -> list[JsonObject]:
         return self.require_parsed().postprocess_actions
 
@@ -318,22 +302,6 @@ class ExtractionContext:
     @reocr_result.setter
     def reocr_result(self, value: JsonObject | None) -> None:
         self.require_repair().reocr_result = value
-
-    @property
-    def right_column_recovery_result(self) -> JsonObject | None:
-        return self.repair.right_column_recovery_result if self.repair is not None else None
-
-    @right_column_recovery_result.setter
-    def right_column_recovery_result(self, value: JsonObject | None) -> None:
-        self.require_repair().right_column_recovery_result = value
-
-    @property
-    def vertical_price_stack_recovery_result(self) -> JsonObject | None:
-        return self.repair.vertical_price_stack_recovery_result if self.repair is not None else None
-
-    @vertical_price_stack_recovery_result.setter
-    def vertical_price_stack_recovery_result(self, value: JsonObject | None) -> None:
-        self.require_repair().vertical_price_stack_recovery_result = value
 
     @property
     def patch_correction_result(self) -> JsonObject | None:

@@ -16,6 +16,9 @@ from receipt_intelligence.storage.receipt_db import ReceiptDatabase
 from receipt_intelligence.web.app_factory import create_app
 
 EXPECTED_API_RULES = {
+    "/api/model-pricing",
+    "/api/model-calls/summary",
+    "/api/model-calls",
     "/api/artifact/<job_id>/<path:filename>",
     "/api/ask-receipts",
     "/api/batch/start",

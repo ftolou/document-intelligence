@@ -205,7 +205,7 @@ def build_layout_context(
     final receipt data without LLM interpretation + validation.
     """
     enriched: list[dict[str, Any]] = []
-    for i, line in enumerate(lines or []):
+    for line in lines or []:
         if not isinstance(line, dict):
             continue
         text = str(line.get("text") or "").strip()
@@ -235,7 +235,7 @@ def build_layout_context(
         enriched.append(e)
 
     enriched.sort(key=lambda r: (_line_center(r)[1], _line_center(r)[0]))
-    heights = [max(_bbox_part(l, "h"), 0.0001) for l in enriched]
+    heights = [max(_bbox_part(line, "h"), 0.0001) for line in enriched]
     med_h = median(heights) if heights else 0.025
     row_threshold = max(0.010, min(0.035, med_h * 0.85))
 
@@ -243,12 +243,12 @@ def build_layout_context(
     used_amount_ids: set[str] = set()
     rows: list[dict[str, Any]] = []
 
-    amount_lines = [l for l in enriched if l.get("amount_candidates")]
+    amount_lines = [line for line in enriched if line.get("amount_candidates")]
     label_lines = [
-        l
-        for l in enriched
-        if not l.get("amount_only")
-        and not CURRENCY_ONLY_RE.fullmatch(str(l.get("text") or "").strip())
+        line
+        for line in enriched
+        if not line.get("amount_only")
+        and not CURRENCY_ONLY_RE.fullmatch(str(line.get("text") or "").strip())
     ]
 
     for amount_line in amount_lines:

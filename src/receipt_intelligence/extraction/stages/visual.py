@@ -1,4 +1,4 @@
-"""Build optional VLM, region re-OCR and table evidence before parsing."""
+"""Build optional VLM, region re-OCR, and deterministic table evidence."""
 
 from __future__ import annotations
 
@@ -12,10 +12,6 @@ from receipt_intelligence.extraction.evidence.visual import (
 from receipt_intelligence.extraction.parsing.table_arbitration import (
     attach_table_arbitration_to_visual_evidence,
     build_table_arbitration,
-)
-from receipt_intelligence.extraction.parsing.table_interpreter import (
-    attach_table_interpretation_to_visual_evidence,
-    run_table_interpreter,
 )
 from receipt_intelligence.extraction.repair.region_reocr import (
     merge_region_reocr_into_visual_evidence,
@@ -64,7 +60,6 @@ class VisualEvidenceStage:
                     max_chars=config.vlm_max_chars,
                 )
                 self._run_region_reocr(context)
-                self._run_table_interpretation(context)
                 self._run_table_arbitration(context)
                 save_json(paths["visual_evidence"], context.visual_evidence)
                 write_text(
@@ -152,75 +147,6 @@ class VisualEvidenceStage:
                 "VLM-region crop re-OCR failed; continuing with VLM/OCR evidence.",
                 error=context.region_reocr_result["error"],
             )
-
-    def _run_table_interpretation(self, context: ExtractionContext) -> None:
-        visual_evidence = context.visual_evidence or {}
-        if not visual_evidence.get("structured_tables"):
-            return
-        config = context.config
-        if config.extraction_strategy == "spatial_overview":
-            save_json(
-                context.paths["table_interpretation"],
-                {
-                    "status": "skipped",
-                    "reason": "spatial_strategy_uses_geometry_and_raw_vlm_hypotheses",
-                },
-            )
-            context.emit(
-                "table_interpretation",
-                "skipped",
-                (
-                    "Spatial-overview strategy selected; the dedicated table interpreter "
-                    "is skipped so the main parser receives source geometry and raw VLM "
-                    "table hypotheses without another semantic pre-parser."
-                ),
-            )
-            return
-        context.emit(
-            "table_interpretation",
-            "running",
-            "Running dedicated LLM table interpretation before the main parser.",
-            structured_table_count=len(visual_evidence.get("structured_tables") or []),
-        )
-        context.table_interpretation_result = run_table_interpreter(
-            visual_evidence=visual_evidence,
-            ollama_url=config.ollama_url,
-            model=config.model,
-            num_ctx=min(config.num_ctx, 18432),
-            num_predict=max(min(config.num_predict, 8192), 8192),
-            keep_alive=config.keep_alive,
-            timeout=min(max(config.llm_timeout_seconds, 180.0), 300.0),
-            format_json=config.format_json,
-            llm_gateway=context.dependencies.llm_gateway,
-        )
-        result = context.table_interpretation_result
-        save_json(
-            context.paths["table_interpretation"],
-            {key: value for key, value in result.items() if key not in {"prompt", "raw_output"}},
-        )
-        write_text(context.paths["table_interpretation_prompt"], result.get("prompt") or "")
-        write_text(context.paths["table_interpretation_raw"], result.get("raw_output") or "")
-        context.visual_evidence = attach_table_interpretation_to_visual_evidence(
-            visual_evidence,
-            result,
-        )
-        context.emit(
-            "table_interpretation",
-            "done" if result.get("status") in {"ok", "partial"} else result.get("status", "done"),
-            (
-                "Dedicated table interpretation finished; result attached to visual evidence "
-                "for the main LLM parser."
-            ),
-            interpreter_status=result.get("status"),
-            table_count=len(result.get("tables") or []),
-            confidence=result.get("overall_confidence"),
-            duration_seconds=result.get("duration_seconds"),
-            error=(
-                "; ".join(result.get("warnings") or [])
-                if result.get("status") == "failed"
-                else None
-            ),
-        )
 
     def _run_table_arbitration(self, context: ExtractionContext) -> None:
         if not context.visual_evidence or not context.preliminary_ocr_context:

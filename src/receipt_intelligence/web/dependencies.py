@@ -24,8 +24,8 @@ from receipt_intelligence.runtime.paths import RuntimePaths
 from receipt_intelligence.services.database_receipt_editor import DatabaseReceiptEditor
 from receipt_intelligence.services.job_processing import JobProcessingService
 from receipt_intelligence.services.review_service import ReviewService, apply_human_review
-from receipt_intelligence.services.semantic_index_service import SemanticIndexUpdater
 from receipt_intelligence.services.runtime_information import RuntimeInformationService
+from receipt_intelligence.services.semantic_index_service import SemanticIndexUpdater
 from receipt_intelligence.storage.job_store import JobStore
 from receipt_intelligence.storage.receipt_db import ReceiptDatabase
 
