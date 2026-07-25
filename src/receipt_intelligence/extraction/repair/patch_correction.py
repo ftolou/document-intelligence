@@ -188,16 +188,45 @@ def _compact_previous_receipt(receipt: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _compact_ocr_text(ocr_context: dict[str, Any] | None, *, max_chars: int = 14000) -> str:
+    context = ocr_context if isinstance(ocr_context, dict) else {}
+    rendered: list[str] = []
+    for index, line in enumerate(context.get("lines") or []):
+        if not isinstance(line, dict):
+            continue
+        line_id = str(line.get("line_id") or line.get("id") or f"line_{index:03d}")
+        text = re.sub(r"\s+", " ", str(line.get("text") or "")).strip()
+        if not text:
+            continue
+        rendered.append(f"[{line_id}] {text}")
+        if sum(len(value) + 1 for value in rendered) >= max_chars:
+            break
+    return "\n".join(rendered)[:max_chars]
+
+
+def _compact_spatial_evidence(spatial_evidence: str | None, *, max_chars: int = 18000) -> str:
+    return str(spatial_evidence or "").strip()[:max_chars]
+
+
 def build_patch_correction_prompt(
     previous_receipt: dict[str, Any],
     validation_report: dict[str, Any],
     visual_evidence: dict[str, Any] | None,
+    *,
+    ocr_context: dict[str, Any] | None = None,
+    spatial_evidence: str | None = None,
+    semantic_suspicion: dict[str, Any] | None = None,
 ) -> str:
     return render_prompt_template(
         "correction_patch.txt",
         REPORT_JSON=json.dumps(
             _compact_report(validation_report), ensure_ascii=False, separators=(",", ":")
         ),
+        SEMANTIC_SUSPICION_JSON=json.dumps(
+            semantic_suspicion or {}, ensure_ascii=False, separators=(",", ":")
+        ),
+        OCR_TEXT=_compact_ocr_text(ocr_context),
+        SPATIAL_EVIDENCE=_compact_spatial_evidence(spatial_evidence),
         VISUAL_SUMMARY_JSON=json.dumps(
             _compact_visual_summary(visual_evidence), ensure_ascii=False, separators=(",", ":")
         ),
@@ -267,6 +296,9 @@ def run_patch_correction_pass(
     previous_receipt: dict[str, Any],
     validation_report: dict[str, Any],
     visual_evidence: dict[str, Any] | None,
+    ocr_context: dict[str, Any] | None = None,
+    spatial_evidence: str | None = None,
+    semantic_suspicion: dict[str, Any] | None = None,
     ollama_url: str,
     model: str,
     num_ctx: int = 16384,
@@ -283,7 +315,14 @@ def run_patch_correction_pass(
     produced unterminated JSON strings.
     """
     started = time.perf_counter()
-    prompt = build_patch_correction_prompt(previous_receipt, validation_report, visual_evidence)
+    prompt = build_patch_correction_prompt(
+        previous_receipt,
+        validation_report,
+        visual_evidence,
+        ocr_context=ocr_context,
+        spatial_evidence=spatial_evidence,
+        semantic_suspicion=semantic_suspicion,
+    )
     raw_outputs: list[str] = []
     errors: list[str] = []
 

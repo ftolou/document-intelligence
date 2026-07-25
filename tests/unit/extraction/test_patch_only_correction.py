@@ -150,3 +150,25 @@ def test_replace_items_semantic_patch_rewrites_only_item_list() -> None:
             "reason": "Header columns identify article numbers and Norm as product note",
         }
     ]
+
+
+def test_semantic_correction_prompt_contains_ocr_and_spatial_evidence() -> None:
+    prompt = build_patch_correction_prompt(
+        {
+            "merchant": {"name": "Example"},
+            "items": [{"description": "Item", "quantity": 12, "line_total": 4.0}],
+            "totals": {"grand_total": 4.0},
+        },
+        {"import_decision": "needs_review", "issues": []},
+        {},
+        ocr_context={"lines": [{"line_id": "line_001", "text": "12 Item 1 4,00"}]},
+        spatial_evidence="SPATIAL CANVAS\n[line_001] 12 Item        1        4,00",
+        semantic_suspicion={
+            "triggered": True,
+            "issues": [{"code": "LARGE_QUANTITY_WITHOUT_UNIT_PRICE"}],
+        },
+    )
+
+    assert "[line_001] 12 Item 1 4,00" in prompt
+    assert "SPATIAL CANVAS" in prompt
+    assert "LARGE_QUANTITY_WITHOUT_UNIT_PRICE" in prompt

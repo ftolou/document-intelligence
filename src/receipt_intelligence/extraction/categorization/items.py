@@ -136,8 +136,25 @@ CATEGORY_TAXONOMY: list[dict[str, str]] = [
     {"key": "unknown", "group": "Unknown", "description": "Insufficient evidence"},
 ]
 
+MERCHANT_TAXONOMY: list[dict[str, str]] = [
+    {"key": "grocery_store", "description": "Supermarket, grocery or food retailer"},
+    {"key": "restaurant_cafe", "description": "Restaurant, takeaway, cafe or prepared-food seller"},
+    {"key": "bakery", "description": "Bakery or pastry shop"},
+    {"key": "pharmacy_health", "description": "Pharmacy, drugstore or health retailer"},
+    {"key": "clothing_shoes", "description": "Clothing, footwear or fashion retailer"},
+    {"key": "home_furniture", "description": "Furniture, home goods or household retailer"},
+    {"key": "electronics", "description": "Electronics, appliance or device retailer"},
+    {"key": "fuel", "description": "Fuel station or vehicle charging merchant"},
+    {"key": "transport_parking", "description": "Transport, ticketing or parking provider"},
+    {"key": "services", "description": "Service, repair or professional-service provider"},
+    {"key": "general_retail", "description": "General or mixed non-specialist retailer"},
+    {"key": "unknown", "description": "Insufficient merchant evidence"},
+]
+
 TAXONOMY_BY_KEY = {row["key"]: row for row in CATEGORY_TAXONOMY}
 VALID_CATEGORY_KEYS = set(TAXONOMY_BY_KEY)
+MERCHANT_TAXONOMY_BY_KEY = {row["key"]: row for row in MERCHANT_TAXONOMY}
+VALID_MERCHANT_CATEGORY_KEYS = set(MERCHANT_TAXONOMY_BY_KEY)
 
 CATEGORY_REVIEW_CONFIDENCE_THRESHOLD = 0.80
 NOISY_TEXT_CONFIDENCE_CAP = 0.75
@@ -333,13 +350,19 @@ def _normalize_evidence_terms(value: Any) -> list[str]:
     return terms
 
 
-def _unsupported_evidence_terms(item: dict[str, Any], evidence_terms: list[str]) -> list[str]:
+def _unsupported_evidence_terms(
+    item: dict[str, Any], evidence_terms: list[str], context_text: str = ""
+) -> list[str]:
     if not evidence_terms:
         return []
-    source = " ".join(
-        _safe_text(item.get(field), 300)
-        for field in ("product_description", "description", "raw_description", "line_note")
-        if item.get(field)
+    source = (
+        " ".join(
+            _safe_text(item.get(field), 300)
+            for field in ("product_description", "description", "raw_description", "line_note")
+            if item.get(field)
+        )
+        + " "
+        + _safe_text(context_text, 600)
     ).casefold()
     return [term for term in evidence_terms if term.casefold() not in source]
 
@@ -353,6 +376,7 @@ def calibrate_category_assignment(
     source: str,
     text_certainty: Any = "contextual",
     evidence_terms: list[str] | None = None,
+    context_text: str = "",
 ) -> dict[str, Any]:
     """Cap category confidence for OCR-noisy/ambiguous cases and mark review need.
 
@@ -386,7 +410,9 @@ def calibrate_category_assignment(
         review_reasons.append(f"text_certainty:{certainty}")
 
     normalized_evidence_terms = _normalize_evidence_terms(evidence_terms or [])
-    unsupported_terms = _unsupported_evidence_terms(item, normalized_evidence_terms)
+    unsupported_terms = _unsupported_evidence_terms(
+        item, normalized_evidence_terms, context_text=context_text
+    )
     if unsupported_terms:
         calibrated = min(calibrated, UNSUPPORTED_INFERENCE_CONFIDENCE_CAP)
         review_reasons.append("unsupported_category_evidence_terms")
@@ -465,6 +491,13 @@ def _taxonomy_text() -> str:
     return "\n".join(lines)
 
 
+def _merchant_taxonomy_text() -> str:
+    lines = ["key|meaning"]
+    for row in MERCHANT_TAXONOMY:
+        lines.append(f"{row['key']}|{row['description']}")
+    return "\n".join(lines)
+
+
 def _items_for_prompt(receipt: dict[str, Any]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for idx, item in enumerate(receipt.get("items") or []):
@@ -526,6 +559,11 @@ def build_categorization_prompt(receipt: dict[str, Any]) -> str:
     items = _items_for_prompt(receipt)
     schema = {
         "schema_version": CATEGORY_SCHEMA_VERSION,
+        "merchant_classification": {
+            "category_key": "one merchant taxonomy key",
+            "confidence": 0.0,
+            "reason": "short reason based on merchant name/address and item pattern",
+        },
         "items": [
             {
                 "item_index": 0,
@@ -543,14 +581,42 @@ def build_categorization_prompt(receipt: dict[str, Any]) -> str:
     return render_prompt_template(
         "item_categorization.txt",
         TAXONOMY_TEXT=_taxonomy_text(),
+        MERCHANT_TAXONOMY_TEXT=_merchant_taxonomy_text(),
         SCHEMA_JSON=json.dumps(schema, ensure_ascii=False, indent=2),
         CONTEXT_JSON=json.dumps(context, ensure_ascii=False, indent=2),
         ITEMS_JSON=json.dumps(items, ensure_ascii=False, indent=2),
     )
 
 
+def _coerce_merchant_classification(
+    obj: dict[str, Any],
+) -> tuple[dict[str, Any], list[str]]:
+    warnings: list[str] = []
+    raw = obj.get("merchant_classification") if isinstance(obj, dict) else None
+    if not isinstance(raw, dict):
+        warnings.append("LLM categorizer returned no merchant_classification object.")
+        raw = {}
+    key = str(raw.get("category_key") or "unknown").strip().lower()
+    key = key.replace(" ", "_").replace("-", "_")
+    if key not in VALID_MERCHANT_CATEGORY_KEYS:
+        warnings.append(f"Unknown merchant category_key '{key}'; using unknown.")
+        key = "unknown"
+    return (
+        {
+            "category_key": key,
+            "confidence": _normalize_confidence(raw.get("confidence"), 0.0),
+            "reason": _safe_text(raw.get("reason"), 300),
+            "source": "llm_first",
+        },
+        warnings,
+    )
+
+
 def _coerce_categories(
-    obj: dict[str, Any], original_items: list[dict[str, Any]]
+    obj: dict[str, Any],
+    original_items: list[dict[str, Any]],
+    *,
+    merchant_context_text: str = "",
 ) -> tuple[list[dict[str, Any]], list[str]]:
     warnings: list[str] = []
     item_count = len(original_items)
@@ -589,6 +655,7 @@ def _coerce_categories(
             source=source,
             text_certainty=text_certainty,
             evidence_terms=evidence_terms,
+            context_text=merchant_context_text,
         )
         by_index[idx] = {
             "item_index": idx,
@@ -620,6 +687,7 @@ def _coerce_categories(
                 confidence=0.0,
                 reason=fallback_reason,
                 source="fallback_unknown",
+                context_text=merchant_context_text,
             )
             categories.append(
                 {
@@ -648,6 +716,7 @@ def merge_categories_into_receipt(
     categories: list[dict[str, Any]],
     *,
     status: str,
+    merchant_classification: dict[str, Any] | None = None,
     warnings: list[str] | None = None,
     duration_seconds: float | None = None,
     model: str | None = None,
@@ -672,12 +741,26 @@ def merge_categories_into_receipt(
             items[idx]["category_source"] = cat.get("category_source")
             items[idx]["category_reason"] = cat.get("category_reason")
     out["items"] = items
+    merchant_classification = merchant_classification or {
+        "category_key": "unknown",
+        "confidence": 0.0,
+        "reason": "Merchant classification unavailable.",
+        "source": "fallback_unknown",
+    }
+    merchant = out.get("merchant") if isinstance(out.get("merchant"), dict) else {}
+    merchant = dict(merchant)
+    merchant["category_key"] = merchant_classification.get("category_key")
+    merchant["category_confidence"] = merchant_classification.get("confidence")
+    merchant["category_reason"] = merchant_classification.get("reason")
+    merchant["category_source"] = merchant_classification.get("source")
+    out["merchant"] = merchant
     out["categorization"] = {
         "schema_version": CATEGORY_SCHEMA_VERSION,
         "app_version": get_app_version(),
         "status": status,
         "mode": "llm_first",
         "model": model,
+        "merchant_classification": merchant_classification,
         "item_count": len(items),
         "categorized_count": sum(
             1 for item in items if isinstance(item, dict) and item.get("category_key")
@@ -818,6 +901,12 @@ def categorize_receipt_items_llm(
             receipt,
             [],
             status="skipped_no_items",
+            merchant_classification={
+                "category_key": "unknown",
+                "confidence": 0.0,
+                "reason": "No items available for merchant-context categorization.",
+                "source": "fallback_unknown",
+            },
             warnings=["No items to categorize."],
             duration_seconds=0.0,
             model=model,
@@ -828,6 +917,12 @@ def categorize_receipt_items_llm(
             "prompt": prompt,
             "raw_output": raw,
             "categories": [],
+            "merchant_classification": {
+                "category_key": "unknown",
+                "confidence": 0.0,
+                "reason": "No items available for merchant-context categorization.",
+                "source": "fallback_unknown",
+            },
             "warnings": ["No items to categorize."],
             "duration_seconds": 0.0,
             "error": None,
@@ -865,14 +960,30 @@ def categorize_receipt_items_llm(
         raw = generation.text
         parsed = parse_json_from_llm(generation)
         original_items = [item for item in (receipt.get("items") or []) if isinstance(item, dict)]
-        categories, coercion_warnings = _coerce_categories(parsed, original_items)
+        merchant_classification, merchant_warnings = _coerce_merchant_classification(parsed)
+        merchant = receipt.get("merchant") if isinstance(receipt.get("merchant"), dict) else {}
+        merchant_context_text = " ".join(
+            str(value or "")
+            for value in (
+                merchant.get("name"),
+                merchant.get("address"),
+                merchant_classification.get("category_key"),
+            )
+        )
+        categories, coercion_warnings = _coerce_categories(
+            parsed,
+            original_items,
+            merchant_context_text=merchant_context_text,
+        )
+        warnings.extend(merchant_warnings)
         warnings.extend(coercion_warnings)
-        status = "ok" if not coercion_warnings else "ok_with_warnings"
+        status = "ok" if not warnings else "ok_with_warnings"
         duration = round(time.perf_counter() - started, 2)
         categorized = merge_categories_into_receipt(
             receipt,
             categories,
             status=status,
+            merchant_classification=merchant_classification,
             warnings=warnings,
             duration_seconds=duration,
             model=model,
@@ -883,6 +994,7 @@ def categorize_receipt_items_llm(
             "prompt": prompt,
             "raw_output": raw,
             "categories": categories,
+            "merchant_classification": merchant_classification,
             "warnings": warnings,
             "duration_seconds": duration,
             "error": None,
@@ -892,10 +1004,17 @@ def categorize_receipt_items_llm(
         err = f"{type(exc).__name__}: {exc}"
         warnings.append(err)
         categories = unknown_categories_for_receipt(receipt, "LLM categorization failed.")
+        merchant_classification = {
+            "category_key": "unknown",
+            "confidence": 0.0,
+            "reason": "LLM categorization failed.",
+            "source": "fallback_unknown",
+        }
         categorized = merge_categories_into_receipt(
             receipt,
             categories,
             status="error",
+            merchant_classification=merchant_classification,
             warnings=warnings,
             duration_seconds=duration,
             model=model,
@@ -906,6 +1025,7 @@ def categorize_receipt_items_llm(
             "prompt": prompt,
             "raw_output": raw,
             "categories": categories,
+            "merchant_classification": merchant_classification,
             "warnings": warnings,
             "duration_seconds": duration,
             "error": err,
@@ -930,6 +1050,7 @@ def write_categorization_artifacts(
             "app_version": get_app_version(),
             "status": result.get("status"),
             "categories": result.get("categories") or [],
+            "merchant_classification": result.get("merchant_classification") or {},
             "warnings": result.get("warnings") or [],
             "duration_seconds": result.get("duration_seconds"),
             "error": result.get("error"),

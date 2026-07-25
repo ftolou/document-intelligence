@@ -7,6 +7,9 @@ from typing import Any
 from receipt_intelligence.application.ports import ModelLifecycleRequest, VlmRequest
 from receipt_intelligence.extraction.artifacts import save_json, write_text
 from receipt_intelligence.extraction.context import ExtractionContext
+from receipt_intelligence.extraction.evidence.spatial_document import (
+    spatial_document_to_prompt_text,
+)
 from receipt_intelligence.extraction.evidence.visual import (
     build_visual_evidence,
     visual_evidence_to_prompt_text,
@@ -32,6 +35,10 @@ from receipt_intelligence.extraction.validation.consistency import (
     apply_consistency_postprocess,
 )
 from receipt_intelligence.extraction.validation.receipt import validate_receipt
+from receipt_intelligence.extraction.validation.semantic_suspicion import (
+    attach_semantic_suspicion,
+    evaluate_semantic_suspicion,
+)
 
 
 class RepairAndCorrectionStage:
@@ -45,15 +52,24 @@ class RepairAndCorrectionStage:
         llm_result = context.llm_result
 
         self._run_spatial_line_price_fusion(context)
-        report = context.report
+        suspicion = evaluate_semantic_suspicion(
+            context.receipt,
+            context.report,
+            tolerance=max(config.tolerance, 0.05),
+        )
+        context.semantic_suspicion_result = suspicion
+        context.report = attach_semantic_suspicion(context.report, suspicion)
+        save_json(context.paths["semantic_suspicion"], suspicion)
+        save_json(context.paths["validation_report"], context.report)
 
-        if (
-            config.correction_enabled
-            and should_run_visual_layer(report)
-            and not llm_result.get("error")
-        ):
-            self._run_bounded_reocr(context)
-            self._run_late_vlm_if_needed(context)
+        needs_visual_recovery = should_run_visual_layer(context.report)
+        needs_semantic_review = bool(suspicion.get("triggered"))
+        should_correct = needs_visual_recovery or needs_semantic_review
+
+        if config.correction_enabled and should_correct and not llm_result.get("error"):
+            if needs_visual_recovery:
+                self._run_bounded_reocr(context)
+                self._run_late_vlm_if_needed(context)
             self._run_patch_correction(context)
         elif not config.correction_enabled:
             save_json(
@@ -262,11 +278,15 @@ class RepairAndCorrectionStage:
                 "quantity_hint_rows",
             )
         )
-        if not usable:
+        has_primary_evidence = bool(
+            (context.spatial_document_map or {}).get("rows")
+            or (context.ocr_context.get("lines") or [])
+        )
+        if not usable and not has_primary_evidence:
             context.emit(
                 "llm_correction",
                 "done",
-                "No usable extra visual/OCR evidence; original LLM output kept.",
+                "No usable OCR or spatial evidence; original LLM output kept.",
             )
             return
 
@@ -276,10 +296,17 @@ class RepairAndCorrectionStage:
             "running",
             "Running validation-gated semantic LLM correction; item rows may be reinterpreted.",
         )
+        spatial_evidence = spatial_document_to_prompt_text(
+            context.spatial_document_map or {},
+            max_rows=config.max_lines_for_llm,
+        )
         context.patch_correction_result = run_patch_correction_pass(
             previous_receipt=context.receipt,
             validation_report=context.report,
             visual_evidence=evidence,
+            ocr_context=context.ocr_context,
+            spatial_evidence=spatial_evidence,
+            semantic_suspicion=context.semantic_suspicion_result,
             ollama_url=config.ollama_url,
             model=config.model,
             num_ctx=min(config.num_ctx, 18432),
@@ -315,6 +342,17 @@ class RepairAndCorrectionStage:
                 patch_receipt,
                 context.ocr_context,
                 tolerance=config.tolerance,
+            )
+            corrected_suspicion = evaluate_semantic_suspicion(
+                patch_receipt,
+                patch_report,
+                tolerance=max(config.tolerance, 0.05),
+            )
+            context.corrected_semantic_suspicion_result = corrected_suspicion
+            patch_report = attach_semantic_suspicion(patch_report, corrected_suspicion)
+            save_json(
+                context.paths["semantic_suspicion_patch_corrected"],
+                corrected_suspicion,
             )
             save_json(context.paths["validation_report_patch_corrected"], patch_report)
             context.corrected_report = patch_report

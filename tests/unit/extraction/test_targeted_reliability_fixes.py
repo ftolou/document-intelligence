@@ -148,3 +148,66 @@ def test_categorizer_caps_incomplete_semantic_expansion_without_dictionary() -> 
     assert "text_certainty:incomplete_or_unfamiliar" in item["category_review_reasons"]
     assert "semantic_expansion_not_explicit_in_receipt_text" in item["category_review_reasons"]
     assert "Never complete, translate, or invent" in build_categorization_prompt(receipt)
+
+
+def test_categorizer_classifies_merchant_before_grouped_items() -> None:
+    receipt = {
+        "merchant": {"name": "Pizza Express MOD"},
+        "currency": "EUR",
+        "items": [
+            {"description": "Bella", "line_total": 7.50, "category": "item"},
+            {"description": "Rustika", "line_total": 7.50, "category": "item"},
+        ],
+    }
+    model_output = {
+        "schema_version": "v14_14_item_categories_1",
+        "merchant_classification": {
+            "category_key": "restaurant_cafe",
+            "confidence": 0.96,
+            "reason": "Pizza Express and the peer items indicate prepared food.",
+        },
+        "items": [
+            {
+                "item_index": 0,
+                "description": "Bella",
+                "category_key": "restaurant_cafe",
+                "category_group": "Restaurants & Cafes",
+                "confidence": 0.88,
+                "text_certainty": "contextual",
+                "evidence_terms": ["Pizza", "Bella"],
+                "reason": "Restaurant merchant context and peer-item pattern.",
+            },
+            {
+                "item_index": 1,
+                "description": "Rustika",
+                "category_key": "restaurant_cafe",
+                "category_group": "Restaurants & Cafes",
+                "confidence": 0.89,
+                "text_certainty": "contextual",
+                "evidence_terms": ["Pizza", "Rustika"],
+                "reason": "Restaurant merchant context and peer-item pattern.",
+            },
+        ],
+        "warnings": [],
+    }
+
+    with patch(
+        "receipt_intelligence.extraction.categorization.items.ollama_generate",
+        return_value=json.dumps(model_output),
+    ):
+        result = categorize_receipt_items_llm(
+            receipt,
+            ollama_url="http://unused",
+            model="test-model",
+        )
+
+    categorized = result["receipt"]
+    assert categorized["merchant"]["category_key"] == "restaurant_cafe"
+    assert categorized["merchant"]["category_confidence"] == 0.96
+    assert [item["category_key"] for item in categorized["items"]] == [
+        "restaurant_cafe",
+        "restaurant_cafe",
+    ]
+    prompt = build_categorization_prompt(receipt)
+    assert "Merchant taxonomy" in prompt
+    assert "classify the merchant" in prompt

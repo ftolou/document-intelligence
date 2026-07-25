@@ -196,8 +196,8 @@ class FinalizationStage:
             },
             "architecture": (
                 "OCR/VLM evidence -> spatial geometry -> schema-constrained main LLM parser "
-                "-> validation -> bounded re-OCR -> validated patch-only correction -> "
-                "item categorization"
+                "-> validation -> semantic suspicion gate -> evidence-backed patch correction -> "
+                "merchant-aware item categorization"
             ),
             "spatial_overview": {
                 "enabled": True,
@@ -248,6 +248,11 @@ class FinalizationStage:
                 "actions": context.postprocess_actions,
                 "action_count": len(context.postprocess_actions),
             },
+            "semantic_review": {
+                "initial": context.semantic_suspicion_result,
+                "corrected": context.corrected_semantic_suspicion_result,
+                "artifact": str(context.paths["semantic_suspicion"]),
+            },
             "correction": self._correction_meta(context),
             "validation": {
                 "initial_import_decision": initial_report.get("import_decision"),
@@ -283,6 +288,11 @@ class FinalizationStage:
                     if isinstance(categorization, dict)
                     else None
                 ),
+                "merchant_classification": (
+                    categorization.get("merchant_classification")
+                    if isinstance(categorization, dict)
+                    else None
+                ),
             },
             "duration_seconds": context.duration_seconds,
         }
@@ -311,8 +321,9 @@ class FinalizationStage:
         result = context.patch_correction_result
         return {
             "enabled": context.config.correction_enabled,
-            "mode": "patch_only",
+            "mode": "evidence_backed_semantic_patch",
             "full_receipt_rewrite_enabled": False,
+            "item_list_rewrite_enabled": True,
             "patch_attempted": result is not None,
             "patch_status": result.get("status") if result else None,
             "patch_count": len(result.get("patches") or []) if result else 0,

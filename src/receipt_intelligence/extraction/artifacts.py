@@ -40,6 +40,9 @@ def build_artifact_paths(result_dir: Path, run_id: str) -> dict[str, Path]:
         "compact_evidence_text": result_dir / f"{run_id}_v14_6_compact_evidence.txt",
         "grouped_evidence": result_dir / f"{run_id}_v14_6_grouped_evidence.json",
         "validation_report": result_dir / f"{run_id}_v14_validation_report.json",
+        "semantic_suspicion": result_dir / f"{run_id}_semantic_suspicion.json",
+        "semantic_suspicion_patch_corrected": result_dir
+        / f"{run_id}_semantic_suspicion_patch_corrected.json",
         "vlm_raw_output": result_dir / f"{run_id}_v14_6_vlm_raw_output.json",
         "visual_evidence": result_dir / f"{run_id}_v14_6_visual_evidence.json",
         "visual_evidence_text": result_dir / f"{run_id}_v14_6_visual_evidence.txt",
@@ -144,6 +147,14 @@ def publish_latest_aliases(paths: dict[str, Path], result_dir: Path) -> None:
             "latest_v14_18_validation_report_patch_corrected.json",
         ),
         "latest_v14_validation_report": ("validation_report", "latest_v14_validation_report.json"),
+        "latest_semantic_suspicion": (
+            "semantic_suspicion",
+            "latest_semantic_suspicion.json",
+        ),
+        "latest_semantic_suspicion_patch_corrected": (
+            "semantic_suspicion_patch_corrected",
+            "latest_semantic_suspicion_patch_corrected.json",
+        ),
         "latest_receipt_final": ("receipt_final", "latest_receipt_final.json"),
         "latest_receipt_final_reconciled": (
             "receipt_final_reconciled",

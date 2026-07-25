@@ -75,6 +75,8 @@ class RepairArtifacts:
     reocr_result: JsonObject | None = None
     patch_correction_result: JsonObject | None = None
     corrected_report: JsonObject | None = None
+    semantic_suspicion_result: JsonObject | None = None
+    corrected_semantic_suspicion_result: JsonObject | None = None
     correction_used: bool = False
 
 
