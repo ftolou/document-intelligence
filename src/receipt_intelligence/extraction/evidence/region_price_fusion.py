@@ -251,7 +251,7 @@ def _preferred_candidates(
         if not isinstance(block, dict):
             continue
         region_id = str(block.get("region_id") or f"region_{block_index:02d}")
-        for row_index, row in enumerate(block.get("rows") or []):
+        for _row_index, row in enumerate(block.get("rows") or []):
             if not isinstance(row, dict):
                 continue
             amount = _money(row.get("amount"))

@@ -36,10 +36,6 @@ from receipt_intelligence.application.ports.llm import (
     LlmGateway,
     coerce_generation_result,
 )
-from receipt_intelligence.extraction.evidence.compact import (
-    build_compact_evidence,
-    compact_evidence_to_prompt_text,
-)
 from receipt_intelligence.extraction.evidence.layout import (
     build_layout_context,
     extract_ocr_amounts,
