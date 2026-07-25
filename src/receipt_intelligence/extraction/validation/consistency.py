@@ -1,16 +1,10 @@
 #!/usr/bin/env python3
-"""Safe receipt consistency post-processing.
+"""Non-semantic receipt consistency post-processing.
 
-This module does not parse receipt rows from OCR. It only normalizes fields that
-were already extracted by the LLM/VLM evidence path when there is a strict
-accounting relationship:
-  - tax_total from already extracted taxes[].tax values
-  - grand_total from payment - change when the value is also supported by a
-    printed total/final-price candidate
-  - removal of a discount item when the LLM already used the final sale price
-    and the discount would be subtracted twice
-  - removal of contradictory model-generated arithmetic warnings after the
-    deterministic validator has already balanced the receipt
+This module normalizes dates, times, totals, taxes and payment arithmetic when
+independent evidence supports the change. It never decides item identity, row
+type, item order, note attachment or discount semantics; those belong to the
+semantic LLM and are checked by deterministic validation.
 """
 
 from __future__ import annotations
@@ -439,126 +433,6 @@ def _printed_total_candidates_from_ocr_context(
     return out
 
 
-def _do_not_item_candidates_from_context(
-    ocr_context: dict[str, Any] | None,
-) -> list[dict[str, Any]]:
-    if not isinstance(ocr_context, dict):
-        return []
-    try:
-        ge = build_grouped_evidence(
-            [r for r in (ocr_context.get("layout_rows") or []) if isinstance(r, dict)]
-        )
-    except Exception:
-        return []
-    return [c for c in (ge.get("do_not_output_as_item_candidates") or []) if isinstance(c, dict)]
-
-
-def _item_matches_do_not_candidate(
-    item: dict[str, Any], cand: dict[str, Any], tolerance: float
-) -> bool:
-    item_ids = {str(x) for x in (item.get("source_line_ids") or []) if str(x).strip()}
-    cand_ids = {str(x) for x in (cand.get("source_line_ids") or []) if str(x).strip()}
-    cand_ids.update(str(x) for x in (cand.get("row_ids") or []) if str(x).strip())
-    if item_ids and cand_ids and item_ids.intersection(cand_ids):
-        return True
-    item_amount = _num(item.get("line_total"))
-    cand_amount = _num(cand.get("amount_candidate"))
-    if (
-        item_amount is None
-        or cand_amount is None
-        or abs(item_amount - cand_amount) > max(tolerance, 0.05)
-    ):
-        return False
-    desc_tokens = _tokens(item.get("description"))
-    evidence_tokens = _tokens(cand.get("evidence_text"))
-    if not desc_tokens or not evidence_tokens or not desc_tokens.intersection(evidence_tokens):
-        return False
-    reasons = set(cand.get("reasons") or [])
-    strong_reasons = {
-        "after_total_payment_or_tax_footer_boundary",
-        "payment_row",
-        "change_row",
-        "tax_or_tax_table_row",
-        "net_or_gross_row",
-        "total_row",
-        "quantity_unit_price_note",
-    }
-    return bool(reasons.intersection(strong_reasons))
-
-
-def _enforce_do_not_item_candidates(
-    receipt: dict[str, Any],
-    ocr_context: dict[str, Any] | None,
-    actions: list[dict[str, Any]],
-    *,
-    tolerance: float,
-) -> None:
-    items = [it for it in (receipt.get("items") or []) if isinstance(it, dict)]
-    if not items:
-        return
-    candidates = _do_not_item_candidates_from_context(ocr_context)
-    if not candidates:
-        return
-    gt = _num(
-        (receipt.get("totals") if isinstance(receipt.get("totals"), dict) else {}).get(
-            "grand_total"
-        )
-    )
-    keep: list[dict[str, Any]] = []
-    removed: list[dict[str, Any]] = []
-    for item in items:
-        match = next(
-            (cand for cand in candidates if _item_matches_do_not_candidate(item, cand, tolerance)),
-            None,
-        )
-        if match is not None:
-            removed.append(
-                {
-                    "item": item,
-                    "matched_do_not_item_candidate_id": match.get("candidate_id"),
-                    "matched_reasons": match.get("reasons"),
-                    "matched_evidence": match.get("evidence_text"),
-                }
-            )
-        else:
-            keep.append(item)
-    if not removed or not keep:
-        return
-    old_sum = _item_sum(items)
-    new_sum = _item_sum(keep)
-    # Commit only when this does not make accounting worse. With a printed total,
-    # require improvement or equality; without a total, removing explicit footer/tax/payment rows is still safe.
-    commit = (
-        gt is None
-        or old_sum is None
-        or new_sum is None
-        or abs(new_sum - gt) <= abs(old_sum - gt) + max(tolerance, 0.05)
-    )
-    if not commit:
-        return
-    receipt["items"] = keep
-    actions.append(
-        {
-            "action": "remove_items_matching_do_not_item_evidence",
-            "removed_count": len(removed),
-            "old_item_sum": old_sum,
-            "new_item_sum": new_sum,
-            "grand_total": gt,
-            "removed": [
-                {
-                    "description": r["item"].get("description"),
-                    "line_total": r["item"].get("line_total"),
-                    "source_line_ids": r["item"].get("source_line_ids"),
-                    "matched_do_not_item_candidate_id": r["matched_do_not_item_candidate_id"],
-                    "matched_reasons": r["matched_reasons"],
-                    "matched_evidence": r["matched_evidence"],
-                }
-                for r in removed[:12]
-            ],
-        }
-    )
-
-
 def _remove_informational_zero_items(
     receipt: dict[str, Any], actions: list[dict[str, Any]], *, tolerance: float
 ) -> None:
@@ -875,11 +749,11 @@ def apply_consistency_postprocess(
     *,
     tolerance: float = 0.05,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    """Return a copy of receipt with strict accounting-consistency normalizations.
+    """Return a copy with non-semantic, evidence-backed normalizations.
 
-    The function never creates items from OCR/VLM text. It only adjusts fields
-    already present in the LLM JSON when independent extracted evidence gives an
-    exact accounting relationship.
+    This function may normalize dates, times, totals, tax arithmetic and payment
+    reconciliation. It must never add, remove, reorder, rename or reclassify
+    receipt items; semantic row interpretation belongs to the LLM.
     """
     r = copy.deepcopy(receipt) if isinstance(receipt, dict) else {}
     actions: list[dict[str, Any]] = []
@@ -889,17 +763,12 @@ def apply_consistency_postprocess(
     _normalize_or_validate_date(r, ocr_context, actions)
     _normalize_or_validate_time(r, ocr_context, actions)
 
-    # Enforce explicit generic non-item evidence before arithmetic checks. This
-    # removes footer/tax/payment/quantity-note rows if the LLM leaked them into
-    # the item list.
-    _enforce_do_not_item_candidates(r, ocr_context, actions, tolerance=tolerance)
-    _remove_informational_zero_items(r, actions, tolerance=tolerance)
+    # Row semantics remain owned by the LLM. Deterministic postprocessing must
+    # not delete or relabel items from keyword or boundary heuristics.
 
     # If a printed Summe/Total row is visible and supported by item sum/subtotal,
     # prefer it over an invented subtotal+tax total.
     _prefer_supported_printed_total(r, ocr_context, actions, tolerance=tolerance)
-    _remove_single_extra_unit_price_or_duplicate_context_item(r, actions, tolerance=tolerance)
-
     # Normalize tax rates like 0.19 -> 19.0 when the LLM encoded a rate as fraction.
     for tax in r.get("taxes") or []:
         if not isinstance(tax, dict):
@@ -989,224 +858,10 @@ def apply_consistency_postprocess(
                 }
             )
 
-    # Generic already-applied discount guard: if positive item prices already sum to
-    # grand_total and negative discount rows are the only cause of mismatch, treat
-    # those discount rows as informational/already applied.
-    items = [it for it in (r.get("items") or []) if isinstance(it, dict)]
-    gt_now = _num(totals.get("grand_total"))
-    if items and gt_now is not None:
-        positive_items = []
-        discount_items = []
-        for it in items:
-            v = _num(it.get("line_total"))
-            category = str(it.get("category") or "").lower()
-            if v is None:
-                positive_items.append(it)
-            elif v < 0 or category == "discount":
-                discount_items.append(it)
-            else:
-                positive_items.append(it)
-        pos_sum = _item_sum(positive_items)
-        current_sum = _item_sum(items)
-        if (
-            discount_items
-            and pos_sum is not None
-            and current_sum is not None
-            and abs(pos_sum - gt_now) <= tolerance
-            and abs(current_sum - gt_now) > tolerance
-        ):
-            for it in positive_items:
-                note = str(it.get("notes") or "").strip()
-                extra = "Printed discount treated as already included because positive item prices match grand_total."
-                it["notes"] = (note + " " + extra).strip() if note else extra
-                break
-            r["items"] = positive_items
-            items = positive_items
-            actions.append(
-                {
-                    "action": "remove_discount_already_applied_by_positive_item_sum",
-                    "removed_count": len(discount_items),
-                    "positive_item_sum": pos_sum,
-                    "grand_total": gt_now,
-                }
-            )
-
-    # Remove standalone quantity/helper items when they leaked into the final item list.
-    items = [it for it in (r.get("items") or []) if isinstance(it, dict)]
-    gt_now = _num(totals.get("grand_total"))
-    if items:
-        filtered = []
-        removed = []
-        for it in items:
-            if _quantity_only_description(
-                it.get("description") or it.get("product_description") or it.get("raw_description")
-            ):
-                removed.append(it)
-            else:
-                filtered.append(it)
-        if removed and filtered:
-            old_sum = _item_sum(items)
-            new_sum = _item_sum(filtered)
-            # Quantity/unit-price helper rows are semantically not purchased items.
-            # Remove them even when the current receipt is already unbalanced; the
-            # remaining mismatch is better handled as missing/misaligned product rows
-            # than by importing quantity notes into analytics/RAG.
-            r["items"] = filtered
-            items = filtered
-            actions.append(
-                {
-                    "action": "remove_quantity_note_leaked_as_item",
-                    "removed_count": len(removed),
-                    "old_item_sum": old_sum,
-                    "new_item_sum": new_sum,
-                    "reason": "quantity/unit-price note is explanatory evidence, not a standalone product",
-                }
-            )
-
-    # Final-price replacement/removal: original/list price + explicit "Ihr Preis"
-    # must produce one contributing item at the final customer price. Accept the
-    # transformation only if it improves or reconciles the item sum.
-    items = [it for it in (r.get("items") or []) if isinstance(it, dict)]
-    gt_now = _num(totals.get("grand_total"))
-    if final_candidates and items and gt_now is not None:
-        candidate_items = copy.deepcopy(items)
-        changed = []
-        # First replace matched product original prices with final prices.
-        for group in final_candidates:
-            orig = _num(group.get("original_or_reference_price"))
-            final_val = _num(group.get("final_sale_price_candidate"))
-            product_text = group.get("product_description_candidate") or group.get(
-                "product_row_text"
-            )
-            if orig is None or final_val is None or abs(orig - final_val) <= tolerance:
-                continue
-            ptoks = _tokens(product_text)
-            best_idx = None
-            best_score = 0
-            for idx, it in enumerate(candidate_items):
-                if not _same(it.get("line_total"), orig, tolerance):
-                    continue
-                # Do not convert SKU/reference rows into final-price items; they
-                # are removed later if a real product final-price item exists.
-                if _code_like_description(it.get("description")):
-                    continue
-                itoks = _tokens(it.get("description"))
-                overlap = len(ptoks & itoks) if ptoks and itoks else 0
-                if overlap > best_score or (best_idx is None and overlap >= 1):
-                    best_idx = idx
-                    best_score = overlap
-            if best_idx is not None and best_score >= 1:
-                candidate_items[best_idx]["line_total"] = final_val
-                if _num(candidate_items[best_idx].get("unit_price")) == orig:
-                    candidate_items[best_idx]["unit_price"] = final_val
-                note = str(candidate_items[best_idx].get("notes") or "").strip()
-                extra = "Original/list price replaced by explicit final customer price from receipt evidence."
-                candidate_items[best_idx]["notes"] = (note + " " + extra).strip() if note else extra
-                changed.append(
-                    {
-                        "type": "replace_original_with_final_price",
-                        "description": candidate_items[best_idx].get("description"),
-                        "old": orig,
-                        "new": final_val,
-                    }
-                )
-        # Then remove code/reference rows that are original prices when a final
-        # price item for the same adjustment is already present.
-        keep = []
-        removed = []
-        final_values = [_num(g.get("final_sale_price_candidate")) for g in final_candidates]
-        original_values = [_num(g.get("original_or_reference_price")) for g in final_candidates]
-        for it in candidate_items:
-            v = _num(it.get("line_total"))
-            if (
-                v is not None
-                and any(_same(v, ov, tolerance) for ov in original_values if ov is not None)
-                and _code_like_description(it.get("description"))
-            ):
-                if any(
-                    any(
-                        _same(other.get("line_total"), fv, tolerance)
-                        for fv in final_values
-                        if fv is not None
-                    )
-                    for other in candidate_items
-                ):
-                    removed.append(it)
-                    continue
-            keep.append(it)
-        if removed:
-            candidate_items = keep
-            changed.append(
-                {"type": "remove_code_reference_original_price_rows", "removed_count": len(removed)}
-            )
-        old_sum = _item_sum(items)
-        new_sum = _item_sum(candidate_items)
-        if (
-            changed
-            and old_sum is not None
-            and new_sum is not None
-            and abs(new_sum - gt_now) + tolerance < abs(old_sum - gt_now)
-        ):
-            r["items"] = candidate_items
-            items = candidate_items
-            actions.append(
-                {
-                    "action": "apply_final_price_groups_to_items",
-                    "old_item_sum": old_sum,
-                    "new_item_sum": new_sum,
-                    "grand_total": gt_now,
-                    "changes": changed[:8],
-                }
-            )
-
-    # Single-product gross-total override: if one product is extracted but its
-    # amount disagrees with a printed total/payment that reconcile, use the gross
-    # printed total. This catches fuel/unit receipts where volume/net-like values
-    # are visually close to the product name.
-    items = [it for it in (r.get("items") or []) if isinstance(it, dict)]
-    gt_now = _num(totals.get("grand_total"))
-    payment_now = _payment_amount(r)
-    non_discount = [
-        it
-        for it in items
-        if str(it.get("category") or "").lower() not in {"discount", "refund"}
-        and (_num(it.get("line_total")) or 0) >= 0
-    ]
-    if (
-        len(non_discount) == 1
-        and gt_now is not None
-        and (payment_now is None or _same(payment_now, gt_now, tolerance))
-    ):
-        old_v = _num(non_discount[0].get("line_total"))
-        old_sum = _item_sum(items)
-        if old_v is not None and not _same(old_v, gt_now, tolerance):
-            candidate_items = copy.deepcopy(items)
-            for it in candidate_items:
-                if it.get("description") == non_discount[0].get("description") and _same(
-                    it.get("line_total"), old_v, tolerance
-                ):
-                    it["line_total"] = gt_now
-                    if _num(it.get("unit_price")) == old_v:
-                        it["unit_price"] = gt_now
-                    note = str(it.get("notes") or "").strip()
-                    extra = "Single-product receipt: line_total normalized to printed gross total/payment."
-                    it["notes"] = (note + " " + extra).strip() if note else extra
-                    break
-            new_sum = _item_sum(candidate_items)
-            if (
-                new_sum is not None
-                and old_sum is not None
-                and abs(new_sum - gt_now) + tolerance < abs(old_sum - gt_now)
-            ):
-                r["items"] = candidate_items
-                items = candidate_items
-                actions.append(
-                    {
-                        "action": "single_product_use_printed_gross_total",
-                        "old_line_total": old_v,
-                        "new_line_total": gt_now,
-                    }
-                )
+    # Item identity, row type, note attachment, quantity interpretation and
+    # discount semantics are intentionally not changed here. If validation
+    # exposes an item-level inconsistency, the LLM correction pass receives the
+    # complete visual context and proposes a validation-gated semantic rewrite.
 
     # Missing total/payment protection: if no reliable total/payment evidence
     # exists, do not let the model invent a grand_total from an incomplete item
@@ -1237,54 +892,6 @@ def apply_consistency_postprocess(
                 "old_grand_total": old_gt,
             }
         )
-
-    # Final-price adjustment: if the LLM used the final price as an item and also output the printed discount
-    # as a separate negative item, remove that duplicate discount so final price is counted once.
-    items = [it for it in (r.get("items") or []) if isinstance(it, dict)]
-    if final_candidates and items:
-        gt = _num(totals.get("grand_total"))
-        for group in final_candidates:
-            final_val = _num(group.get("final_sale_price_candidate"))
-            discount_val = _num(group.get("discount_candidate"))
-            if final_val is None or discount_val is None:
-                continue
-            has_final_item = any(_same(it.get("line_total"), final_val, tolerance) for it in items)
-            if not has_final_item:
-                continue
-            current_sum = _item_sum(items)
-            without_indices = []
-            for idx, it in enumerate(items):
-                if _same(it.get("line_total"), discount_val, tolerance) or (
-                    str(it.get("category") or "").lower() == "discount"
-                    and _same(
-                        abs(_num(it.get("line_total")) or 999999), abs(discount_val), tolerance
-                    )
-                ):
-                    without_indices.append(idx)
-            if not without_indices:
-                continue
-            test_items = [it for idx, it in enumerate(items) if idx not in without_indices]
-            test_sum = _item_sum(test_items)
-            if gt is not None and test_sum is not None and abs(test_sum - gt) <= tolerance:
-                removed = [items[idx] for idx in without_indices]
-                # Keep a note on the final-price item so the discount evidence is not lost.
-                for it in test_items:
-                    if _same(it.get("line_total"), final_val, tolerance):
-                        note = str(it.get("notes") or "").strip()
-                        extra = "Printed discount/final-price adjustment treated as already included in final line_total."
-                        it["notes"] = (note + " " + extra).strip() if note else extra
-                        break
-                items = test_items
-                r["items"] = items
-                actions.append(
-                    {
-                        "action": "remove_discount_already_included_in_final_price",
-                        "final_price": final_val,
-                        "discount": discount_val,
-                        "removed_count": len(removed),
-                    }
-                )
-                break
 
     return r, actions
 

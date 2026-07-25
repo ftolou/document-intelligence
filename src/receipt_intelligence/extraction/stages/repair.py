@@ -1,4 +1,4 @@
-"""Validation-gated OCR recovery and patch-only LLM correction."""
+"""Validation-gated OCR recovery and semantic LLM correction."""
 
 from __future__ import annotations
 
@@ -274,7 +274,7 @@ class RepairAndCorrectionStage:
         context.emit(
             "llm_patch_correction",
             "running",
-            "Running compact patch-only LLM correction; full receipt rewrite is disabled.",
+            "Running validation-gated semantic LLM correction; item rows may be reinterpreted.",
         )
         context.patch_correction_result = run_patch_correction_pass(
             previous_receipt=context.receipt,
@@ -333,10 +333,7 @@ class RepairAndCorrectionStage:
                 context.emit(
                     "llm_patch_correction",
                     "done",
-                    (
-                        "Patch correction did not improve validation; original receipt kept. "
-                        "Full receipt rewrite is disabled."
-                    ),
+                    ("Semantic correction did not improve validation; original receipt kept."),
                     before=context.report.get("import_decision"),
                     after=patch_report.get("import_decision"),
                     applied_patch_count=len(patch_actions),
@@ -345,10 +342,7 @@ class RepairAndCorrectionStage:
             context.emit(
                 "llm_patch_correction",
                 result.get("status", "done"),
-                (
-                    "Patch correction returned no usable patches; original receipt kept. "
-                    "Full receipt rewrite is disabled."
-                ),
+                ("Semantic correction returned no usable patches; original receipt kept."),
                 warning_count=len(result.get("warnings") or []),
             )
 

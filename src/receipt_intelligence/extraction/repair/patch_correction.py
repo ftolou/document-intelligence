@@ -2,8 +2,8 @@
 """Patch-style validation correction.
 
 This module asks the LLM for compact, evidence-supported JSON Patch-like
-operations instead of a full receipt rewrite. Only a narrow whitelist of
-operations is applied. If patches do not improve deterministic validation, the
+operations, including an optional item-list semantic rewrite. Only a narrow
+whitelist is applied. If patches do not improve deterministic validation, the
 caller keeps the previous receipt.
 """
 
@@ -217,7 +217,14 @@ def _normalize_patch_obj(obj: Any) -> dict[str, Any]:
             "confidence": 0.0,
         }
 
-    allowed_ops = {"replace_field", "replace_payments", "remove_items", "update_item", "add_item"}
+    allowed_ops = {
+        "replace_field",
+        "replace_payments",
+        "remove_items",
+        "update_item",
+        "add_item",
+        "replace_items",
+    }
     patches: list[dict[str, Any]] = []
     warnings: list[str] = [str(w)[:240] for w in (obj.get("warnings") or []) if str(w).strip()][:12]
     for patch in obj.get("patches") or []:
@@ -230,6 +237,9 @@ def _normalize_patch_obj(obj: Any) -> dict[str, Any]:
         clean = dict(patch)
         if clean.get("reason") is not None:
             clean["reason"] = str(clean.get("reason"))[:180]
+        if op == "replace_items":
+            items = [item for item in (clean.get("items") or []) if isinstance(item, dict)]
+            clean["items"] = items[:80]
         patches.append(clean)
         if len(patches) >= 8:
             break
@@ -282,7 +292,8 @@ def run_patch_correction_pass(
         if attempt == 2:
             attempt_prompt += (
                 "\n\nRETRY AFTER INVALID JSON: Return one JSON object under 2000 characters. "
-                "Use at most 5 patches, omit unnecessary fields, and never repeat receipt items."
+                "Use at most 5 patches and omit unnecessary fields. A replace_items operation "
+                "may include only the corrected item list when semantic structure is wrong."
             )
         raw = ""
         try:
@@ -331,7 +342,7 @@ def run_patch_correction_pass(
                     "attempt_count": attempt,
                     "retry_used": attempt > 1,
                     "errors": errors,
-                    "mode": "patch_only",
+                    "mode": "semantic_patch",
                 }
             )
             return obj
@@ -354,7 +365,7 @@ def run_patch_correction_pass(
         "attempt_count": 2,
         "retry_used": True,
         "errors": errors,
-        "mode": "patch_only",
+        "mode": "semantic_patch",
     }
 
 
@@ -467,4 +478,42 @@ def apply_correction_patches(
                             "reason": patch.get("reason"),
                         }
                     )
+        elif op == "replace_items":
+            items = [it for it in (patch.get("items") or []) if isinstance(it, dict)]
+            allowed_item_fields = {
+                "description",
+                "product_description",
+                "raw_description",
+                "line_note",
+                "promotion_note",
+                "quantity",
+                "unit",
+                "unit_price",
+                "original_price",
+                "discount_amount",
+                "line_total",
+                "tax_code",
+                "category",
+                "parser_item_type",
+                "source_line_ids",
+            }
+            cleaned_items: list[dict[str, Any]] = []
+            for item in items:
+                clean_item = {
+                    key: value for key, value in item.items() if key in allowed_item_fields
+                }
+                description = clean_item.get("description") or clean_item.get("product_description")
+                if description and clean_item.get("line_total") is not None:
+                    cleaned_items.append(clean_item)
+            if cleaned_items:
+                old_count = len([it for it in (r.get("items") or []) if isinstance(it, dict)])
+                r["items"] = cleaned_items
+                applied.append(
+                    {
+                        "op": op,
+                        "old_item_count": old_count,
+                        "new_item_count": len(cleaned_items),
+                        "reason": patch.get("reason"),
+                    }
+                )
     return r, applied

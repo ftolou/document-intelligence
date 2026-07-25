@@ -90,3 +90,63 @@ class PatchOnlyCorrectionTests(unittest.TestCase):
         self.assertEqual(retried["status"], "no_patch")
         self.assertTrue(retried["retry_used"])
         self.assertEqual(retried["attempt_count"], 2)
+
+
+def test_replace_items_semantic_patch_rewrites_only_item_list() -> None:
+    receipt = {
+        "merchant": {"name": "Pizza Express"},
+        "totals": {"grand_total": 21.90},
+        "items": [
+            {"description": "Bella", "quantity": 23, "line_total": 7.50},
+            {"description": "*Norm*", "line_total": 7.50},
+            {"description": "Rustika", "quantity": 28, "line_total": 7.50},
+            {"description": "Regina", "quantity": 4, "line_total": 6.90},
+        ],
+    }
+    patch = _normalize_patch_obj(
+        {
+            "status": "ok",
+            "patches": [
+                {
+                    "op": "replace_items",
+                    "items": [
+                        {
+                            "description": "Bella",
+                            "quantity": 1,
+                            "line_total": 7.50,
+                            "line_note": "Norm",
+                        },
+                        {"description": "Rustika", "quantity": 1, "line_total": 7.50},
+                        {
+                            "description": "Regina",
+                            "quantity": 1,
+                            "line_total": 6.90,
+                            "line_note": "Norm",
+                        },
+                    ],
+                    "reason": "Header columns identify article numbers and Norm as product note",
+                }
+            ],
+            "confidence": 0.95,
+        }
+    )
+
+    corrected, actions = apply_correction_patches(receipt, patch)
+
+    assert corrected["merchant"] == receipt["merchant"]
+    assert corrected["totals"] == receipt["totals"]
+    assert [item["description"] for item in corrected["items"]] == [
+        "Bella",
+        "Rustika",
+        "Regina",
+    ]
+    assert corrected["items"][0]["quantity"] == 1
+    assert corrected["items"][0]["line_note"] == "Norm"
+    assert actions == [
+        {
+            "op": "replace_items",
+            "old_item_count": 4,
+            "new_item_count": 3,
+            "reason": "Header columns identify article numbers and Norm as product note",
+        }
+    ]

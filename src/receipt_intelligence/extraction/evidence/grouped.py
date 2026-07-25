@@ -482,7 +482,7 @@ def build_tax_table_candidates(rows: list[dict[str, Any]]) -> list[dict[str, Any
                     break
         if rate is not None:
             # Do not treat a rate marker itself (e.g. OCR split "7,00 %") as a tax amount.
-            # It can stay in do_not_output_as_item_candidates, but it should not
+            # It remains available as neutral row evidence, but it should not
             # become tax_amount_candidate evidence.
             if (
                 val is not None
@@ -615,65 +615,32 @@ def build_discount_application_candidates(rows: list[dict[str, Any]]) -> list[di
     return candidates
 
 
-FOOTER_BOUNDARY_RE = re.compile(
-    r"\b(SUMME|BONSUMME|BON\s*SUMME|GESAMT|TOTAL|ENDSUMME|ZU\s*ZAHLEN|AMOUNT\s*DUE|BAR|CASH|GEGEBEN|R[ÜUO]CKGELD|RUECKGELD|CHANGE|MWST|UST|VAT|TAX|STEUER|NETTO|BRUTTO)\b",
-    re.IGNORECASE,
-)
-TAX_TABLE_HEADER_RE = re.compile(r"\b(MWST|UST|VAT|TAX|STEUER|NETTO|BRUTTO)\b", re.IGNORECASE)
+def build_semantic_row_context_candidates(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Expose ambiguous rows to the semantic LLM without classifying them.
 
-
-def _footer_boundary_index(rows: list[dict[str, Any]]) -> int:
-    """First row where item section likely ended. Evidence only."""
-    for i, row in enumerate(rows):
-        text = _row_text(row)
-        if FOOTER_BOUNDARY_RE.search(text):
-            return i
-    return len(rows)
-
-
-def build_do_not_output_as_item_candidates(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Generic non-item rows: footer, payment, change, tax table, quantity notes.
-
-    This is the strongest anti-duplication evidence. It does not decide totals or
-    taxes; it only marks rows that should not become purchased line items.
+    The deterministic evidence layer records geometry, amount presence and weak
+    lexical hints only. It must not decide that a row is an item, footer, tax,
+    payment or note row.
     """
     candidates: list[dict[str, Any]] = []
-    boundary = _footer_boundary_index(rows)
-    for i, row in enumerate(rows):
+    for row in rows:
         text = _row_text(row)
-        tags = set(row.get("hint_tags") or [])
-        reasons: list[str] = []
-        if i >= boundary and row.get("right_amount_value") is not None:
-            reasons.append("after_total_payment_or_tax_footer_boundary")
-        if PAYMENT_RE.search(text):
-            reasons.append("payment_row")
-        if CHANGE_RE.search(text):
-            reasons.append("change_row")
-        discount_like = bool(
-            DISCOUNT_RE.search(text) or "discount_keyword" in tags or "negative_amount" in tags
-        )
-        if not discount_like and (
-            TAX_TABLE_HEADER_RE.search(text) or TAX_RE.search(text) or "tax_keyword" in tags
-        ):
-            reasons.append("tax_or_tax_table_row")
-        if not discount_like and (NET_RE.search(text) or NON_AMBIGUOUS_GROSS_RE.search(text)):
-            reasons.append("net_or_gross_row")
-        if TOTAL_RE.search(text):
-            reasons.append("total_row")
-        if _parse_quantity_note_row(row):
-            reasons.append("quantity_unit_price_note")
-        if not reasons:
+        if not text:
             continue
         candidates.append(
             {
-                "candidate_id": f"do_not_item_{len(candidates):03d}",
-                "pattern": "row_should_not_be_output_as_item",
-                "reasons": sorted(set(reasons)),
+                "candidate_id": f"semantic_row_{len(candidates):03d}",
+                "pattern": "row_requires_receipt_wide_semantic_classification",
                 "amount_candidate": _num(row.get("right_amount_value")),
                 "row_ids": [_rid(row)],
                 "source_line_ids": _sources(row),
                 "evidence_text": text,
-                "generic_rule": "This is footer/tax/payment/change/quantity-note evidence, not a purchased product. Printed discount rows are intentionally excluded from this list and must remain available to the semantic parser.",
+                "hint_tags": sorted(set(row.get("hint_tags") or [])),
+                "generic_rule": (
+                    "Classify this row using the complete receipt structure. Keywords such as "
+                    "Summe, Total, MwSt, Menge or Rabatt are not authoritative in isolation; "
+                    "they may occur in headers, products, notes, totals or tax sections."
+                ),
             }
         )
     return candidates
@@ -688,8 +655,7 @@ def build_amount_only_product_attachment_candidates(
     name, and amount into separate rows.
     """
     candidates: list[dict[str, Any]] = []
-    boundary = _footer_boundary_index(rows)
-    for i, row in enumerate(rows[:boundary]):
+    for i, row in enumerate(rows):
         val = _num(row.get("right_amount_value"))
         if val is None:
             continue
@@ -706,7 +672,7 @@ def build_amount_only_product_attachment_candidates(
         weak_left = (not left) or re.fullmatch(r"\s*(?:\d{1,3}|[*x×])\s*", left) is not None
         if not weak_left:
             continue
-        name_row = _nearest_product_name(rows[:boundary], i, window=5)
+        name_row = _nearest_product_name(rows, i, window=5)
         if not name_row:
             continue
         candidates.append(
@@ -736,7 +702,7 @@ def build_grouped_evidence(layout_rows: list[dict[str, Any]]) -> dict[str, Any]:
         "total_payment_change_candidates": build_total_payment_change_candidates(rows),
         "tax_table_candidates": build_tax_table_candidates(rows),
         "discount_application_candidates": build_discount_application_candidates(rows),
-        "do_not_output_as_item_candidates": build_do_not_output_as_item_candidates(rows),
+        "semantic_row_context_candidates": build_semantic_row_context_candidates(rows),
         "amount_only_product_attachment_candidates": build_amount_only_product_attachment_candidates(
             rows
         ),
@@ -760,7 +726,7 @@ def grouped_evidence_to_prompt_text(grouped: dict[str, Any], *, max_per_group: i
         ("total_payment_change_candidates", "GENERIC TOTAL / PAYMENT / CHANGE RELATIONSHIPS"),
         ("tax_table_candidates", "GENERIC TAX-TABLE CANDIDATES"),
         ("discount_application_candidates", "GENERIC ALREADY-APPLIED DISCOUNT CANDIDATES"),
-        ("do_not_output_as_item_candidates", "STRICT DO-NOT-OUTPUT-AS-ITEM ROWS"),
+        ("semantic_row_context_candidates", "ROWS FOR RECEIPT-WIDE SEMANTIC CLASSIFICATION"),
         (
             "amount_only_product_attachment_candidates",
             "GENERIC AMOUNT-TO-PRODUCT ATTACHMENT CANDIDATES",

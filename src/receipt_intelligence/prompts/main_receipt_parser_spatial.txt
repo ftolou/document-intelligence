@@ -18,6 +18,9 @@ Evidence priority and safety:
 - Printed discounts are receipt rows: output them as category="discount" with negative line_total, or attach them through discount_amount only when they are unmistakably part of the same product row. Do not omit a discount merely because it is not a purchased product.
 - Use original OCR line IDs in source_line_ids. Do not invent IDs.
 - Arithmetic balance is a validation constraint, not permission to relabel rows.
+- You are the semantic authority for row roles. Classify each relevant row as table_header, product, product_note, discount, subtotal, grand_total, tax, payment, footer or unknown before assembling items.
+- A keyword is never a section boundary by itself. For example, "Summe" may be a column header or the final total; decide from amount presence, columns, row sequence and surrounding evidence.
+- Attach preparation/options such as "Norm", size, variant or modifiers to the related product when geometry and sequence support that interpretation; do not duplicate the product price as a standalone note item.
 
 Generic interpretation rules:
 - Use null for unsafe or missing values. Do not invent.

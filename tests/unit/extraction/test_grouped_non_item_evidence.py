@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from receipt_intelligence.extraction.evidence.grouped import (
-    build_do_not_output_as_item_candidates,
+    build_amount_only_product_attachment_candidates,
+    build_grouped_evidence,
+    build_semantic_row_context_candidates,
+    grouped_evidence_to_prompt_text,
 )
 from receipt_intelligence.extraction.evidence.layout import _tags_for_text
 
@@ -32,38 +35,37 @@ def test_bare_percentage_is_not_tagged_as_tax_keyword() -> None:
     assert "tax_keyword" not in tags
 
 
-def test_discounts_and_product_named_gross_remain_available_to_semantic_parser() -> None:
+def test_semantic_rows_are_exposed_without_deterministic_item_classification() -> None:
     rows = [
-        _row(
-            "layout_row_000",
-            "10% | 2,50-",
-            -2.50,
-            tags=["negative_amount", "percentage_candidate"],
-        ),
-        _row(
-            "layout_row_001",
-            "Tüten gross | 0,25",
-            0.25,
-            tags=["item_candidate"],
-        ),
-        _row(
-            "layout_row_002",
-            "*** Total | 47,80",
-            47.80,
-            tags=["total_keyword"],
-        ),
-        _row(
-            "layout_row_003",
-            "EC-Cash | 47,80",
-            47.80,
-            tags=["payment_keyword"],
-        ),
+        _row("layout_row_000", "ArtNr. Beschreibung Menge Summe", None),
+        _row("layout_row_001", "23 Bella 1 7,50", 7.50),
+        _row("layout_row_002", "*Norm*", None),
+        _row("layout_row_003", "Summe 21,90", 21.90),
     ]
 
-    candidates = build_do_not_output_as_item_candidates(rows)
-    evidence = [candidate["evidence_text"] for candidate in candidates]
+    candidates = build_semantic_row_context_candidates(rows)
+    grouped = build_grouped_evidence(rows)
+    prompt = grouped_evidence_to_prompt_text(grouped)
 
-    assert not any("10% | 2,50-" in value for value in evidence)
-    assert not any("Tüten gross | 0,25" in value for value in evidence)
-    assert any("*** Total | 47,80" in value for value in evidence)
-    assert any("EC-Cash | 47,80" in value for value in evidence)
+    assert len(candidates) == 4
+    assert "semantic_row_context_candidates" in grouped
+    assert "do_not_output_as_item_candidates" not in grouped
+    assert "ROWS FOR RECEIPT-WIDE SEMANTIC CLASSIFICATION" in prompt
+    assert "STRICT DO-NOT-OUTPUT-AS-ITEM ROWS" not in prompt
+
+
+def test_summe_column_header_does_not_cut_off_amount_attachment_candidates() -> None:
+    rows = [
+        _row("layout_row_000", "ArtNr. Beschreibung Menge Summe", None),
+        _row("layout_row_001", "Bella", None),
+        _row("layout_row_002", "1", 7.50),
+        _row("layout_row_003", "Rustika", None),
+        _row("layout_row_004", "1", 7.50),
+        _row("layout_row_005", "Summe", 15.00),
+    ]
+
+    candidates = build_amount_only_product_attachment_candidates(rows)
+    descriptions = {candidate.get("description_candidate") for candidate in candidates}
+
+    assert "Bella" in descriptions
+    assert "Rustika" in descriptions
