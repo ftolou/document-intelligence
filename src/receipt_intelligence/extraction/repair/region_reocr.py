@@ -959,26 +959,44 @@ def _build_preferred_item_block(
         # leave unresolved. This fixes REWE-like shifts after tokens such as
         # "79" (3,79) and "0,6A" (0,69 A).
         damaged_same_row = _damaged_right_token_for_same_y_band(
-            r, damaged_amounts, y_tol=min(34.0, max(18.0, median_h * 0.70))
+            r, damaged_amounts, y_tol=max(18.0, median_h * 0.85)
+        )
+        clean_same_row, clean_amount_source = _right_amount_for_same_y_band(
+            r, amount_only, used_amount_line_ids, y_tol=max(16.0, median_h * 0.85)
+        )
+        clean_amount_line = next(
+            (line for line in amount_only if str(line.get("id")) == str(clean_amount_source)),
+            None,
+        )
+        clean_distance = (
+            abs(float(clean_amount_line.get("y_center") or 0.0) - float(r.get("y_center") or 0.0))
+            if clean_amount_line is not None
+            else None
+        )
+        damaged_distance = (
+            abs(float(damaged_same_row.get("y_center") or 0.0) - float(r.get("y_center") or 0.0))
+            if damaged_same_row is not None
+            else None
+        )
+        clean_beats_damaged = clean_same_row is not None and (
+            damaged_distance is None
+            or clean_distance is not None
+            and clean_distance <= damaged_distance
         )
 
-        if damaged_same_row is None:
-            # Highest priority: an explicit right-column amount on the same y-band.
-            # This prevents inline unit prices/deposit values from being mistaken for
-            # the line total, e.g. "Pfand 0,25 EXM | 1,50".
-            selected, amount_source = _right_amount_for_same_y_band(
-                r, amount_only, used_amount_line_ids, y_tol=max(16.0, median_h * 0.85)
-            )
-            if selected is not None and amount_source is not None:
+        if clean_beats_damaged:
+            selected = clean_same_row
+            amount_source = clean_amount_source
+            if amount_source is not None:
                 used_amount_line_ids.add(str(amount_source))
-                evidence_source = "crop_ocr_right_amount_same_y_band"
-            elif amts and not _is_unit_price_only(text):
+            evidence_source = "crop_ocr_right_amount_same_y_band"
+        elif damaged_same_row is None:
+            if amts and not _is_unit_price_only(text):
                 selected = amts[-1]
             else:
                 # Then use the product's y-band bounded by neighbouring product rows.
                 # This prevents a missing price on one item from stealing the next
-                # item's valid right-column price; damaged same-row tokens above
-                # already block this fallback.
+                # item's valid right-column price.
                 selected, amount_source = _amount_for_product_range(
                     r, amount_only, used_amount_line_ids, product_bounds
                 )

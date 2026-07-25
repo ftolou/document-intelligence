@@ -11,6 +11,9 @@ from receipt_intelligence.extraction.evidence.visual import (
     build_visual_evidence,
     visual_evidence_to_prompt_text,
 )
+from receipt_intelligence.extraction.repair.line_price_fusion import (
+    repair_receipt_line_prices,
+)
 from receipt_intelligence.extraction.repair.patch_correction import (
     apply_correction_patches,
     run_patch_correction_pass,
@@ -39,8 +42,10 @@ class RepairAndCorrectionStage:
     def run(self, context: ExtractionContext) -> ExtractionContext:
         context.begin_repair_stage()
         config = context.config
-        report = context.report
         llm_result = context.llm_result
+
+        self._run_spatial_line_price_fusion(context)
+        report = context.report
 
         if (
             config.correction_enabled
@@ -66,6 +71,73 @@ class RepairAndCorrectionStage:
                 {"status": "skipped", "message": "VLM layer not triggered."},
             )
         return context
+
+    def _run_spatial_line_price_fusion(self, context: ExtractionContext) -> None:
+        candidate_receipt, actions = repair_receipt_line_prices(
+            context.receipt,
+            context.report,
+            context.spatial_document_map,
+            tolerance=context.config.tolerance,
+        )
+        if not actions:
+            save_json(
+                context.paths["line_price_fusion"],
+                {
+                    "status": "no_change",
+                    "action_count": 0,
+                    "message": (
+                        "No high-confidence region item-price candidate required a field-level "
+                        "repair."
+                    ),
+                },
+            )
+            return
+
+        candidate_report = validate_receipt(
+            candidate_receipt,
+            context.ocr_context,
+            tolerance=context.config.tolerance,
+        )
+        save_json(context.paths["receipt_line_price_fused"], candidate_receipt)
+        save_json(context.paths["validation_report_line_price_fused"], candidate_report)
+        selected = report_score(candidate_report) > report_score(context.report)
+        save_json(
+            context.paths["line_price_fusion"],
+            {
+                "status": "selected" if selected else "rejected",
+                "action_count": len(actions),
+                "actions": actions,
+                "before": {
+                    "import_decision": context.report.get("import_decision"),
+                    "difference": context.report.get("difference"),
+                },
+                "after": {
+                    "import_decision": candidate_report.get("import_decision"),
+                    "difference": candidate_report.get("difference"),
+                },
+            },
+        )
+        if selected:
+            self._select_candidate(context, candidate_receipt, candidate_report)
+            context.emit(
+                "line_price_fusion",
+                "done",
+                (
+                    "Selected field-level item price repairs from high-confidence region crop "
+                    "OCR evidence."
+                ),
+                action_count=len(actions),
+                before=context.initial_report.get("import_decision"),
+                after=candidate_report.get("import_decision"),
+                difference=candidate_report.get("difference"),
+            )
+        else:
+            context.emit(
+                "line_price_fusion",
+                "done",
+                "Region item-price patches did not improve validation and were not selected.",
+                action_count=len(actions),
+            )
 
     def _run_bounded_reocr(self, context: ExtractionContext) -> None:
         config = context.config

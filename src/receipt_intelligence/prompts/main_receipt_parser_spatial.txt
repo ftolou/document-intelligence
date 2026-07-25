@@ -8,11 +8,12 @@ Task:
 Extract the complete receipt from geometry-preserving OCR evidence. Deterministic code after you validates schema and accounting; it does not decide product, discount, loyalty, tax, or payment semantics.
 
 Evidence priority and safety:
-- Original OCR geometry and GEOMETRIC ROW GROUPS are primary evidence.
+- Original OCR geometry and GEOMETRIC ROW GROUPS are primary evidence for page structure.
+- SUPPLEMENTAL REGION ITEM-PRICE CANDIDATES come from higher-resolution crop OCR. When a candidate has an exact/strong product-description match, explicit source lines, and higher confidence than a damaged or missing full-image price, use its line_total.
 - Same-band grouping means only that cells occupy the same printed horizontal band; it is not a semantic classification.
-- Raw VLM tables are secondary, fallible hypotheses. Use them to recover visible text, but do not override contradictory source geometry.
+- Raw VLM tables are secondary, fallible hypotheses. They must not override contradictory full-image or region-crop source evidence.
 - Keep values in their horizontal columns. A position or article number must not become quantity merely because it precedes a price.
-- Associate a price with a product only when row alignment or nearby continuation evidence supports it.
+- Associate a price with a product only when row alignment, a matched region candidate, or nearby continuation evidence supports it. Do not shift the next product price upward when one full-image price is missing.
 - Loyalty/points/member rows are auxiliary metadata and must not become product descriptions.
 - Printed discounts are receipt rows: output them as category="discount" with negative line_total, or attach them through discount_amount only when they are unmistakably part of the same product row. Do not omit a discount merely because it is not a purchased product.
 - Use original OCR line IDs in source_line_ids. Do not invent IDs.

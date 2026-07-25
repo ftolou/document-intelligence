@@ -15,6 +15,10 @@ from statistics import median
 from typing import Any
 
 from receipt_intelligence.extraction.evidence.layout import extract_ocr_amounts
+from receipt_intelligence.extraction.evidence.region_price_fusion import (
+    build_region_item_price_candidates,
+    region_price_candidates_to_prompt_text,
+)
 
 JsonObject = dict[str, Any]
 
@@ -467,6 +471,12 @@ def build_spatial_document_map(
         row["page_order"] = index
 
     geometric_row_groups = _build_geometric_row_groups(rows)
+    region_item_price_candidates = build_region_item_price_candidates(
+        visual_evidence,
+        spatial_rows=rows,
+        page_width=int(ocr_context.get("image_width") or 0),
+        page_height=int(ocr_context.get("image_height") or 0),
+    )
     canvas = build_spatial_canvas(rows, width=canvas_width)
     return {
         "schema_version": "spatial_document_map_1",
@@ -481,16 +491,21 @@ def build_spatial_document_map(
         "geometric_row_group_count": len(geometric_row_groups),
         "geometric_row_groups": geometric_row_groups,
         "amount_column_candidates": _cluster_amount_columns(rows),
+        "region_item_price_candidate_count": len(region_item_price_candidates),
+        "region_item_price_candidates": region_item_price_candidates,
         "hypotheses": _compact_visual_hypotheses(
             visual_evidence,
             arbitration,
         ),
         "evidence_policy": {
             "primary": "full_image_ocr_geometry",
-            "secondary": ["region_reocr", "vlm_tables", "table_arbitration"],
+            "supplemental_high_resolution": "region_crop_ocr_product_price_candidates",
+            "secondary": ["vlm_tables", "table_arbitration"],
             "rule": (
-                "Derived table and VLM outputs are fallible hypotheses and must not override "
-                "source geometry without explicit supporting line/word evidence."
+                "Full-image geometry preserves page structure. High-confidence region crop OCR "
+                "may correct a damaged or missing line price only when product text, spatial "
+                "alignment, and explicit region source lines agree. VLM tables remain fallible "
+                "hypotheses."
             ),
         },
         "canvas": canvas,
@@ -515,6 +530,16 @@ def spatial_document_to_prompt_text(document_map: JsonObject, *, max_rows: int =
         + str(document_map.get("canvas") or "")
         + "\n\nGEOMETRIC ROW GROUPS (same-band clustering only; no semantic labels):\n"
         + _geometric_groups_to_prompt_text(groups, max_groups=max_rows)
+        + "\n\nSUPPLEMENTAL REGION ITEM-PRICE CANDIDATES "
+        "(high-resolution crop OCR; explicit source lines; do not invent rows):\n"
+        + region_price_candidates_to_prompt_text(
+            [
+                candidate
+                for candidate in (document_map.get("region_item_price_candidates") or [])
+                if isinstance(candidate, dict)
+            ],
+            limit=max_rows,
+        )
         + "\n\nAMOUNT COLUMN CENTERS:\n"
         + json.dumps(
             document_map.get("amount_column_candidates") or [],

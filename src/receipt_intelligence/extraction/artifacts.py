@@ -49,6 +49,10 @@ def build_artifact_paths(result_dir: Path, run_id: str) -> dict[str, Path]:
         "spatial_overview": result_dir / f"{run_id}_spatial_overview.json",
         "region_reocr": result_dir / f"{run_id}_v14_13_region_reocr.json",
         "right_column_reocr": result_dir / f"{run_id}_v14_6_right_column_reocr.json",
+        "line_price_fusion": result_dir / f"{run_id}_line_price_fusion.json",
+        "receipt_line_price_fused": result_dir / f"{run_id}_receipt_line_price_fused.json",
+        "validation_report_line_price_fused": result_dir
+        / f"{run_id}_validation_report_line_price_fused.json",
         "correction_patch_prompt": result_dir / f"{run_id}_v14_18_correction_patch_prompt.txt",
         "correction_patch_raw": result_dir / f"{run_id}_v14_18_correction_patch_raw.txt",
         "correction_patch_result": result_dir / f"{run_id}_v14_18_correction_patch_result.json",
@@ -92,6 +96,18 @@ def publish_latest_aliases(paths: dict[str, Path], result_dir: Path) -> None:
         "latest_v14_6_visual_evidence_text": (
             "visual_evidence_text",
             "latest_v14_6_visual_evidence.txt",
+        ),
+        "latest_line_price_fusion": (
+            "line_price_fusion",
+            "latest_line_price_fusion.json",
+        ),
+        "latest_receipt_line_price_fused": (
+            "receipt_line_price_fused",
+            "latest_receipt_line_price_fused.json",
+        ),
+        "latest_validation_report_line_price_fused": (
+            "validation_report_line_price_fused",
+            "latest_validation_report_line_price_fused.json",
         ),
         "latest_v14_18_table_arbitration": (
             "table_arbitration",
