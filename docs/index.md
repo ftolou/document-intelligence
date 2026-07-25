@@ -7,6 +7,7 @@
 - [Background job execution](BACKGROUND_JOB_EXECUTION.md)
 - [Project structure](PROJECT_STRUCTURE.md)
 - [Development](DEVELOPMENT.md)
+- [Security boundaries](SECURITY_BOUNDARIES.md)
 - [Docker image design](DOCKER_IMAGE_DESIGN.md)
 - [Observability and readiness operations](operations/OBSERVABILITY.md)
 - [Model-call usage and cost dashboard](MODEL_CALL_DASHBOARD.md)

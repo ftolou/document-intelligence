@@ -1,6 +1,6 @@
-# Phase 0 Security Baseline
+# Security boundaries
 
-Phase 0 hardens the existing deployment without changing the extraction architecture.
+These controls define the security boundaries enforced by the current deployment.
 
 ## Enforced boundaries
 
