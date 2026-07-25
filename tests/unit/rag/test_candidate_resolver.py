@@ -5,6 +5,7 @@ import json
 import pytest
 
 from receipt_intelligence.application.ports.llm import GenerationRequest, GenerationResult
+from receipt_intelligence.application.query_diagnostics import capture_query_diagnostics
 from receipt_intelligence.rag.candidate_resolver import (
     CandidateResolutionError,
     CandidateResolver,
@@ -232,6 +233,42 @@ def test_resolver_retries_invalid_evidence_mapping_without_fallback() -> None:
 
     assert len(generator.calls) == 2
     assert "Previous response validation error" in str(generator.calls[1]["prompt"])
+
+
+def test_resolver_records_each_validation_failure_for_opt_in_query_log() -> None:
+    invalid = json.dumps(
+        {
+            "schema_version": "rag_candidate_resolution_v2",
+            "status": "resolved",
+            "semantic_entity": "Schuhe",
+            "decisions": [
+                {
+                    "candidate_id": "c001",
+                    "decision": "strong_contextual",
+                    "evidence_strength": "strong_contextual",
+                    "evidence": "Invalid decision vocabulary.",
+                }
+            ],
+            "clarification_question": None,
+            "notes": [],
+        }
+    )
+    resolver = CandidateResolver(
+        _config(retry_count=1),
+        generate=FakeGenerate([invalid, invalid]),
+    )
+
+    with capture_query_diagnostics(enabled=True) as diagnostics:
+        with pytest.raises(CandidateResolutionError):
+            resolver.resolve("Schuhe", [_match(1, "HS-Halbschuhe")])
+
+    failures = [
+        record
+        for record in diagnostics.snapshot()
+        if record["event"] == "rag.candidate_resolution.attempt_failed"
+    ]
+    assert [record["attempt"] for record in failures] == [1, 2]
+    assert "strong_contextual" in failures[0]["error"]
 
 
 def test_resolver_retries_legacy_confidence_output_without_fallback() -> None:

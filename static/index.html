@@ -284,6 +284,13 @@
               <button id="ask-receipts-button" class="button-primary" type="submit">
                 <span class="button-label">Ask receipts</span>
               </button>
+              <div class="query-log-option">
+                <label class="checkline">
+                  <input id="askReceiptsSaveJsonLog" name="save_json_log" type="checkbox" />
+                  Save diagnostic JSON log
+                </label>
+                <small id="askReceiptsLogHelp">Off by default. The log contains the question, full LLM prompts and responses, diagnostics, and errors.</small>
+              </div>
             </div>
           </form>
         </section>

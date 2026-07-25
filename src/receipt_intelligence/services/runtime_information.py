@@ -74,6 +74,7 @@ class RuntimeInformationService:
             "categorization_format_json": settings.CATEGORIZATION_FORMAT_JSON,
             "query_telemetry_enabled": settings.QUERY_TELEMETRY_ENABLED,
             "query_telemetry_path": str(settings.QUERY_TELEMETRY_PATH),
+            "ask_receipts_json_log_dir": str(self._runtime_paths.logs_dir / "ask_receipts"),
             "query_engine": {
                 "name": "rag_sql",
                 "orchestrator": "langgraph",

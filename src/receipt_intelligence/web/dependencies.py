@@ -8,7 +8,10 @@ from dataclasses import dataclass
 from flask import Flask, current_app
 
 import receipt_intelligence.settings as settings
-from receipt_intelligence.adapters.observability import JsonlEventSink
+from receipt_intelligence.adapters.observability import (
+    AskReceiptsJsonLogWriter,
+    JsonlEventSink,
+)
 from receipt_intelligence.adapters.storage.sqlite.model_calls import (
     SQLiteModelCallRepository,
 )
@@ -109,6 +112,9 @@ def init_app_services(
         claim_lease_seconds=settings.JOB_CLAIM_LEASE_SECONDS,
         maintenance_interval_seconds=settings.JOB_MAINTENANCE_INTERVAL_SECONDS,
     )
+    query_log_writer = AskReceiptsJsonLogWriter(
+        resolved_paths.logs_dir / "ask_receipts",
+    )
     services = AppServices(
         jobs=JobUseCases(resolved_store, processor, resolved_dispatcher),
         receipts=ReceiptUseCases(
@@ -124,7 +130,10 @@ def init_app_services(
             resolved_editor,
             apply_human_review,
         ),
-        ask_receipts=AskReceipts(resolved_query_service),
+        ask_receipts=AskReceipts(
+            resolved_query_service,
+            log_writer=query_log_writer,
+        ),
         runtime=RuntimeUseCases(RuntimeInformationService(resolved_database, resolved_paths)),
         job_dispatcher=resolved_dispatcher,
         query_executor=resolved_query_service,

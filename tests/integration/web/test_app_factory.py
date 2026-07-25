@@ -104,6 +104,8 @@ def test_health_config_and_database_summary_are_available() -> None:
             "orchestrator": "langgraph",
             "graph_version": "rag_sql_graph_v2",
         }
+        log_dir = Path(config.get_json()["ask_receipts_json_log_dir"])
+        assert log_dir.parts[-3:] == ("var", "logs", "ask_receipts")
 
         with (
             patch(
@@ -151,6 +153,59 @@ def test_query_route_uses_rag_sql_service_and_clamps_limit() -> None:
         assert payload["answer"] == "Result: 20.00 EUR."
         assert payload["strategy"] == "rag_sql"
         assert service.calls == [("How much at REWE?", 100)]
+
+
+def test_query_route_writes_opt_in_json_log() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        service = _StubQueryService(
+            response={
+                "strategy": "rag_sql",
+                "question": "How much at REWE?",
+                "status": "completed",
+                "answer": "20.00 EUR",
+                "execution": {"query_id": "q_web_log"},
+            }
+        )
+        app, _, _ = _test_app(root, receipt_query_service=service)  # type: ignore[arg-type]
+
+        response = app.test_client().post(
+            "/api/ask-receipts",
+            json={
+                "question": "How much at REWE?",
+                "limit": 25,
+                "save_json_log": True,
+            },
+        )
+
+        assert response.status_code == 200
+        metadata = response.get_json()["diagnostic_log"]
+        assert metadata["saved"] is True
+        path = root / "var" / "logs" / "ask_receipts" / metadata["filename"]
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        assert payload["query_id"] == "q_web_log"
+        assert payload["request"]["question"] == "How much at REWE?"
+
+
+def test_query_route_returns_failure_log_metadata() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        service = _StubQueryService(error=RuntimeError("candidate resolution failed"))
+        app, _, _ = _test_app(root, receipt_query_service=service)  # type: ignore[arg-type]
+
+        response = app.test_client().post(
+            "/api/ask-receipts",
+            json={"question": "Vittel", "save_json_log": True},
+        )
+
+        assert response.status_code == 500
+        metadata = response.get_json()["diagnostic_log"]
+        assert metadata["saved"] is True
+        path = root / "var" / "logs" / "ask_receipts" / metadata["filename"]
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        assert payload["status"] == "error"
+        assert payload["exception"]["type"] == "RuntimeError"
+        assert "candidate resolution failed" in payload["exception"]["message"]
 
 
 def test_query_route_rejects_removed_request_fields() -> None:

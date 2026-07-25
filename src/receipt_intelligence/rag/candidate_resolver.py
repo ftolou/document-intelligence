@@ -23,6 +23,7 @@ from receipt_intelligence.application.ports.llm import (
     LlmGateway,
     ModelCallMetrics,
 )
+from receipt_intelligence.application.query_diagnostics import record_query_diagnostic
 from receipt_intelligence.rag.candidate_models import (
     CandidateRecord,
     CandidateResolutionBundle,
@@ -177,6 +178,15 @@ class CandidateResolver:
             except Exception as exc:
                 last_error = exc
                 previous_error = f"{type(exc).__name__}: {exc}"
+                record_query_diagnostic(
+                    "rag.candidate_resolution.attempt_failed",
+                    {
+                        "attempt": attempt,
+                        "maximum_attempts": attempts,
+                        "semantic_entity": entity,
+                        "error": previous_error,
+                    },
+                )
 
         duration_ms = (time.perf_counter() - started) * 1000.0
         raise CandidateResolutionError(

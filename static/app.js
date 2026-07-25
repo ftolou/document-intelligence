@@ -20,6 +20,8 @@ const batchProgressFillEl = document.getElementById('batch-progress-bar-fill');
 const humanReviewPanelEl = document.getElementById('humanReviewPanel');
 const askReceiptsForm = document.getElementById('askReceiptsForm');
 const askReceiptsQuestionEl = document.getElementById('askReceiptsQuestion');
+const askReceiptsSaveJsonLogEl = document.getElementById('askReceiptsSaveJsonLog');
+const askReceiptsLogHelpEl = document.getElementById('askReceiptsLogHelp');
 const askReceiptsEngineBadgeEl = document.getElementById('askReceiptsEngineBadge');
 const askReceiptsResultEl = document.getElementById('askReceiptsResult');
 const askQueryProgressEl = document.getElementById('askQueryProgress');
@@ -104,6 +106,9 @@ async function loadConfig() {
   if (batchMax && appConfig.batch_max_files !== undefined) batchMax.value = appConfig.batch_max_files;
   const batchRecursive = document.getElementById('batch_recursive');
   if (batchRecursive && appConfig.batch_recursive_default !== undefined) batchRecursive.checked = Boolean(appConfig.batch_recursive_default);
+  if (askReceiptsLogHelpEl && appConfig.ask_receipts_json_log_dir) {
+    askReceiptsLogHelpEl.textContent = `Off by default. Enabled queries are saved to ${appConfig.ask_receipts_json_log_dir}. Logs contain full prompts, model responses, diagnostics, and errors.`;
+  }
   syncVlmCheckboxFromConfig();
   syncCategorizationCheckboxFromConfig();
   updateAppVersionFromConfig();
@@ -239,7 +244,7 @@ function setQueryProgressStep(elapsedSeconds) {
 function setQueryLoadingState(isLoading) {
   const button = document.getElementById('ask-receipts-button');
   const buttonLabel = button?.querySelector('.button-label');
-  const controls = [askReceiptsQuestionEl, ...askQueryExampleButtons];
+  const controls = [askReceiptsQuestionEl, askReceiptsSaveJsonLogEl, ...askQueryExampleButtons];
   controls.forEach((control) => {
     if (control) control.disabled = Boolean(isLoading);
   });
@@ -1175,6 +1180,15 @@ function queryStateAction(label = 'Edit question') {
   </div>`;
 }
 
+function renderDiagnosticLogNotice(data) {
+  const log = data?.diagnostic_log;
+  if (!log || !log.enabled) return '';
+  if (log.saved && log.filename) {
+    return `<div class="query-log-notice query-log-saved">Diagnostic JSON saved as <code>${escapeHtml(log.filename)}</code>.</div>`;
+  }
+  return '<div class="query-log-notice query-log-failed">Diagnostic logging was enabled, but the JSON file could not be saved.</div>';
+}
+
 function renderAskNotFoundState(data) {
   const diagnostics = data.diagnostics && typeof data.diagnostics === 'object' ? data.diagnostics : {};
   const message = data.answer || 'No approved receipt data matched the request.';
@@ -1190,6 +1204,7 @@ function renderAskNotFoundState(data) {
       </div>
     </div>
     ${queryStateAction('Edit question')}
+    ${renderDiagnosticLogNotice(data)}
     ${Object.keys(diagnostics).length ? renderRagDiagnostics(diagnostics) : ''}`;
   setAskResultStatus('not_found');
 }
@@ -1209,6 +1224,7 @@ function renderAskInsufficientInfoState(data) {
       </div>
     </div>
     ${queryStateAction('Edit question')}
+    ${renderDiagnosticLogNotice(data)}
     ${Object.keys(diagnostics).length ? renderRagDiagnostics(diagnostics) : ''}`;
   setAskResultStatus('insufficient_info');
 }
@@ -1230,6 +1246,7 @@ function renderAskErrorState(data) {
       </div>
     </div>
     ${queryStateAction('Revise question')}
+    ${renderDiagnosticLogNotice(data)}
     <details class="query-error-details">
       <summary>Technical error</summary>
       <div class="query-error-code"><span>Error code</span><code>${escapeHtml(errorCode)}</code></div>
@@ -1254,6 +1271,7 @@ function renderAskClarificationState(data) {
       </div>
     </div>
     ${queryStateAction('Clarify question')}
+    ${renderDiagnosticLogNotice(data)}
     ${Object.keys(diagnostics).length ? renderRagDiagnostics(diagnostics) : ''}`;
   setAskResultStatus('needs_clarification');
 }
@@ -1310,6 +1328,7 @@ function renderRagSqlResult(data) {
       <p>${escapeHtml(formatPlain(data.answer || 'The query completed successfully.'))}</p>
     </section>
     ${structuredResult}
+    ${renderDiagnosticLogNotice(data)}
     ${renderRagDiagnostics(diagnostics)}`;
   setAskResultStatus('completed');
 }
@@ -1711,7 +1730,11 @@ if (askReceiptsForm) {
       const res = await fetch('/api/ask-receipts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: question.trim(), limit: 25 }),
+        body: JSON.stringify({
+          question: question.trim(),
+          limit: 25,
+          save_json_log: Boolean(askReceiptsSaveJsonLogEl?.checked),
+        }),
       });
       let data;
       try {

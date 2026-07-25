@@ -11,6 +11,7 @@ from receipt_intelligence.application.ports.llm import (
     GenerationResult,
     ModelCallMetrics,
 )
+from receipt_intelligence.application.query_diagnostics import capture_query_diagnostics
 
 
 @dataclass
@@ -85,3 +86,24 @@ def test_observed_gateway_records_failed_calls_without_hiding_exception() -> Non
 
     assert sink.records[0]["status"] == "failed"
     assert "provider unavailable" in str(sink.records[0]["error"])
+
+
+def test_observed_gateway_captures_prompt_and_raw_response_when_query_logging_is_enabled() -> None:
+    sink = RecordingSink()
+    gateway = ObservedLlmGateway(SuccessfulGateway(), sink)
+
+    with capture_query_diagnostics(enabled=True) as diagnostics:
+        gateway.generate(
+            GenerationRequest(
+                model="gemma4",
+                prompt="classify candidate c001",
+                operation="rag_candidate_resolution",
+            )
+        )
+
+    records = diagnostics.snapshot()
+    assert records[0]["event"] == "llm.request"
+    assert records[0]["prompt"] == "classify candidate c001"
+    assert records[1]["event"] == "llm.response"
+    assert records[1]["response_text"] == '{"ok": true}'
+    assert records[1]["metrics"]["eval_count"] == 120

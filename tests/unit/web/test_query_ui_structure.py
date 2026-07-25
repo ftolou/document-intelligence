@@ -10,7 +10,10 @@ def test_ask_ui_exposes_rag_sql_langgraph_engine() -> None:
     assert "RAG-SQL with LangGraph" in html
     assert 'id="askReceiptsEngineBadge"' in html
     assert "query-engine-summary" in html
-    assert "body: JSON.stringify({ question: question.trim(), limit: 25 })" in javascript
+    assert 'id="askReceiptsSaveJsonLog"' in html
+    assert "Save diagnostic JSON log" in html
+    assert "save_json_log: Boolean(askReceiptsSaveJsonLogEl?.checked)" in javascript
+    assert "renderDiagnosticLogNotice" in javascript
 
 
 def test_query_diagnostics_describe_graph_and_sql_stages() -> None:

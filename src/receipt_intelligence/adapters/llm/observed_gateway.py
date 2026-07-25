@@ -17,6 +17,7 @@ from receipt_intelligence.application.ports.llm import (
     LlmGateway,
     ModelCallMetrics,
 )
+from receipt_intelligence.application.query_diagnostics import record_query_diagnostic
 from receipt_intelligence.observability.timing import utc_now_iso
 
 
@@ -39,10 +40,39 @@ class ObservedLlmGateway:
         started_at = utc_now_iso()
         started = time.perf_counter()
         context = self.default_context.merged(current_model_call_context())
+        record_query_diagnostic(
+            "llm.request",
+            {
+                "call_id": call_id,
+                "trace_id": context.trace_id,
+                "query_id": context.query_id,
+                "operation": request.operation,
+                "attempt": request.attempt,
+                "model": request.model,
+                "num_ctx": request.num_ctx,
+                "num_predict": request.num_predict,
+                "temperature": request.temperature,
+                "timeout_seconds": request.timeout_seconds,
+                "format_json": request.format_json,
+                "response_json_schema": request.response_json_schema,
+                "prompt": request.prompt,
+            },
+        )
         try:
             result = self.delegate.generate(request)
         except Exception as exc:
             duration_ms = (time.perf_counter() - started) * 1000.0
+            record_query_diagnostic(
+                "llm.response",
+                {
+                    "call_id": call_id,
+                    "operation": request.operation,
+                    "attempt": request.attempt,
+                    "status": "failed",
+                    "duration_ms": round(duration_ms, 3),
+                    "error": f"{type(exc).__name__}: {exc}",
+                },
+            )
             _publish_safely(
                 self.event_sink,
                 ModelCallCompletedEvent(
@@ -70,6 +100,18 @@ class ObservedLlmGateway:
 
         duration_ms = (time.perf_counter() - started) * 1000.0
         metrics = result.metrics
+        record_query_diagnostic(
+            "llm.response",
+            {
+                "call_id": call_id,
+                "operation": request.operation,
+                "attempt": request.attempt,
+                "status": "completed",
+                "duration_ms": round(duration_ms, 3),
+                "response_text": result.text,
+                "metrics": metrics.to_diagnostics() if metrics is not None else None,
+            },
+        )
         _publish_safely(
             self.event_sink,
             _success_event(

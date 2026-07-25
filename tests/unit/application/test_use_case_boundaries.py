@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
+from receipt_intelligence.adapters.observability import AskReceiptsJsonLogWriter
 from receipt_intelligence.application.errors import InvalidRequestError
+from receipt_intelligence.application.query_diagnostics import record_query_diagnostic
 from receipt_intelligence.application.resources import artifact_reference
 from receipt_intelligence.application.use_cases.query import AskReceipts
 from receipt_intelligence.web.presentation import present_resources, present_review
@@ -38,6 +41,61 @@ def test_query_use_case_rejects_transport_payload_errors() -> None:
         use_case.execute({"question": "test", "unexpected": True})
 
     assert error.value.code == "unsupported_request_field"
+
+
+class _DiagnosticQueryService:
+    def execute(self, question: str, *, limit: int = 25) -> dict:
+        record_query_diagnostic(
+            "test.stage",
+            {"question": question, "limit": limit, "raw_output": "model output"},
+        )
+        return {
+            "question": question,
+            "status": "completed",
+            "execution": {"query_id": "q_diagnostic"},
+        }
+
+
+class _FailingDiagnosticQueryService:
+    def execute(self, question: str, *, limit: int = 25) -> dict:
+        record_query_diagnostic("test.stage", {"question": question})
+        raise RuntimeError("candidate resolution failed")
+
+
+def test_query_use_case_writes_opt_in_json_diagnostics(tmp_path: Path) -> None:
+    log_dir = tmp_path / "ask_receipts"
+    use_case = AskReceipts(
+        _DiagnosticQueryService(),
+        log_writer=AskReceiptsJsonLogWriter(log_dir),
+    )
+
+    result = use_case.execute({"question": "Vittel", "limit": 25, "save_json_log": True})
+
+    assert result["diagnostic_log"]["saved"] is True
+    log_path = log_dir / result["diagnostic_log"]["filename"]
+    payload = json.loads(log_path.read_text(encoding="utf-8"))
+    assert payload["query_id"] == "q_diagnostic"
+    assert payload["request"] == {"question": "Vittel", "limit": 25}
+    assert payload["diagnostic_events"][0]["raw_output"] == "model output"
+
+
+def test_query_use_case_writes_failure_log_and_preserves_exception(tmp_path: Path) -> None:
+    log_dir = tmp_path / "ask_receipts"
+    use_case = AskReceipts(
+        _FailingDiagnosticQueryService(),
+        log_writer=AskReceiptsJsonLogWriter(log_dir),
+    )
+
+    with pytest.raises(RuntimeError, match="candidate resolution failed") as error:
+        use_case.execute({"question": "Vittel", "save_json_log": True})
+
+    metadata = error.value.diagnostic_log
+    assert metadata["saved"] is True
+    payload = json.loads((log_dir / metadata["filename"]).read_text(encoding="utf-8"))
+    assert payload["status"] == "error"
+    assert payload["exception"]["type"] == "RuntimeError"
+    assert "candidate resolution failed" in payload["exception"]["traceback"]
+    assert payload["diagnostic_events"][0]["event"] == "test.stage"
 
 
 def test_artifact_references_are_transport_neutral_until_presented() -> None:
