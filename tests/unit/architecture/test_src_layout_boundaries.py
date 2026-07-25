@@ -12,9 +12,7 @@ def test_package_like_root_directories_do_not_duplicate_src_packages() -> None:
     duplicate_directories = sorted(
         path.name
         for path in ROOT.iterdir()
-        if path.is_dir()
-        and (package_root / path.name).is_dir()
-        and any(path.glob("*.py"))
+        if path.is_dir() and (package_root / path.name).is_dir() and any(path.glob("*.py"))
     )
 
     assert duplicate_directories == []
