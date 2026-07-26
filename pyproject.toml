@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "document-intelligence-pipeline"
-version = "1.0.0"
+version = "1.1.0"
 description = "Local-first OCR/VLM/LLM document intelligence pipeline, currently optimized for receipts."
 requires-python = ">=3.11"
 

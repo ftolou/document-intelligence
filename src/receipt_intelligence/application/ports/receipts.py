@@ -47,6 +47,24 @@ class ReceiptRepository(Protocol):
         limit: int = 200,
     ) -> list[dict[str, Any]]: ...
 
+    def get_review_queue_record(self, job_id: str) -> dict[str, Any] | None: ...
+
+    def review_queue_summary(self) -> dict[str, Any]: ...
+
+    def save_review_revision(
+        self,
+        *,
+        job_id: str,
+        receipt: dict[str, Any],
+        requested_status: str | None,
+        effective_status: str,
+        reviewer: str | None,
+        notes: str | None,
+        changed_fields: list[str],
+        receipt_db_id: int | None,
+        expected_revision: int | None = None,
+    ) -> dict[str, Any]: ...
+
 
 class ReviewWorkflow(Protocol):
     def approved_receipt_path(self, job_id: str) -> Path: ...

@@ -57,12 +57,14 @@ def review_queue_list():
     except (TypeError, ValueError):
         limit = 200
     try:
+        reviews = get_app_services().reviews
         return jsonify(
             {
-                "items": get_app_services().reviews.list_queue(
+                "items": reviews.list_queue(
                     status=status_filter,
                     limit=limit,
-                )
+                ),
+                "summary": reviews.queue_summary(),
             }
         )
     except Exception as exc:

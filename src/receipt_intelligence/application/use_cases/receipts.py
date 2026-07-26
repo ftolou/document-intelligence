@@ -34,15 +34,20 @@ class ReceiptUseCases:
             raise ResourceNotFoundError("job not found")
 
         approved_path = self._review_service.approved_receipt_path(job_id)
-        source_path = (
-            approved_path
-            if approved_path.exists()
-            else self._review_service.final_receipt_path(job_id)
-        )
-        if source_path is None or not source_path.exists():
-            raise ResourceNotFoundError("no approved/final receipt JSON found for this job")
+        if not approved_path.exists():
+            raise InvalidRequestError(
+                "receipt must be approved in the Review tab before it can be imported"
+            )
 
+        source_path = approved_path
         receipt = self._review_service.read_receipt_json(source_path)
+        human_review = (
+            receipt.get("human_review") if isinstance(receipt.get("human_review"), dict) else {}
+        )
+        if str(human_review.get("status") or "") != "approved":
+            raise InvalidRequestError(
+                "receipt must have human_review.status=approved before import"
+            )
         db_import = self._review_service.import_reviewed_receipt(
             job_id,
             receipt,

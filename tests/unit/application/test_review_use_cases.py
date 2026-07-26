@@ -114,3 +114,69 @@ def test_artifact_review_revalidates_imports_and_indexes_after_approval(tmp_path
 
     approved = json.loads(review_service.approved_receipt_path(job_id).read_text())
     assert approved["validation"]["import_decision"] == "import"
+
+
+def test_get_review_prefers_canonical_queue_draft_over_artifact(tmp_path: Path) -> None:
+    store = JobStore(tmp_path / "jobs")
+    database = ReceiptDatabase(tmp_path / "receipt.db")
+    job_id = "job-queue-source"
+    job_dir = store.job_dir(job_id)
+    job_dir.mkdir(parents=True, exist_ok=True)
+    artifact_receipt = _receipt()
+    artifact_receipt["merchant"]["name"] = "ARTIFACT MERCHANT"
+    (job_dir / f"{job_id}_receipt_final.json").write_text(
+        json.dumps(artifact_receipt), encoding="utf-8"
+    )
+    store.create(job_id, {})
+
+    queue_receipt = _receipt()
+    queue_receipt["merchant"]["name"] = "QUEUE MERCHANT"
+    database.upsert_review_queue(
+        job_id=job_id,
+        receipt=queue_receipt,
+        decision="review",
+        balanced=False,
+        difference=None,
+        issue_count=1,
+        image_path=None,
+        final_receipt_path=job_dir / f"{job_id}_receipt_final.json",
+        queue_status="needs_review",
+    )
+    review_service = ReviewService(store, database)
+    use_cases = ReviewUseCases(
+        store,
+        database,
+        review_service,
+        DatabaseReceiptEditor(database, review_service),
+        apply_human_review,
+    )
+
+    result = use_cases.get_review(job_id)
+
+    assert result["source"] == "review_queue"
+    assert result["receipt"]["merchant"]["name"] == "QUEUE MERCHANT"
+    assert result["review_identity"] == {
+        "source": "review_queue",
+        "job_id": job_id,
+        "review_revision": 0,
+    }
+
+
+def test_direct_queue_rejection_is_blocked_outside_review_workspace(tmp_path: Path) -> None:
+    store = JobStore(tmp_path / "jobs")
+    database = ReceiptDatabase(tmp_path / "receipt.db")
+    review_service = ReviewService(store, database)
+    use_cases = ReviewUseCases(
+        store,
+        database,
+        review_service,
+        DatabaseReceiptEditor(database, review_service),
+        apply_human_review,
+    )
+
+    import pytest
+
+    from receipt_intelligence.application.errors import InvalidRequestError
+
+    with pytest.raises(InvalidRequestError, match="Review workspace"):
+        use_cases.update_queue_status("job-1", "rejected")

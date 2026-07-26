@@ -18,6 +18,8 @@ const batchSummaryEl = document.getElementById('batchSummary');
 const batchSummaryStatusEl = document.getElementById('batch-live-status');
 const batchProgressFillEl = document.getElementById('batch-progress-bar-fill');
 const humanReviewPanelEl = document.getElementById('humanReviewPanel');
+const reviewHandoffPanelEl = document.getElementById('reviewHandoffPanel');
+const reviewSelectionHeaderEl = document.getElementById('reviewSelectionHeader');
 const askReceiptsForm = document.getElementById('askReceiptsForm');
 const askReceiptsQuestionEl = document.getElementById('askReceiptsQuestion');
 const askReceiptsSaveJsonLogEl = document.getElementById('askReceiptsSaveJsonLog');
@@ -35,6 +37,8 @@ const refreshReceiptDbButton = document.getElementById('refresh-receipt-db-butto
 const reviewQueueResultEl = document.getElementById('reviewQueueResult');
 const reviewQueueBadgeEl = document.getElementById('reviewQueueBadge');
 const reviewQueueFilterEl = document.getElementById('reviewQueueFilter');
+const reviewQueueSearchEl = document.getElementById('reviewQueueSearch');
+const reviewQueueSummaryEl = document.getElementById('reviewQueueSummary');
 const refreshReviewQueueButton = document.getElementById('refresh-review-queue-button');
 const receiptDbListEl = document.getElementById('receiptDbList');
 const refreshReceiptListButton = document.getElementById('refresh-receipt-list-button');
@@ -48,6 +52,8 @@ let currentReviewSaveUrl = null;
 let currentReviewSaveMethod = 'POST';
 let currentReviewEditable = true;
 let currentReviewIdentity = null;
+let currentReviewQueueItems = [];
+let currentReviewAdvanceAfterSave = false;
 let appConfig = {};
 let queryProgressTimer = null;
 let queryProgressStartedAt = null;
@@ -70,6 +76,9 @@ function setActiveTab(tabName) {
   if (target === 'data') {
     refreshReceiptDbSummary().catch(() => {});
     refreshReceiptDbList().catch(() => {});
+  }
+  if (target === 'review') {
+    loadReviewQueue().catch(() => {});
   }
   if (target === 'models' && typeof loadModelDashboard === 'function') {
     loadModelDashboard().catch(() => {});
@@ -450,11 +459,76 @@ function renderReceiptSummary(receipt) {
 }
 
 
+function reviewIssueMarkup(validation) {
+  const issues = Array.isArray(validation?.issues) ? validation.issues : [];
+  if (!issues.length) {
+    return '<div class="review-validation-ok">No validation issues remain.</div>';
+  }
+  return `<div class="review-issue-list">${issues.map((issue) => {
+    const severity = String(issue?.severity || 'medium').toLowerCase();
+    return `<article class="review-issue review-issue-${escapeHtml(severity)}">
+      <span>${escapeHtml(severity)}</span>
+      <div><strong>${escapeHtml(formatPlain(issue?.code || 'VALIDATION_ISSUE'))}</strong><p>${escapeHtml(formatPlain(issue?.message || issue?.detail || 'Review required.'))}</p></div>
+    </article>`;
+  }).join('')}</div>`;
+}
+
+function reviewItemEditor(item, idx) {
+  const raw = firstDefined(item.raw_description, item.description, item.raw_name, item.name, item.text, '');
+  const productDescription = firstDefined(item.product_description, item.clean_description, item.normalized_name, item.description, item.name, '');
+  const lineNote = firstDefined(item.line_note, item.promotion_note, '');
+  const normalized = firstDefined(item.normalized_name, item.product_description, item.name, productDescription, '');
+  const parserType = firstDefined(item.parser_item_type, item.receipt_row_type, item.line_type, item.category, 'item');
+  const productCategoryGroup = firstDefined(item.category_group, '');
+  const productCategoryKey = firstDefined(item.category_key, item.product_category, item.spending_category, '');
+  const vatRate = firstDefined(item.vat_rate, item.tax_rate, item.tax_rate_percent, '');
+  const extractionConfidence = firstDefined(item.confidence, '');
+  const categoryConfidence = firstDefined(item.category_confidence, item.category_confidence_calibrated, '');
+  const categoryReviewRequired = Boolean(item.category_review_required);
+  const categoryReason = firstDefined(item.category_reason, '');
+  const semanticDescription = firstDefined(item.semantic_description, '');
+  const itemId = escapeHtml(inputValue(item._db_item_id));
+  const selectOptions = (values, current) => values.map((value) => `<option value="${value}" ${String(current).toLowerCase() === value ? 'selected' : ''}>${value}</option>`).join('');
+  return `<article class="review-item-card" data-review-item-row="${idx}" data-review-item-id="${itemId}">
+    <header class="review-item-card-header">
+      <span class="review-item-number">${idx + 1}</span>
+      <div class="field review-item-product"><label>Product / printed item</label><input data-review-item-index="${idx}" data-review-item-field="product_description" value="${escapeHtml(inputValue(productDescription))}" /></div>
+      <div class="field review-item-price"><label>Line total</label><input data-review-item-index="${idx}" data-review-item-field="line_total" type="number" step="0.01" value="${escapeHtml(inputValue(firstDefined(item.line_total, item.total, item.amount)))}" /></div>
+      <div class="field review-item-type"><label>Row type</label><select data-review-item-index="${idx}" data-review-item-field="parser_item_type">${selectOptions(['item', 'discount', 'deposit', 'refund', 'fee', 'tax', 'info', 'unknown'], parserType)}</select></div>
+    </header>
+    <div class="review-item-core-grid">
+      <div class="field"><label>Quantity</label><input data-review-item-index="${idx}" data-review-item-field="quantity" type="number" step="0.001" value="${escapeHtml(inputValue(item.quantity))}" /></div>
+      <div class="field"><label>Unit</label><input data-review-item-index="${idx}" data-review-item-field="unit" value="${escapeHtml(inputValue(item.unit))}" /></div>
+      <div class="field"><label>Unit price</label><input data-review-item-index="${idx}" data-review-item-field="unit_price" type="number" step="0.01" value="${escapeHtml(inputValue(item.unit_price))}" /></div>
+      <div class="field"><label>Category</label><input data-review-item-index="${idx}" data-review-item-field="category_key" placeholder="groceries" value="${escapeHtml(inputValue(productCategoryKey))}" /></div>
+      <div class="field"><label>Review state</label><select data-review-item-index="${idx}" data-review-item-field="review_status">${selectOptions(['approved', 'corrected', 'needs_review', 'rejected'], item.review_status || 'needs_review')}</select></div>
+    </div>
+    <details class="review-item-details">
+      <summary>More item details</summary>
+      <div class="review-item-detail-grid">
+        <div class="field full-width"><label>Raw printed row</label><input data-review-item-index="${idx}" data-review-item-field="raw_description" value="${escapeHtml(inputValue(raw))}" /></div>
+        <div class="field full-width"><label>Line note / promotion context</label><input data-review-item-index="${idx}" data-review-item-field="line_note" value="${escapeHtml(inputValue(lineNote))}" /></div>
+        <div class="field"><label>Normalized item</label><input data-review-item-index="${idx}" data-review-item-field="normalized_name" value="${escapeHtml(inputValue(normalized))}" /></div>
+        <div class="field"><label>Category group</label><input data-review-item-index="${idx}" data-review-item-field="category_group" value="${escapeHtml(inputValue(productCategoryGroup))}" /></div>
+        <div class="field"><label>Category confidence</label><input data-review-item-index="${idx}" data-review-item-field="category_confidence" type="number" step="0.01" min="0" max="1" value="${escapeHtml(inputValue(categoryConfidence))}" /></div>
+        <label class="checkline review-checkbox"><input data-review-item-index="${idx}" data-review-item-field="category_review_required" type="checkbox" ${categoryReviewRequired ? 'checked' : ''} /> Category requires review</label>
+        <div class="field full-width"><label>Category reason</label><input data-review-item-index="${idx}" data-review-item-field="category_reason" value="${escapeHtml(inputValue(categoryReason))}" /></div>
+        <div class="field full-width"><label>Semantic description</label><textarea rows="2" data-review-item-index="${idx}" data-review-item-field="semantic_description">${escapeHtml(inputValue(semanticDescription))}</textarea></div>
+        <div class="field"><label>Original price</label><input data-review-item-index="${idx}" data-review-item-field="original_price" type="number" step="0.01" value="${escapeHtml(inputValue(firstDefined(item.original_price, item.gross_unit_price, '')))}" /></div>
+        <div class="field"><label>Discount amount</label><input data-review-item-index="${idx}" data-review-item-field="discount_amount" type="number" step="0.01" value="${escapeHtml(inputValue(item.discount_amount))}" /></div>
+        <div class="field"><label>Tax code</label><input data-review-item-index="${idx}" data-review-item-field="tax_code" value="${escapeHtml(inputValue(item.tax_code))}" /></div>
+        <div class="field"><label>VAT rate</label><input data-review-item-index="${idx}" data-review-item-field="vat_rate" value="${escapeHtml(inputValue(vatRate))}" /></div>
+        <div class="field"><label>OCR confidence</label><input data-review-item-index="${idx}" data-review-item-field="confidence" type="number" step="0.01" min="0" max="1" value="${escapeHtml(inputValue(extractionConfidence))}" /></div>
+      </div>
+    </details>
+  </article>`;
+}
+
 function renderHumanReview(receipt, artifacts = {}, options = {}) {
   if (!humanReviewPanelEl) return;
   if (!receipt || typeof receipt !== 'object') {
     humanReviewPanelEl.className = 'review-panel empty';
-    humanReviewPanelEl.textContent = 'Run a receipt to edit key fields and item rows, approve/reject the result, and save an auditable human-review record.';
+    humanReviewPanelEl.textContent = 'Select a receipt from the queue to inspect and review it.';
     return;
   }
 
@@ -467,136 +541,96 @@ function renderHumanReview(receipt, artifacts = {}, options = {}) {
   const persistedReview = options.review && typeof options.review === 'object'
     ? options.review
     : (receipt.human_review && typeof receipt.human_review === 'object' ? receipt.human_review : {});
-  const reviewNotice = editable
-    ? (options.source === 'database'
-      ? 'This receipt is loaded directly from SQLite. Changes are committed to the database first; product-text changes selectively refresh the semantic index.'
-      : 'Review side-by-side: correct fields and save an auditable review revision.')
-    : `Read-only receipt review. ${options.readOnlyReason || 'This receipt cannot currently be edited.'}`;
   const imageUrl = artifacts?.receipt_image || artifacts?.image || artifacts?.source_image || '';
   const receiptImage = imageUrl
     ? `<a href="${escapeHtml(imageUrl)}" target="_blank" rel="noopener noreferrer"><img class="review-receipt-image" src="${escapeHtml(imageUrl)}" alt="Original receipt image" /></a>`
-    : `<div class="review-image-missing">No original receipt image is available. The stored database values can still be edited.</div>`;
-
-  const itemRows = items.length ? items.map((item, idx) => {
-    const raw = firstDefined(item.raw_description, item.description, item.raw_name, item.name, item.text, '');
-    const productDescription = firstDefined(item.product_description, item.clean_description, item.normalized_name, item.description, item.name, '');
-    const lineNote = firstDefined(item.line_note, item.promotion_note, '');
-    const normalized = firstDefined(item.normalized_name, item.product_description, item.name, productDescription, '');
-    const parserType = firstDefined(item.parser_item_type, item.receipt_row_type, item.line_type, item.category, 'item');
-    const productCategoryGroup = firstDefined(item.category_group, '');
-    const productCategoryKey = firstDefined(item.category_key, item.product_category, item.spending_category, '');
-    const vatRate = firstDefined(item.vat_rate, item.tax_rate, item.tax_rate_percent, '');
-    const extractionConfidence = firstDefined(item.confidence, '');
-    const categoryConfidence = firstDefined(item.category_confidence, item.category_confidence_calibrated, '');
-    const categoryReviewRequired = Boolean(item.category_review_required);
-    const categoryReason = firstDefined(item.category_reason, '');
-    const semanticDescription = firstDefined(item.semantic_description, '');
-    return `<tr data-review-item-row="${idx}" data-review-item-id="${escapeHtml(inputValue(item._db_item_id))}">
-      <td class="numeric">${idx + 1}</td>
-      <td><input data-review-item-index="${idx}" data-review-item-field="raw_description" value="${escapeHtml(inputValue(raw))}" title="Full printed/raw row text for audit" /></td>
-      <td><input data-review-item-index="${idx}" data-review-item-field="product_description" value="${escapeHtml(inputValue(productDescription))}" title="Clean product-identifying text used for categories and RAG" /></td>
-      <td><input data-review-item-index="${idx}" data-review-item-field="line_note" value="${escapeHtml(inputValue(lineNote))}" title="Coupon/promotion/context note, not product identity" /></td>
-      <td>
-        <select data-review-item-index="${idx}" data-review-item-field="parser_item_type" title="Parser/OCR row type, not product category">
-          ${['item', 'discount', 'deposit', 'refund', 'fee', 'tax', 'info', 'unknown'].map((v) => `<option value="${v}" ${String(parserType).toLowerCase() === v ? 'selected' : ''}>${v}</option>`).join('')}
-        </select>
-      </td>
-      <td><input data-review-item-index="${idx}" data-review-item-field="normalized_name" value="${escapeHtml(inputValue(normalized))}" /></td>
-      <td><input data-review-item-index="${idx}" data-review-item-field="category_group" placeholder="Personal Care" value="${escapeHtml(inputValue(productCategoryGroup))}" /></td>
-      <td><input data-review-item-index="${idx}" data-review-item-field="category_key" placeholder="personal_care" value="${escapeHtml(inputValue(productCategoryKey))}" /></td>
-      <td><input data-review-item-index="${idx}" data-review-item-field="category_confidence" type="number" step="0.01" min="0" max="1" value="${escapeHtml(inputValue(categoryConfidence))}" /></td>
-      <td class="center"><input data-review-item-index="${idx}" data-review-item-field="category_review_required" type="checkbox" ${categoryReviewRequired ? 'checked' : ''} /></td>
-      <td><input data-review-item-index="${idx}" data-review-item-field="category_reason" value="${escapeHtml(inputValue(categoryReason))}" title="Reviewed evidence explaining the category" /></td>
-      <td><input data-review-item-index="${idx}" data-review-item-field="semantic_description" value="${escapeHtml(inputValue(semanticDescription))}" title="Reviewed factual product description used for descriptive Ask Your Receipts answers" /></td>
-      <td><input data-review-item-index="${idx}" data-review-item-field="quantity" type="number" step="0.001" value="${escapeHtml(inputValue(item.quantity))}" /></td>
-      <td><input data-review-item-index="${idx}" data-review-item-field="unit" value="${escapeHtml(inputValue(item.unit))}" /></td>
-      <td><input data-review-item-index="${idx}" data-review-item-field="unit_price" type="number" step="0.01" value="${escapeHtml(inputValue(item.unit_price))}" /></td>
-      <td><input data-review-item-index="${idx}" data-review-item-field="original_price" type="number" step="0.01" value="${escapeHtml(inputValue(firstDefined(item.original_price, item.gross_unit_price, '')))}" /></td>
-      <td><input data-review-item-index="${idx}" data-review-item-field="discount_amount" type="number" step="0.01" value="${escapeHtml(inputValue(item.discount_amount))}" /></td>
-      <td><input data-review-item-index="${idx}" data-review-item-field="line_total" type="number" step="0.01" value="${escapeHtml(inputValue(firstDefined(item.line_total, item.total, item.amount)))}" /></td>
-      <td><input data-review-item-index="${idx}" data-review-item-field="tax_code" value="${escapeHtml(inputValue(item.tax_code))}" /></td>
-      <td><input data-review-item-index="${idx}" data-review-item-field="vat_rate" value="${escapeHtml(inputValue(vatRate))}" /></td>
-      <td><input data-review-item-index="${idx}" data-review-item-field="confidence" type="number" step="0.01" min="0" max="1" value="${escapeHtml(inputValue(extractionConfidence))}" /></td>
-      <td>
-        <select data-review-item-index="${idx}" data-review-item-field="review_status">
-          ${['approved', 'corrected', 'needs_review', 'rejected'].map((v) => `<option value="${v}" ${item.review_status === v ? 'selected' : ''}>${v}</option>`).join('')}
-        </select>
-      </td>
-    </tr>`;
-  }).join('') : `<tr><td colspan="22" class="muted">No item rows were extracted. You can still approve/reject the receipt header, but Ask Your Receipts will have no item-level evidence.</td></tr>`;
+    : '<div class="review-image-missing">No original receipt image is available. The canonical draft can still be reviewed.</div>';
+  const queueRevision = options.queueRecord?.review_revision ?? currentReviewIdentity?.review_revision ?? '—';
+  const itemEditors = items.length
+    ? items.map((item, idx) => reviewItemEditor(item, idx)).join('')
+    : '<div class="review-empty-items">No item rows were extracted. Header fields can still be corrected, but item-level analytics will have no evidence.</div>';
 
   humanReviewPanelEl.className = 'review-panel';
   humanReviewPanelEl.innerHTML = `
-    <div class="notice ${editable ? '' : 'review-read-only-notice'}">${escapeHtml(reviewNotice)}</div>
+    <div class="review-source-notice ${editable ? '' : 'review-read-only-notice'}">
+      <div><strong>${options.source === 'database' ? 'Approved database receipt' : 'Canonical review draft'}</strong><span>${options.source === 'database' ? 'Changes commit to SQLite and selectively refresh semantic embeddings.' : 'Draft changes and every review revision are stored in SQLite.'}</span></div>
+      <span class="badge neutral">revision ${escapeHtml(formatPlain(queueRevision))}</span>
+    </div>
     <div class="review-layout">
       <aside class="review-image-panel">
-        <div class="receipt-section-title"><h4>Original receipt image</h4><small>Click image to open full size</small></div>
+        <div class="receipt-section-title"><h4>Receipt evidence</h4><small>Open image for full size</small></div>
         ${receiptImage}
+        <div class="review-validation-panel">
+          <div class="receipt-section-title"><h4>Validation</h4><small>${escapeHtml(formatPlain(decision))}</small></div>
+          ${reviewIssueMarkup(validation)}
+        </div>
       </aside>
       <div class="review-edit-panel">
-        <div class="receipt-section-title"><h4>Receipt header</h4><small>Correct merchant, date and totals; validation is recalculated when saved</small></div>
-        <div class="review-grid">
-          <div class="field"><label>Merchant name</label><input data-review-field="merchant_name" value="${escapeHtml(inputValue(merchant.name))}" /></div>
-          <div class="field"><label>Date</label><input data-review-field="date" value="${escapeHtml(inputValue(receipt.date))}" /></div>
-          <div class="field"><label>Time</label><input data-review-field="time" value="${escapeHtml(inputValue(receipt.time))}" /></div>
-          <div class="field"><label>Currency</label><input data-review-field="currency" value="${escapeHtml(inputValue(receipt.currency || 'EUR'))}" /></div>
-          <div class="field"><label>Document type</label><input data-review-field="document_type" placeholder="receipt" value="${escapeHtml(inputValue(firstDefined(receipt.document_type, receipt.type, 'receipt')))}" /></div>
-          <div class="field"><label>Receipt/OCR category</label><input data-review-field="receipt_category" placeholder="retail_receipt" value="${escapeHtml(inputValue(firstDefined(receipt.receipt_category, receipt.document_category, '')))}" /></div>
-          <div class="field"><label>Business category</label><input data-review-field="receipt_business_category" placeholder="groceries / drugstore / fuel" value="${escapeHtml(inputValue(firstDefined(receipt.receipt_business_category, receipt.business_category, '')))}" /></div>
-          <div class="field full-width"><label>Merchant address</label><textarea data-review-field="merchant_address" rows="2">${escapeHtml(inputValue(merchant.address))}</textarea></div>
-          <div class="field"><label>Subtotal</label><input data-review-field="subtotal" type="number" step="0.01" value="${escapeHtml(inputValue(totals.subtotal))}" /></div>
-          <div class="field"><label>Tax total</label><input data-review-field="tax_total" type="number" step="0.01" value="${escapeHtml(inputValue(totals.tax_total))}" /></div>
-          <div class="field"><label>Grand total</label><input data-review-field="grand_total" type="number" step="0.01" value="${escapeHtml(inputValue(totals.grand_total))}" /></div>
-          <div class="field"><label>Paid total</label><input data-review-field="paid_total" type="number" step="0.01" value="${escapeHtml(inputValue(totals.paid_total))}" /></div>
-          <div class="field"><label>Change</label><input data-review-field="change" type="number" step="0.01" value="${escapeHtml(inputValue(totals.change))}" /></div>
-          <div class="field"><label>Current validation decision</label>
-            <input value="${escapeHtml(inputValue(decision))}" disabled />
-            <small>Recomputed from the corrected receipt when the review is saved.</small>
+        <section class="review-form-section">
+          <div class="receipt-section-title"><h4>Merchant and transaction</h4><small>Core receipt identity</small></div>
+          <div class="review-grid">
+            <div class="field"><label>Merchant name</label><input data-review-field="merchant_name" value="${escapeHtml(inputValue(merchant.name))}" /></div>
+            <div class="field"><label>Date</label><input data-review-field="date" value="${escapeHtml(inputValue(receipt.date))}" /></div>
+            <div class="field"><label>Time</label><input data-review-field="time" value="${escapeHtml(inputValue(receipt.time))}" /></div>
+            <div class="field"><label>Currency</label><input data-review-field="currency" value="${escapeHtml(inputValue(receipt.currency || 'EUR'))}" /></div>
+            <div class="field"><label>Document type</label><input data-review-field="document_type" value="${escapeHtml(inputValue(firstDefined(receipt.document_type, receipt.type, 'receipt')))}" /></div>
+            <div class="field"><label>Receipt category</label><input data-review-field="receipt_category" value="${escapeHtml(inputValue(firstDefined(receipt.receipt_category, receipt.document_category, '')))}" /></div>
+            <div class="field"><label>Business category</label><input data-review-field="receipt_business_category" value="${escapeHtml(inputValue(firstDefined(receipt.receipt_business_category, receipt.business_category, '')))}" /></div>
+            <div class="field full-width"><label>Merchant address</label><textarea data-review-field="merchant_address" rows="2">${escapeHtml(inputValue(merchant.address))}</textarea></div>
           </div>
-        </div>
+        </section>
 
-        <div class="receipt-section-title item-review-title"><h4>Item review</h4><small>Separate raw row, clean product text, context notes, parser/OCR row type, pricing fields and product/spending category before indexing</small></div>
-        <div class="table-scroll review-item-scroll"><table class="extracted-table review-items-table"><thead><tr>
-          <th class="numeric">#</th><th>Raw row</th><th>Product item</th><th>Line note</th><th>OCR row type</th><th>Normalized item</th><th>Product group</th><th>Product key</th><th class="numeric">Cat. conf.</th><th>Cat. review</th><th>Cat. reason</th><th>Semantic description</th><th class="numeric">Qty</th><th>Unit</th><th class="numeric">Unit price</th><th class="numeric">Original price</th><th class="numeric">Discount</th><th class="numeric">Line total</th><th>Tax code</th><th>VAT</th><th class="numeric">OCR conf.</th><th>Status</th>
-        </tr></thead><tbody>${itemRows}</tbody></table></div>
-
-        <div class="review-grid review-meta">
-          <div class="field"><label>Reviewer</label><input id="reviewerName" placeholder="Name or initials" /></div>
-          <div class="field"><label>Review status</label>
-            <select id="reviewStatus"><option value="approved">approved</option><option value="needs_review">needs_review</option><option value="rejected">rejected</option></select>
+        <section class="review-form-section">
+          <div class="receipt-section-title"><h4>Totals</h4><small>Validation is recalculated on save</small></div>
+          <div class="review-totals-grid">
+            <div class="field"><label>Subtotal</label><input data-review-field="subtotal" type="number" step="0.01" value="${escapeHtml(inputValue(totals.subtotal))}" /></div>
+            <div class="field"><label>Tax total</label><input data-review-field="tax_total" type="number" step="0.01" value="${escapeHtml(inputValue(totals.tax_total))}" /></div>
+            <div class="field"><label>Grand total</label><input data-review-field="grand_total" type="number" step="0.01" value="${escapeHtml(inputValue(totals.grand_total))}" /></div>
+            <div class="field"><label>Paid total</label><input data-review-field="paid_total" type="number" step="0.01" value="${escapeHtml(inputValue(totals.paid_total))}" /></div>
+            <div class="field"><label>Change</label><input data-review-field="change" type="number" step="0.01" value="${escapeHtml(inputValue(totals.change))}" /></div>
           </div>
-          <div class="field full-width"><label>Review notes</label><textarea id="reviewNotes" rows="2" placeholder="What did you approve or correct?"></textarea></div>
-        </div>
-        <div class="form-actions">
-          <button type="button" id="saveHumanReviewButton">Save human review</button>
-          <small id="humanReviewMessage" class="v14-note">Revalidates the corrected receipt, saves it transactionally, and creates or refreshes semantic embeddings after approval.</small>
-        </div>
+        </section>
+
+        <section class="review-form-section">
+          <div class="receipt-section-title"><h4>Items</h4><small>${items.length} extracted row(s)</small></div>
+          <div class="review-item-list">${itemEditors}</div>
+        </section>
+
+        <section class="review-form-section review-meta">
+          <div class="review-grid">
+            <div class="field"><label>Reviewer</label><input id="reviewerName" placeholder="Name or initials" value="${escapeHtml(inputValue(persistedReview.reviewer))}" /></div>
+            <div class="field full-width"><label>Review notes</label><textarea id="reviewNotes" rows="3" placeholder="Corrections, uncertainty, or rejection reason">${escapeHtml(inputValue(persistedReview.notes))}</textarea></div>
+          </div>
+        </section>
       </div>
     </div>
-  `;
-  const reviewerInput = document.getElementById('reviewerName');
-  const statusInput = document.getElementById('reviewStatus');
-  const notesInput = document.getElementById('reviewNotes');
-  if (reviewerInput) reviewerInput.value = inputValue(persistedReview.reviewer);
-  if (statusInput && persistedReview.status) statusInput.value = String(persistedReview.status);
-  if (notesInput) notesInput.value = inputValue(persistedReview.notes);
+    <div class="review-action-bar">
+      <div><strong>Review decision</strong><small id="humanReviewMessage">Save a draft or finalize this receipt. Approval is blocked when core validation errors remain.</small></div>
+      <div class="review-action-buttons">
+        <button type="button" class="secondary" data-review-action="needs_review">Save draft</button>
+        <button type="button" class="danger-secondary" data-review-action="rejected">Reject</button>
+        <button type="button" data-review-action="approved">Approve</button>
+        <button type="button" data-review-action="approved" data-review-advance="true">Approve &amp; next</button>
+      </div>
+    </div>`;
 
-  const btn = document.getElementById('saveHumanReviewButton');
-  if (btn) {
-    btn.disabled = !editable;
-    btn.textContent = editable ? 'Save human review' : 'Read-only review';
-    if (editable) btn.addEventListener('click', saveHumanReview);
+  for (const button of humanReviewPanelEl.querySelectorAll('[data-review-action]')) {
+    button.disabled = !editable;
+    if (editable) {
+      button.addEventListener('click', () => saveHumanReview(
+        button.dataset.reviewAction || 'needs_review',
+        button.dataset.reviewAdvance === 'true',
+      ));
+    }
   }
   if (!editable) {
-    for (const control of humanReviewPanelEl.querySelectorAll('input, select, textarea')) {
-      control.disabled = true;
-    }
+    for (const control of humanReviewPanelEl.querySelectorAll('input, select, textarea')) control.disabled = true;
     const message = document.getElementById('humanReviewMessage');
-    if (message) message.textContent = options.readOnlyReason || 'This stored receipt can be inspected but not edited.';
+    if (message) message.textContent = options.readOnlyReason || 'This receipt is read-only.';
   }
 }
 
-function collectHumanReviewPayload() {
+function collectHumanReviewPayload(status = 'needs_review') {
   const fields = {};
   for (const el of humanReviewPanelEl.querySelectorAll('[data-review-field]')) {
     let value = el.type === 'checkbox' ? el.checked : el.value;
@@ -618,83 +652,60 @@ function collectHumanReviewPayload() {
     }
     itemMap.get(index)[field] = value;
   }
-  const items = Array.from(itemMap.values()).sort((a, b) => a.index - b.index);
-
   return {
     identity: currentReviewIdentity || {},
     fields,
-    items,
+    items: Array.from(itemMap.values()).sort((a, b) => a.index - b.index),
     review: {
       reviewer: document.getElementById('reviewerName')?.value || '',
-      status: document.getElementById('reviewStatus')?.value || 'needs_review',
+      status,
       notes: document.getElementById('reviewNotes')?.value || '',
     },
   };
 }
 
-async function saveHumanReview() {
+async function saveHumanReview(status = 'needs_review', advance = false) {
   const msg = document.getElementById('humanReviewMessage');
-  const btn = document.getElementById('saveHumanReviewButton');
+  const buttons = Array.from(humanReviewPanelEl?.querySelectorAll('[data-review-action]') || []);
   if (!currentReviewEditable || !currentReviewSaveUrl) {
-    if (msg) msg.textContent = 'This stored receipt is available in read-only mode.';
+    if (msg) msg.textContent = 'This receipt is available in read-only mode.';
     return;
   }
-  if (btn) btn.disabled = true;
-  if (msg) msg.textContent = 'Saving human review...';
+  buttons.forEach((button) => { button.disabled = true; });
+  if (msg) msg.textContent = `Saving ${status === 'needs_review' ? 'draft' : status} decision…`;
+  const savedJobId = currentJobId;
   try {
-    const payload = collectHumanReviewPayload();
     const res = await fetch(currentReviewSaveUrl, {
       method: currentReviewSaveMethod || 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(collectHumanReviewPayload(status)),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Human review save failed');
-    const semanticStatus = data.semantic_index?.status || 'not_reported';
-    const semanticCount = data.semantic_index?.requested_item_ids?.length
-      || data.database_update?.semantic_item_ids?.length
-      || 0;
-    const semanticText = semanticStatus === 'current'
-      ? `Semantic index updated for ${semanticCount} item(s).`
-      : semanticStatus === 'not_required'
-        ? 'No semantic reindex was required.'
-        : semanticStatus === 'pending'
-          ? 'Changed vectors were invalidated; reindexing is pending.'
-          : semanticStatus === 'failed'
-            ? 'Database saved; semantic reindexing failed and can be retried.'
-            : '';
-    const effectiveStatus = data.receipt?.human_review?.status || data.review?.status || 'needs_review';
-    const approvalBlocked = Boolean(data.review_finalization?.approval_blocked);
-    const persistenceText = data.receipt_db_import?.status === 'not_imported'
-      ? 'Review saved; receipt was not imported.'
-      : 'Saved to database.';
-    const stateText = approvalBlocked
-      ? ` Approval remains blocked by: ${(data.receipt?.human_review?.blocking_issue_codes || []).join(', ') || 'validation issues'}.`
-      : ` Effective review status: ${effectiveStatus}.`;
-    if (msg) msg.innerHTML = `${escapeHtml(persistenceText)} Changed fields: ${escapeHtml((data.review?.changed_fields || []).join(', ') || 'none')}. DB items: ${escapeHtml(data.receipt_db_import?.item_count ?? 'n/a')}.${escapeHtml(stateText)} ${escapeHtml(semanticText)}`;
+    applyReviewPayload(data);
+    const effectiveStatus = data.receipt?.human_review?.status || data.review?.status || status;
+    const revision = data.review_queue?.revision || data.review_revision?.revision || data.review?.review_revision || '—';
+    const newMessage = document.getElementById('humanReviewMessage');
+    if (newMessage) {
+      newMessage.textContent = `Saved revision ${revision}. Effective status: ${effectiveStatus}. Changed fields: ${(data.review?.changed_fields || []).join(', ') || 'none'}.`;
+    }
     refreshReceiptDbSummary().catch(() => {});
     refreshReceiptDbList().catch(() => {});
-    loadReviewQueue().catch(() => {});
-    currentArtifacts = data.artifacts || currentArtifacts || {};
-    renderArtifacts(currentArtifacts);
-    previewEl.textContent = JSON.stringify(data.receipt, null, 2);
-    renderReceiptSummary(data.receipt);
-    currentReceiptDbId = data.receipt_db_id || data.receipt_db_import?.receipt_db_id || currentReceiptDbId;
-    currentReviewEditable = data.editable !== false;
-    currentReviewIdentity = data.review_identity || currentReviewIdentity;
-    currentReviewSaveUrl = data.save_url || currentReviewSaveUrl;
-    currentReviewSaveMethod = String(data.save_method || currentReviewSaveMethod || 'POST').toUpperCase();
-    renderHumanReview(data.receipt, currentArtifacts, {
-      editable: currentReviewEditable,
-      review: data.review,
-      source: data.source,
-    });
+    await loadReviewQueue();
+    if (advance) {
+      const next = currentReviewQueueItems.find((item) => item.job_id !== savedJobId && ['needs_review', 'duplicate_candidate', 'rejected'].includes(String(item.queue_status || '')));
+      if (next) await openReviewJob(next.job_id);
+    }
   } catch (err) {
-    if (msg) msg.textContent = err.message || String(err);
+    const currentMessage = document.getElementById('humanReviewMessage');
+    if (currentMessage) currentMessage.textContent = err.message || String(err);
   } finally {
-    if (btn) btn.disabled = false;
+    for (const button of Array.from(humanReviewPanelEl?.querySelectorAll('[data-review-action]') || [])) {
+      button.disabled = !currentReviewEditable;
+    }
   }
 }
+
 
 function renderReceiptDbSummary(summary) {
   if (!receiptDbSummaryEl) return;
@@ -749,71 +760,104 @@ async function refreshReceiptDbSummary() {
 }
 
 function queueStatusBadge(status) {
-  const s = String(status || '').toLowerCase();
-  if (['approved', 'imported', 'auto_validated'].includes(s)) return 'badge ok';
-  if (['rejected', 'duplicate_confirmed'].includes(s)) return 'badge bad';
-  if (['needs_review', 'duplicate_candidate'].includes(s)) return 'badge warn';
+  const value = String(status || '').toLowerCase();
+  if (['approved', 'imported', 'auto_validated'].includes(value)) return 'badge ok';
+  if (['rejected', 'duplicate_confirmed'].includes(value)) return 'badge bad';
+  if (['needs_review', 'duplicate_candidate'].includes(value)) return 'badge warn';
   return 'badge neutral';
+}
+
+function renderReviewQueueSummary(summary = {}) {
+  if (!reviewQueueSummaryEl) return;
+  const values = {
+    needs_review: summary.needs_review || 0,
+    duplicate_candidate: summary.duplicate_candidate || 0,
+    rejected: summary.rejected || 0,
+    approved: (summary.approved || 0) + (summary.imported || 0),
+  };
+  for (const button of reviewQueueSummaryEl.querySelectorAll('[data-review-summary-filter]')) {
+    const status = button.dataset.reviewSummaryFilter;
+    const strong = button.querySelector('strong');
+    if (strong) strong.textContent = String(values[status] || 0);
+  }
 }
 
 async function loadReviewQueue() {
   if (!reviewQueueResultEl) return;
   const status = reviewQueueFilterEl?.value || 'all';
-  reviewQueueResultEl.className = 'receipt-summary empty';
-  reviewQueueResultEl.textContent = 'Loading review queue...';
+  reviewQueueResultEl.className = 'review-queue-list empty';
+  reviewQueueResultEl.textContent = 'Loading review queue…';
   const res = await fetch(`/api/review-queue?status=${encodeURIComponent(status)}&limit=200`);
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Review queue failed');
-  renderReviewQueue(data.items || []);
+  currentReviewQueueItems = Array.isArray(data.items) ? data.items : [];
+  renderReviewQueueSummary(data.summary || {});
+  renderReviewQueue(currentReviewQueueItems);
+}
+
+function queueSearchText(item) {
+  return [
+    item.job_id,
+    item.merchant_name,
+    item.merchant_normalized,
+    item.receipt_date,
+    item.queue_status,
+    item.decision,
+    ...(Array.isArray(item.reason_codes) ? item.reason_codes : []),
+  ].filter(Boolean).join(' ').toLowerCase();
 }
 
 function renderReviewQueue(items) {
   if (!reviewQueueResultEl) return;
-  const count = items.length;
-  if (reviewQueueBadgeEl) reviewQueueBadgeEl.textContent = `${count} item(s)`;
-  if (!count) {
-    reviewQueueResultEl.className = 'receipt-summary empty';
-    reviewQueueResultEl.textContent = 'No receipts match this queue filter.';
+  const query = String(reviewQueueSearchEl?.value || '').trim().toLowerCase();
+  const visibleItems = query ? items.filter((item) => queueSearchText(item).includes(query)) : items;
+  if (reviewQueueBadgeEl) reviewQueueBadgeEl.textContent = `${visibleItems.length} shown / ${items.length} loaded`;
+  if (!visibleItems.length) {
+    reviewQueueResultEl.className = 'review-queue-list empty';
+    reviewQueueResultEl.textContent = query ? 'No receipts match this search.' : 'No receipts match this queue filter.';
     return;
   }
-  const rows = items.map((item) => {
-    const dupes = Array.isArray(item.duplicate_candidates) ? item.duplicate_candidates : [];
-    const dupeInfo = dupes.length
-      ? `<div class="duplicate-evidence">${dupes.slice(0, 2).map((d) => `${escapeHtml(formatPlain(d.candidate_type))}: ${escapeHtml(formatPlain(d.score))} (${escapeHtml(formatPlain((d.reasons || []).join(', ')))})`).join('<br>')}</div>`
-      : '<span class="muted">—</span>';
-    const imageLink = item.image_path ? `<code>${escapeHtml(formatPlain(item.image_path).split(/[\\/]/).pop())}</code>` : '—';
-    return `<tr>
-      <td><span class="${queueStatusBadge(item.queue_status)}">${escapeHtml(formatPlain(item.queue_status))}</span><br><span class="muted">${escapeHtml(formatPlain(item.decision))}</span></td>
-      <td><strong>${escapeHtml(formatPlain(item.merchant_name || item.merchant_normalized || 'unknown'))}</strong><br><span class="muted">${escapeHtml(formatPlain(item.receipt_date))} ${escapeHtml(formatPlain(item.receipt_time))}</span></td>
-      <td class="numeric">${formatMoney(item.grand_total, 'EUR')}<br><span class="muted">${escapeHtml(formatPlain(item.item_count))} item(s)</span></td>
-      <td>${escapeHtml(formatPlain(item.balanced === 1 ? 'yes' : item.balanced === 0 ? 'no' : 'unknown'))}<br><span class="muted">diff ${escapeHtml(formatPlain(item.difference))}, issues ${escapeHtml(formatPlain(item.issue_count))}</span></td>
-      <td>${dupeInfo}<span class="muted">score ${escapeHtml(formatPlain(item.duplicate_score || 0))}</span></td>
-      <td><code>${escapeHtml(formatPlain(item.job_id))}</code><br>${imageLink}</td>
-      <td class="queue-actions">
-        <button type="button" data-review-open="${escapeHtml(item.job_id)}">Review</button>
-        <button type="button" data-queue-status="rejected" data-queue-job="${escapeHtml(item.job_id)}">Reject</button>
-        <button type="button" data-queue-status="duplicate_confirmed" data-queue-job="${escapeHtml(item.job_id)}">Mark duplicate</button>
-        <button type="button" data-queue-status="dismissed_duplicate" data-queue-job="${escapeHtml(item.job_id)}">Not duplicate</button>
-      </td>
-    </tr>`;
+  reviewQueueResultEl.className = 'review-queue-list';
+  reviewQueueResultEl.innerHTML = visibleItems.map((item) => {
+    const reasons = Array.isArray(item.reason_codes) ? item.reason_codes : [];
+    const active = String(item.job_id) === String(currentJobId || '');
+    const validation = item.balanced === 1 ? 'balanced' : item.balanced === 0 ? 'not balanced' : 'balance unknown';
+    return `<article class="review-queue-card ${active ? 'selected' : ''}" data-queue-card-job="${escapeHtml(item.job_id)}">
+      <button type="button" class="review-queue-open" data-review-open="${escapeHtml(item.job_id)}">
+        <span class="review-queue-card-top"><span class="${queueStatusBadge(item.queue_status)}">${escapeHtml(formatPlain(item.queue_status))}</span><time>${escapeHtml(formatPlain(item.receipt_date || 'no date'))}</time></span>
+        <strong>${escapeHtml(formatPlain(item.merchant_name || item.merchant_normalized || 'Unknown merchant'))}</strong>
+        <span class="review-queue-card-total">${formatMoney(item.grand_total, 'EUR')} · ${escapeHtml(formatPlain(item.item_count || 0))} item(s)</span>
+        <span class="review-queue-card-validation">${escapeHtml(validation)} · ${escapeHtml(formatPlain(item.issue_count || 0))} issue(s)</span>
+        ${reasons.length ? `<span class="review-reason-tags">${reasons.slice(0, 3).map((reason) => `<em>${escapeHtml(reason)}</em>`).join('')}</span>` : ''}
+        <code>${escapeHtml(formatPlain(item.job_id))}</code>
+      </button>
+      ${item.duplicate_status === 'duplicate_candidate' || item.queue_status === 'duplicate_candidate' ? `<div class="review-queue-duplicate-actions">
+        <button type="button" class="danger-secondary" data-queue-status="duplicate_confirmed" data-queue-job="${escapeHtml(item.job_id)}">Confirm duplicate</button>
+        <button type="button" class="secondary" data-queue-status="dismissed_duplicate" data-queue-job="${escapeHtml(item.job_id)}">Not duplicate</button>
+      </div>` : ''}
+    </article>`;
   }).join('');
-  reviewQueueResultEl.className = 'receipt-summary';
-  reviewQueueResultEl.innerHTML = `
-    <div class="table-scroll"><table class="extracted-table review-queue-table"><thead><tr>
-      <th>Status</th><th>Receipt</th><th class="numeric">Total</th><th>Validation</th><th>Duplicate evidence</th><th>Job</th><th>Actions</th>
-    </tr></thead><tbody>${rows}</tbody></table></div>
-  `;
-  for (const btn of reviewQueueResultEl.querySelectorAll('[data-review-open]')) {
-    btn.addEventListener('click', () => {
-      btn.disabled = true;
-      openReviewJob(btn.getAttribute('data-review-open'))
+  for (const button of reviewQueueResultEl.querySelectorAll('[data-review-open]')) {
+    button.addEventListener('click', () => {
+      button.disabled = true;
+      openReviewJob(button.dataset.reviewOpen)
         .catch((error) => renderReviewLoadError(error.message || String(error)))
-        .finally(() => { btn.disabled = false; });
+        .finally(() => { button.disabled = false; });
     });
   }
-  for (const btn of reviewQueueResultEl.querySelectorAll('[data-queue-status][data-queue-job]')) {
-    btn.addEventListener('click', () => updateQueueStatus(btn.getAttribute('data-queue-job'), btn.getAttribute('data-queue-status')));
+  for (const button of reviewQueueResultEl.querySelectorAll('[data-queue-status][data-queue-job]')) {
+    button.addEventListener('click', () => updateQueueStatus(button.dataset.queueJob, button.dataset.queueStatus));
   }
+}
+
+function renderReviewSelectionHeader(data) {
+  if (!reviewSelectionHeaderEl) return;
+  const receipt = data?.receipt || {};
+  const merchant = receipt?.merchant?.name || 'Unknown merchant';
+  const status = data?.queue_record?.queue_status || receipt?.human_review?.status || 'needs_review';
+  const revision = data?.queue_record?.review_revision ?? data?.review_queue?.revision ?? currentReviewIdentity?.review_revision ?? '—';
+  reviewSelectionHeaderEl.className = 'review-selection-header';
+  reviewSelectionHeaderEl.innerHTML = `<div><p class="section-kicker">Selected receipt</p><h3>${escapeHtml(formatPlain(merchant))}</h3><span>${escapeHtml(formatPlain(receipt.date || 'No date'))} · ${formatMoney(receipt?.totals?.grand_total, receipt.currency || 'EUR')}</span></div><div class="review-selection-meta"><span class="${queueStatusBadge(status)}">${escapeHtml(formatPlain(status))}</span><code>${escapeHtml(formatPlain(data.job_id || data.receipt_db_id || 'stored'))}</code><small>revision ${escapeHtml(formatPlain(revision))}</small></div>`;
 }
 
 function renderReviewLoadError(message) {
@@ -823,31 +867,20 @@ function renderReviewLoadError(message) {
   currentReviewSaveMethod = 'POST';
   currentReviewEditable = false;
   currentReviewIdentity = null;
-  setActiveTab('run');
-  if (statusCard) {
-    statusCard.classList.remove('hidden');
-    statusCard.hidden = false;
-  }
-  if (stateEl) {
-    stateEl.textContent = 'review unavailable';
-    stateEl.className = 'badge bad';
+  setActiveTab('review');
+  if (reviewSelectionHeaderEl) {
+    reviewSelectionHeaderEl.className = 'review-selection-header empty';
+    reviewSelectionHeaderEl.textContent = 'Receipt review could not be opened.';
   }
   if (humanReviewPanelEl) {
     humanReviewPanelEl.className = 'review-panel query-error-state';
-    humanReviewPanelEl.innerHTML = `
-      <div class="query-terminal-icon" aria-hidden="true">!</div>
-      <div>
-        <h4>Receipt review could not be opened</h4>
-        <p>${escapeHtml(message || 'The review source is unavailable.')}</p>
-      </div>`;
+    humanReviewPanelEl.innerHTML = `<div class="query-terminal-icon" aria-hidden="true">!</div><div><h4>Receipt review could not be opened</h4><p>${escapeHtml(message || 'The review source is unavailable.')}</p></div>`;
   }
 }
 
 function applyReviewPayload(data) {
   const receipt = data?.receipt;
-  if (!receipt || typeof receipt !== 'object') {
-    throw new Error('The server returned no receipt review data.');
-  }
+  if (!receipt || typeof receipt !== 'object') throw new Error('The server returned no receipt review data.');
   currentJobId = data.job_id || null;
   currentReceiptDbId = data.receipt_id || data.receipt_db_id || null;
   currentArtifacts = data.artifacts || {};
@@ -855,28 +888,16 @@ function applyReviewPayload(data) {
   currentReviewSaveMethod = String(data.save_method || 'POST').toUpperCase();
   currentReviewEditable = data.editable !== false && Boolean(currentReviewSaveUrl);
   currentReviewIdentity = data.review_identity || null;
-
-  setActiveTab('run');
-  if (statusCard) {
-    statusCard.classList.remove('hidden');
-    statusCard.hidden = false;
-  }
-  if (jobIdEl) {
-    jobIdEl.textContent = currentJobId || (currentReceiptDbId ? `DB receipt ${currentReceiptDbId}` : 'stored receipt');
-  }
-  if (stateEl) {
-    stateEl.textContent = currentReviewEditable ? 'review' : 'read only';
-    stateEl.className = currentReviewEditable ? 'badge warn' : 'badge neutral';
-  }
-  renderArtifacts(currentArtifacts);
-  renderReceiptSummary(receipt);
+  setActiveTab('review');
+  renderReviewSelectionHeader(data);
   renderHumanReview(receipt, currentArtifacts, {
     editable: currentReviewEditable,
     readOnlyReason: data.read_only_reason,
     review: data.review,
     source: data.source,
+    queueRecord: data.queue_record || data.review_queue,
   });
-  if (previewEl) previewEl.textContent = JSON.stringify(receipt, null, 2);
+  renderReviewQueue(currentReviewQueueItems);
 }
 
 async function openReviewJob(jobId) {
@@ -889,7 +910,7 @@ async function openReviewJob(jobId) {
 
 async function updateQueueStatus(jobId, status) {
   if (!jobId || !status) return;
-  const label = status === 'duplicate_confirmed' ? 'mark this receipt as duplicate' : `set status to ${status}`;
+  const label = status === 'duplicate_confirmed' ? 'confirm this receipt as a duplicate' : 'dismiss the duplicate warning';
   if (!confirm(`Really ${label}?`)) return;
   const res = await fetch(`/api/review-queue/${encodeURIComponent(jobId)}/status`, {
     method: 'POST',
@@ -900,6 +921,7 @@ async function updateQueueStatus(jobId, status) {
   if (!res.ok) throw new Error(data.error || 'Status update failed');
   await loadReviewQueue();
 }
+
 
 function renderReceiptDbList(receipts) {
   if (!receiptDbListEl) return;
@@ -1407,22 +1429,37 @@ function renderArtifacts(artifacts) {
   }
 }
 
+function renderReviewHandoff(receipt = null) {
+  if (!reviewHandoffPanelEl) return;
+  if (!receipt || !currentJobId) {
+    reviewHandoffPanelEl.className = 'review-handoff empty';
+    reviewHandoffPanelEl.textContent = 'Review is performed only in the dedicated Review tab. Completed receipts appear in its canonical queue.';
+    return;
+  }
+  const status = receipt?.validation?.import_decision || receipt?.parse_status || 'needs_review';
+  reviewHandoffPanelEl.className = 'review-handoff';
+  reviewHandoffPanelEl.innerHTML = `<div><strong>Receipt added to the review queue</strong><span>Status: ${escapeHtml(formatPlain(status))}. Editing is intentionally disabled on the Run tab.</span></div><button type="button" id="openCurrentReviewButton">Open in Review</button>`;
+  document.getElementById('openCurrentReviewButton')?.addEventListener('click', () => {
+    openReviewJob(currentJobId).catch((error) => renderReviewLoadError(error.message || String(error)));
+  });
+}
+
 async function fetchPreview(artifacts) {
   previewEl.textContent = '';
   currentArtifacts = artifacts || {};
   renderReceiptSummary(null);
-  renderHumanReview(null);
+  renderReviewHandoff(null);
   if (!artifacts || !artifacts.final_receipt) return;
   try {
     const res = await fetch(artifacts.final_receipt);
     const data = await res.json();
     previewEl.textContent = JSON.stringify(data, null, 2);
     renderReceiptSummary(data);
-    renderHumanReview(data, artifacts);
+    renderReviewHandoff(data);
   } catch (e) {
     previewEl.textContent = String(e);
     renderReceiptSummary(null);
-    renderHumanReview(null);
+    renderReviewHandoff(null);
   }
 }
 
@@ -1641,7 +1678,7 @@ if (refreshReviewQueueButton) {
   refreshReviewQueueButton.addEventListener('click', () => {
     loadReviewQueue().catch((err) => {
       if (reviewQueueResultEl) {
-        reviewQueueResultEl.className = 'receipt-summary empty';
+        reviewQueueResultEl.className = 'review-queue-list empty';
         reviewQueueResultEl.textContent = err.message || String(err);
       }
     });
@@ -1653,6 +1690,32 @@ if (reviewQueueFilterEl) {
     loadReviewQueue().catch(() => {});
   });
 }
+
+if (reviewQueueSearchEl) {
+  reviewQueueSearchEl.addEventListener('input', () => renderReviewQueue(currentReviewQueueItems));
+}
+
+if (reviewQueueSummaryEl) {
+  for (const button of reviewQueueSummaryEl.querySelectorAll('[data-review-summary-filter]')) {
+    button.addEventListener('click', () => {
+      if (reviewQueueFilterEl) reviewQueueFilterEl.value = button.dataset.reviewSummaryFilter || 'all';
+      loadReviewQueue().catch(() => {});
+    });
+  }
+}
+
+document.addEventListener('keydown', (event) => {
+  const reviewPanel = document.querySelector('[data-tab-panel="review"]');
+  if (!reviewPanel || reviewPanel.hidden || !currentReviewEditable) return;
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+    event.preventDefault();
+    saveHumanReview('needs_review', false);
+  }
+  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+    event.preventDefault();
+    saveHumanReview('approved', true);
+  }
+});
 
 if (refreshReceiptListButton) {
   refreshReceiptListButton.addEventListener('click', () => {
@@ -1786,7 +1849,7 @@ form.addEventListener('submit', async (e) => {
   previewEl.textContent = '';
   artifactsEl.innerHTML = '';
   renderReceiptSummary(null);
-  renderHumanReview(null);
+  renderReviewHandoff(null);
   currentJobId = null;
   currentReceiptDbId = null;
   currentArtifacts = {};

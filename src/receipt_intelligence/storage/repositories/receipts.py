@@ -804,6 +804,11 @@ class ReceiptRepository(BaseRepository):
                 "review_queue": int(
                     connection.execute("SELECT COUNT(*) AS n FROM review_queue").fetchone()["n"]
                 ),
+                "review_history": int(
+                    connection.execute(
+                        "SELECT COUNT(*) AS n FROM receipt_review_history"
+                    ).fetchone()["n"]
+                ),
             }
             if fts_available(connection):
                 connection.execute("DELETE FROM receipt_item_fts")
@@ -811,6 +816,7 @@ class ReceiptRepository(BaseRepository):
             connection.execute("DELETE FROM receipts")
             connection.execute("DELETE FROM duplicate_candidates")
             if include_review_queue:
+                connection.execute("DELETE FROM receipt_review_history")
                 connection.execute("DELETE FROM review_queue")
             else:
                 connection.execute(

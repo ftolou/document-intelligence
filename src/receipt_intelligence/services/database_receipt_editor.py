@@ -125,6 +125,28 @@ class DatabaseReceiptEditor:
         if fresh is None:
             raise RuntimeError("receipt disappeared after database update")
         mirror = self._write_approved_json_mirror(receipt_id, fresh)
+        approved_path = self.review_service.approved_receipt_path(job_id)
+        review_queue = self.review_service.sync_review_queue(
+            job_id,
+            fresh,
+            receipt_path=approved_path,
+            queue_status=effective_status or "needs_review",
+            receipt_db_id=int(receipt_id),
+        )
+        human_review = (
+            fresh.get("human_review") if isinstance(fresh.get("human_review"), dict) else {}
+        )
+        revision = self.receipt_db.save_review_revision(
+            job_id=job_id,
+            receipt=fresh,
+            requested_status=finalization.get("requested_status"),
+            effective_status=effective_status or "needs_review",
+            reviewer=human_review.get("reviewer"),
+            notes=human_review.get("notes"),
+            changed_fields=changed_fields,
+            receipt_db_id=int(receipt_id),
+        )
+        review_queue.update(revision)
         payload = self.load(receipt_id)
         payload.update(
             {
@@ -151,6 +173,8 @@ class DatabaseReceiptEditor:
                 },
                 "semantic_index": indexing,
                 "artifact_mirror": mirror,
+                "review_queue": review_queue,
+                "review_revision": revision,
             }
         )
         return payload

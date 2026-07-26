@@ -1,4 +1,4 @@
-"""Human-review queue and duplicate-candidate persistence."""
+"""Human-review queue, canonical review drafts, and review history persistence."""
 
 from __future__ import annotations
 
@@ -13,6 +13,41 @@ from receipt_intelligence.storage.fingerprints import (
 )
 from receipt_intelligence.storage.normalization import utc_now
 from receipt_intelligence.storage.repositories.base import BaseRepository
+
+
+def _json_list(value: Any) -> list[Any]:
+    try:
+        parsed = json.loads(value or "[]")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return []
+    return parsed if isinstance(parsed, list) else []
+
+
+def _json_object(value: Any) -> dict[str, Any]:
+    try:
+        parsed = json.loads(value or "{}")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _review_reason_codes(receipt: dict[str, Any]) -> list[str]:
+    validation = receipt.get("validation") if isinstance(receipt.get("validation"), dict) else {}
+    issues = validation.get("issues") if isinstance(validation.get("issues"), list) else []
+    codes = {
+        str(issue.get("code") or "").strip()
+        for issue in issues
+        if isinstance(issue, dict) and str(issue.get("code") or "").strip()
+    }
+    human_review = (
+        receipt.get("human_review") if isinstance(receipt.get("human_review"), dict) else {}
+    )
+    codes.update(
+        str(code).strip()
+        for code in (human_review.get("blocking_issue_codes") or [])
+        if str(code).strip()
+    )
+    return sorted(codes)
 
 
 class ReviewRepository(BaseRepository):
@@ -111,6 +146,11 @@ class ReviewRepository(BaseRepository):
 
         now = utc_now()
         raw_json = json.dumps(receipt, ensure_ascii=False, default=str)
+        reason_codes = _review_reason_codes(receipt)
+        human_review = (
+            receipt.get("human_review") if isinstance(receipt.get("human_review"), dict) else {}
+        )
+        source_kind = "reviewed" if human_review else "extraction"
         with self.connect() as connection:
             connection.execute(
                 """
@@ -119,9 +159,10 @@ class ReviewRepository(BaseRepository):
                     merchant_name, merchant_normalized, receipt_date, receipt_time,
                     grand_total, item_count, file_sha256, content_fingerprint,
                     item_signature, image_path, final_receipt_path, duplicate_status,
-                    duplicate_score, duplicate_candidates_json, raw_json, created_at,
-                    updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    duplicate_score, duplicate_candidates_json, raw_json,
+                    reviewer, review_notes, reviewed_at, review_reason_codes_json,
+                    source_kind, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(job_id) DO UPDATE SET
                     queue_status=excluded.queue_status,
                     decision=excluded.decision,
@@ -134,15 +175,20 @@ class ReviewRepository(BaseRepository):
                     receipt_time=excluded.receipt_time,
                     grand_total=excluded.grand_total,
                     item_count=excluded.item_count,
-                    file_sha256=excluded.file_sha256,
+                    file_sha256=COALESCE(excluded.file_sha256, review_queue.file_sha256),
                     content_fingerprint=excluded.content_fingerprint,
                     item_signature=excluded.item_signature,
-                    image_path=excluded.image_path,
-                    final_receipt_path=excluded.final_receipt_path,
+                    image_path=COALESCE(excluded.image_path, review_queue.image_path),
+                    final_receipt_path=COALESCE(excluded.final_receipt_path, review_queue.final_receipt_path),
                     duplicate_status=excluded.duplicate_status,
                     duplicate_score=excluded.duplicate_score,
                     duplicate_candidates_json=excluded.duplicate_candidates_json,
                     raw_json=excluded.raw_json,
+                    reviewer=COALESCE(excluded.reviewer, review_queue.reviewer),
+                    review_notes=COALESCE(excluded.review_notes, review_queue.review_notes),
+                    reviewed_at=COALESCE(excluded.reviewed_at, review_queue.reviewed_at),
+                    review_reason_codes_json=excluded.review_reason_codes_json,
+                    source_kind=excluded.source_kind,
                     updated_at=excluded.updated_at
                 """,
                 (
@@ -167,6 +213,11 @@ class ReviewRepository(BaseRepository):
                     max_score,
                     json.dumps(duplicates, ensure_ascii=False, default=str),
                     raw_json,
+                    str(human_review.get("reviewer") or "") or None,
+                    str(human_review.get("notes") or "") or None,
+                    str(human_review.get("reviewed_at") or "") or None,
+                    json.dumps(reason_codes, ensure_ascii=False),
+                    source_kind,
                     now,
                     now,
                 ),
@@ -196,7 +247,18 @@ class ReviewRepository(BaseRepository):
             "duplicate_status": duplicate_status,
             "duplicate_score": round(max_score, 2),
             "duplicate_candidates": duplicates,
+            "reason_codes": reason_codes,
         }
+
+    def get_review_queue_record(self, job_id: str) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM review_queue WHERE job_id = ?",
+                (str(job_id),),
+            ).fetchone()
+        if row is None:
+            return None
+        return self._present_queue_row(dict(row))
 
     def list_review_queue(
         self,
@@ -212,22 +274,124 @@ class ReviewRepository(BaseRepository):
             " ORDER BY CASE "
             "WHEN queue_status='duplicate_candidate' THEN 0 "
             "WHEN queue_status='needs_review' THEN 1 "
-            "WHEN queue_status='rejected' THEN 2 ELSE 3 END, "
-            "updated_at DESC LIMIT ?"
+            "WHEN queue_status='rejected' THEN 2 "
+            "WHEN queue_status='auto_validated' THEN 3 ELSE 4 END, "
+            "updated_at ASC LIMIT ?"
         )
         parameters.append(max(1, min(500, int(limit))))
         with self.connect() as connection:
-            rows: list[dict[str, Any]] = []
-            for row in connection.execute(sql, parameters).fetchall():
-                item = dict(row)
-                try:
-                    item["duplicate_candidates"] = json.loads(
-                        item.get("duplicate_candidates_json") or "[]"
-                    )
-                except Exception:
-                    item["duplicate_candidates"] = []
-                rows.append(item)
-            return rows
+            rows = connection.execute(sql, parameters).fetchall()
+        return [self._present_queue_row(dict(row)) for row in rows]
+
+    def review_queue_summary(self) -> dict[str, Any]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT queue_status, COUNT(*) AS n
+                FROM review_queue
+                GROUP BY queue_status
+                """
+            ).fetchall()
+            total = int(
+                connection.execute("SELECT COUNT(*) AS n FROM review_queue").fetchone()["n"]
+            )
+        counts = {str(row["queue_status"]): int(row["n"]) for row in rows}
+        return {
+            "total": total,
+            "needs_review": counts.get("needs_review", 0),
+            "duplicate_candidate": counts.get("duplicate_candidate", 0),
+            "rejected": counts.get("rejected", 0),
+            "auto_validated": counts.get("auto_validated", 0),
+            "approved": counts.get("approved", 0),
+            "imported": counts.get("imported", 0),
+            "counts": counts,
+        }
+
+    def save_review_revision(
+        self,
+        *,
+        job_id: str,
+        receipt: dict[str, Any],
+        requested_status: str | None,
+        effective_status: str,
+        reviewer: str | None,
+        notes: str | None,
+        changed_fields: list[str],
+        receipt_db_id: int | None,
+        expected_revision: int | None = None,
+    ) -> dict[str, Any]:
+        now = utc_now()
+        validation = (
+            receipt.get("validation") if isinstance(receipt.get("validation"), dict) else {}
+        )
+        reason_codes = _review_reason_codes(receipt)
+        receipt_json = json.dumps(receipt, ensure_ascii=False, default=str)
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT review_revision FROM review_queue WHERE job_id = ?",
+                (str(job_id),),
+            ).fetchone()
+            if row is None:
+                raise KeyError("review queue record not found")
+            current_revision = int(row["review_revision"] or 0)
+            if expected_revision is not None and current_revision != int(expected_revision):
+                raise ValueError("review state is stale; reload the receipt before saving")
+            revision = current_revision + 1
+            cursor = connection.execute(
+                """
+                UPDATE review_queue
+                SET review_revision=?, queue_status=?, receipt_db_id=COALESCE(?, receipt_db_id),
+                    reviewer=?, review_notes=?, reviewed_at=?, review_reason_codes_json=?,
+                    source_kind='reviewed', raw_json=?, updated_at=?
+                WHERE job_id=? AND review_revision=?
+                """,
+                (
+                    revision,
+                    effective_status,
+                    receipt_db_id,
+                    reviewer,
+                    notes,
+                    now,
+                    json.dumps(reason_codes, ensure_ascii=False),
+                    receipt_json,
+                    now,
+                    str(job_id),
+                    current_revision,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("review state is stale; reload the receipt before saving")
+            connection.execute(
+                """
+                INSERT INTO receipt_review_history(
+                    job_id, receipt_db_id, revision, requested_status, effective_status,
+                    reviewer, notes, changed_fields_json, validation_json,
+                    receipt_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(job_id),
+                    receipt_db_id,
+                    revision,
+                    requested_status,
+                    effective_status,
+                    reviewer,
+                    notes,
+                    json.dumps(sorted(set(changed_fields)), ensure_ascii=False),
+                    json.dumps(validation, ensure_ascii=False, default=str),
+                    receipt_json,
+                    now,
+                ),
+            )
+            connection.commit()
+        return {
+            "job_id": str(job_id),
+            "receipt_db_id": receipt_db_id,
+            "revision": revision,
+            "queue_status": effective_status,
+            "reviewed_at": now,
+            "reason_codes": reason_codes,
+        }
 
     def update_review_status(
         self,
@@ -250,7 +414,7 @@ class ReviewRepository(BaseRepository):
             raise ValueError(f"Unsupported review status: {status}")
         now = utc_now()
         with self.connect() as connection:
-            connection.execute(
+            cursor = connection.execute(
                 """
                 UPDATE review_queue
                 SET queue_status=?, receipt_db_id=COALESCE(?, receipt_db_id),
@@ -259,6 +423,8 @@ class ReviewRepository(BaseRepository):
                 """,
                 (status, receipt_db_id, now, job_id),
             )
+            if cursor.rowcount == 0:
+                raise KeyError("review queue record not found")
             if status == "duplicate_confirmed":
                 connection.execute(
                     """
@@ -279,3 +445,10 @@ class ReviewRepository(BaseRepository):
                 )
             connection.commit()
         return {"job_id": job_id, "queue_status": status, "updated_at": now}
+
+    @staticmethod
+    def _present_queue_row(item: dict[str, Any]) -> dict[str, Any]:
+        item["duplicate_candidates"] = _json_list(item.get("duplicate_candidates_json"))
+        item["reason_codes"] = _json_list(item.get("review_reason_codes_json"))
+        item["receipt"] = _json_object(item.get("raw_json"))
+        return item

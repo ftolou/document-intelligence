@@ -42,6 +42,7 @@ def test_fresh_database_applies_all_versioned_migrations(tmp_path: Path) -> None
         "analytics_purchase_items",
         "model_calls",
         "model_pricing",
+        "receipt_review_history",
     } <= tables
     assert database.migrations.current_version() == LATEST_SCHEMA_VERSION
 

@@ -150,7 +150,9 @@
       <div id="receiptSummary" class="receipt-summary empty">Run a receipt to see merchant, totals, payments, taxes, items and validation issues here.</div>
 
       <h3>Human review</h3>
-      <div id="humanReviewPanel" class="review-panel empty">Run a receipt to edit key fields, approve/reject the result, and save an auditable human-review record.</div>
+      <div id="reviewHandoffPanel" class="review-handoff empty">
+        Review is performed only in the dedicated Review tab. Run a receipt to add it to the canonical review queue.
+      </div>
 
       <h3>Final JSON preview</h3>
       <pre id="preview"></pre>
@@ -214,30 +216,52 @@
 
 
     <section class="tab-panel" id="tab-review" data-tab-panel="review" hidden>
-      <section class="card" id="reviewQueueCard">
-        <div class="batch-heading">
+      <section class="review-workspace" id="reviewQueueCard">
+        <header class="section-hero review-hero">
           <div>
-            <h2>Review Queue</h2>
-            <p class="sub small">Batch and single runs are stored here as pending, rejected, auto-validated or duplicate candidates. Approve only trusted receipts before they enter the Ask/RAG database.</p>
+            <p class="section-kicker">Single review workspace</p>
+            <h2>Receipt review</h2>
+            <p class="sub">All corrections, approvals, rejections, and duplicate decisions happen here. SQLite is the source of truth for drafts and approved receipts.</p>
           </div>
           <div class="badge neutral" id="reviewQueueBadge">Queue not loaded</div>
+        </header>
+
+        <div class="review-summary-strip" id="reviewQueueSummary" aria-label="Review queue summary">
+          <button type="button" data-review-summary-filter="needs_review"><span>Needs review</span><strong>—</strong></button>
+          <button type="button" data-review-summary-filter="duplicate_candidate"><span>Duplicates</span><strong>—</strong></button>
+          <button type="button" data-review-summary-filter="rejected"><span>Rejected</span><strong>—</strong></button>
+          <button type="button" data-review-summary-filter="approved"><span>Approved</span><strong>—</strong></button>
         </div>
-        <div class="form-actions compact-actions">
-          <label class="field inline-field">
-            <span>Status filter</span>
-            <select id="reviewQueueFilter">
-              <option value="all">All</option>
-              <option value="needs_review">Needs review</option>
-              <option value="duplicate_candidate">Duplicate candidates</option>
-              <option value="rejected">Rejected</option>
-              <option value="auto_validated">Auto-validated</option>
-              <option value="approved">Approved</option>
-              <option value="imported">Imported</option>
-            </select>
-          </label>
-          <button id="refresh-review-queue-button" type="button">Refresh queue</button>
+
+        <div class="review-workspace-grid">
+          <aside class="review-queue-sidebar">
+            <div class="review-queue-controls">
+              <label class="field">
+                <span>Status</span>
+                <select id="reviewQueueFilter">
+                  <option value="all">All</option>
+                  <option value="needs_review">Needs review</option>
+                  <option value="duplicate_candidate">Duplicate candidates</option>
+                  <option value="rejected">Rejected</option>
+                  <option value="auto_validated">Auto-validated</option>
+                  <option value="approved">Approved</option>
+                  <option value="imported">Imported</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Search</span>
+                <input id="reviewQueueSearch" type="search" placeholder="Merchant, job ID, reason…" />
+              </label>
+              <button id="refresh-review-queue-button" type="button">Refresh</button>
+            </div>
+            <div id="reviewQueueResult" class="review-queue-list empty">Run a receipt or batch to populate the review queue.</div>
+          </aside>
+
+          <main class="review-editor-workspace">
+            <div id="reviewSelectionHeader" class="review-selection-header empty">Select a receipt from the queue to review it.</div>
+            <div id="humanReviewPanel" class="review-panel empty">Select a receipt from the queue to inspect its image, validation issues, receipt fields, and item rows.</div>
+          </main>
         </div>
-        <div id="reviewQueueResult" class="receipt-summary empty">Run a receipt or batch to populate the review queue.</div>
       </section>
     </section>
 

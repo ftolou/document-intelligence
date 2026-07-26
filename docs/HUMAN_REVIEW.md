@@ -1,17 +1,30 @@
 # Human Review
 
-The human-review feature turns AI extraction into a controlled business workflow. In Phase 2.1, the reviewer checks the extracted JSON against the original receipt image before the data is imported into the local receipt database and retrieval index.
+The human-review feature turns AI extraction into a controlled business workflow. Review is deliberately available in exactly one place: the dedicated **Review** tab. The Run, Batch, and Receipt data tabs may link into that workspace, but they do not expose a second editor.
 
-## UI behavior
+## Unified UI behavior
 
-After a receipt job reaches `done`, the UI shows a side-by-side review layout:
+The Review tab is a queue-based workbench:
 
-- left side: original uploaded receipt image, clickable for full-size inspection
-- right side: editable receipt header fields
-- right side: editable item rows used by Ask Your Receipts / RAG search
-- bottom: reviewer, status, notes, and save action
+- queue summary and filters for pending, duplicate, rejected, and approved records;
+- searchable receipt cards in a persistent left sidebar;
+- original receipt image and deterministic validation issues beside the editor;
+- grouped merchant, transaction, totals, and item controls;
+- compact item cards with advanced semantic/category fields behind expandable details;
+- sticky actions for **Save draft**, **Reject**, **Approve**, and **Approve & next**.
 
-This is intentionally better than approving a JSON preview alone. The reviewer can verify the AI output against the visual source and correct the fields that matter for analytics and retrieval.
+After a receipt job reaches `done`, the Run tab only confirms that the result entered the queue and provides **Open in Review**. All corrections and review decisions are made in the Review tab.
+
+## One source of truth
+
+The existing SQLite database is used instead of a separate unreviewed-receipt database:
+
+- `review_queue.raw_json` is the canonical draft for extracted and not-yet-approved receipts;
+- `receipts` and `receipt_items` are the canonical approved records used by analytics, RAG, and RAG-SQL;
+- `receipt_review_history` stores an immutable snapshot for every saved review revision;
+- `approved_receipt.json` and `human_review_record.json` are compatibility/audit mirrors, not authoritative application state.
+
+Each queue record carries an optimistic `review_revision`. A stale browser save is rejected and the reviewer must reload, preventing one review session from silently overwriting another.
 
 ## Editable receipt header fields
 
@@ -134,9 +147,9 @@ The legacy `GET/POST /api/review/<job_id>` endpoints remain for pending job-base
 When a job already has a linked database receipt, they delegate to the same durable
 receipt-ID editor.
 
-## Artifacts
+## Audit mirrors
 
-Saving a review creates:
+Saving a review updates these best-effort compatibility artifacts:
 
 ```text
 approved_receipt.json
@@ -185,7 +198,7 @@ When a receipt is approved for the first time, every persisted purchase-item ID 
 
 This demonstrates that the system does not blindly trust the LLM. It creates a controlled handover from AI extraction to human approval, with visual evidence, item-level correction, audit artifacts, and structured database import.
 
-## Phase 2.2: two category concepts in review
+## Two category concepts in review
 
 The review UI now separates two different concepts that must not be mixed:
 

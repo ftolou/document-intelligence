@@ -169,6 +169,37 @@ class ReceiptDatabase:
     ) -> list[dict[str, Any]]:
         return self.review.list_review_queue(status=status, limit=limit)
 
+    def get_review_queue_record(self, job_id: str) -> dict[str, Any] | None:
+        return self.review.get_review_queue_record(job_id)
+
+    def review_queue_summary(self) -> dict[str, Any]:
+        return self.review.review_queue_summary()
+
+    def save_review_revision(
+        self,
+        *,
+        job_id: str,
+        receipt: dict[str, Any],
+        requested_status: str | None,
+        effective_status: str,
+        reviewer: str | None,
+        notes: str | None,
+        changed_fields: list[str],
+        receipt_db_id: int | None,
+        expected_revision: int | None = None,
+    ) -> dict[str, Any]:
+        return self.review.save_review_revision(
+            job_id=job_id,
+            receipt=receipt,
+            requested_status=requested_status,
+            effective_status=effective_status,
+            reviewer=reviewer,
+            notes=notes,
+            changed_fields=changed_fields,
+            receipt_db_id=receipt_db_id,
+            expected_revision=expected_revision,
+        )
+
     def update_review_status(
         self,
         job_id: str,

@@ -534,6 +534,11 @@ class ReviewService:
         job_id: str,
         receipt: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
+        # The canonical SQLite draft/database receipt wins. The JSON record is
+        # retained only as a backward-compatible audit mirror.
+        human_review = receipt.get("human_review") if isinstance(receipt, dict) else None
+        if isinstance(human_review, dict):
+            return dict(human_review)
         path = self.review_record_path(job_id)
         if path.exists():
             try:
@@ -542,8 +547,7 @@ class ReviewService:
                     return value
             except Exception:
                 pass
-        human_review = receipt.get("human_review") if isinstance(receipt, dict) else None
-        return dict(human_review) if isinstance(human_review, dict) else None
+        return None
 
     def database_image_reference(self, record: dict[str, Any]) -> dict[str, str] | None:
         job_id = str(record.get("job_id") or "").strip()
