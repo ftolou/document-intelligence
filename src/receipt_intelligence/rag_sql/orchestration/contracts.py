@@ -5,11 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from receipt_intelligence.rag.candidate_resolver import CandidateResolver
 from receipt_intelligence.rag_sql.answer_formatter import EvidenceBoundAnswerFormatter
 from receipt_intelligence.rag_sql.executor import ReadOnlySqlExecutor
+from receipt_intelligence.rag_sql.filter_resolution import QueryFilterResolver
 from receipt_intelligence.rag_sql.graph_state import RagSqlGraphConfig
-from receipt_intelligence.rag_sql.graph_support import SemanticRetriever
 from receipt_intelligence.rag_sql.models import RagSqlResponse
 from receipt_intelligence.rag_sql.planner import RagSqlPlanner
 from receipt_intelligence.rag_sql.question_analyzer import RagSqlQuestionAnalyzer
@@ -23,14 +22,11 @@ class RagSqlComponents:
     """Stable dependencies consumed by an orchestration adapter."""
 
     analyzer: RagSqlQuestionAnalyzer
-    retriever: SemanticRetriever
-    resolver: CandidateResolver
+    filter_resolver: QueryFilterResolver
     planner: RagSqlPlanner
     validator: RagSqlValidator
     executor: ReadOnlySqlExecutor
     answer_formatter: EvidenceBoundAnswerFormatter | None
-    retrieval_limit: int
-    retrieval_minimum_score: float | None
     validation_repair_count: int
 
 

@@ -78,6 +78,7 @@ class ReviewUseCases:
         fields: dict[str, Any],
         item_corrections: list[dict[str, Any]],
         review: dict[str, Any],
+        identity: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         database_record = self._receipt_db.get_receipt_review_record_by_job_id(job_id)
         if database_record and database_record.get("id") is not None:
@@ -87,6 +88,7 @@ class ReviewUseCases:
                     fields=fields,
                     item_corrections=item_corrections,
                     review=review,
+                    identity=identity or {},
                 )
             except KeyError as exc:
                 raise ResourceNotFoundError("receipt not found") from exc

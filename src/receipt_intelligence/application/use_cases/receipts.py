@@ -95,6 +95,7 @@ class ReceiptUseCases:
         fields: dict[str, Any],
         item_corrections: list[dict[str, Any]],
         review: dict[str, Any],
+        identity: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         try:
             return self._editor.save(
@@ -102,6 +103,7 @@ class ReceiptUseCases:
                 fields=fields,
                 item_corrections=item_corrections,
                 review=review,
+                identity=identity or {},
             )
         except KeyError as exc:
             raise ResourceNotFoundError("receipt not found") from exc

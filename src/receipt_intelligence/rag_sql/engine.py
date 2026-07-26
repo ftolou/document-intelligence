@@ -5,6 +5,10 @@ from __future__ import annotations
 from receipt_intelligence.rag.candidate_resolver import CandidateResolver
 from receipt_intelligence.rag_sql.answer_formatter import EvidenceBoundAnswerFormatter
 from receipt_intelligence.rag_sql.executor import ReadOnlySqlExecutor
+from receipt_intelligence.rag_sql.filter_resolution import (
+    FilterValueCatalog,
+    QueryFilterResolverRegistry,
+)
 from receipt_intelligence.rag_sql.graph_state import RagSqlGraphConfig
 from receipt_intelligence.rag_sql.graph_support import RagSqlRetrievalError, SemanticRetriever
 from receipt_intelligence.rag_sql.models import RagSqlResponse
@@ -27,6 +31,7 @@ class RagSqlEngine:
         analyzer: RagSqlQuestionAnalyzer,
         retriever: SemanticRetriever,
         resolver: CandidateResolver,
+        filter_catalog: FilterValueCatalog | None = None,
         planner: RagSqlPlanner,
         validator: RagSqlValidator,
         executor: ReadOnlySqlExecutor,
@@ -44,17 +49,21 @@ class RagSqlEngine:
 
         resolved_factory = orchestrator_factory or _default_orchestrator_factory()
         self.graph_config = graph_config or RagSqlGraphConfig()
+        filter_resolver = QueryFilterResolverRegistry(
+            retriever=retriever,
+            product_resolver=resolver,
+            catalog=filter_catalog,
+            retrieval_limit=retrieval_limit,
+            retrieval_minimum_score=retrieval_minimum_score,
+        )
         self._orchestrator: RagSqlOrchestrator = resolved_factory.build(
             RagSqlComponents(
                 analyzer=analyzer,
-                retriever=retriever,
-                resolver=resolver,
+                filter_resolver=filter_resolver,
                 planner=planner,
                 validator=validator,
                 executor=executor,
                 answer_formatter=answer_formatter,
-                retrieval_limit=retrieval_limit,
-                retrieval_minimum_score=retrieval_minimum_score,
                 validation_repair_count=validation_repair_count,
             ),
             graph_config=self.graph_config,

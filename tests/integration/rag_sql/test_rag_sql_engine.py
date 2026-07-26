@@ -6,12 +6,16 @@ from typing import Any
 from receipt_intelligence.adapters.storage.sqlite.analytical_query import (
     SQLiteAnalyticalQueryRepository,
 )
+from receipt_intelligence.adapters.storage.sqlite.filter_catalog import (
+    SQLiteFilterValueCatalog,
+)
 from receipt_intelligence.observability.ollama import OllamaCallMetrics
 from receipt_intelligence.rag.candidate_models import CandidateResolutionResult
 from receipt_intelligence.rag.models import SemanticItemMatch, SemanticItemSearchResult
 from receipt_intelligence.rag_sql.engine import RagSqlEngine
 from receipt_intelligence.rag_sql.executor import ReadOnlySqlExecutor
 from receipt_intelligence.rag_sql.models import (
+    QueryFilter,
     QuestionAnalysisResult,
     RagSqlPlanResult,
     SemanticEntity,
@@ -63,9 +67,11 @@ class FakePlanner:
         self.repair_calls = 0
         self.last_validation_error: str | None = None
         self.last_previous_plan: RagSqlPlanResult | None = None
+        self.last_protected_parameters: dict[str, object] = {}
 
-    def plan(self, *_: Any, **__: Any) -> RagSqlPlanResult:
+    def plan(self, *_: Any, **kwargs: Any) -> RagSqlPlanResult:
         self.calls += 1
+        self.last_protected_parameters = dict(kwargs.get("protected_parameters") or {})
         return self.result
 
     def repair_after_validation_failure(
@@ -798,3 +804,78 @@ def test_engine_returns_insufficient_info_for_unsupported_brand_metadata(
     assert response.status == "insufficient_info"
     assert response.data is not None and response.data.row_count == 1
     assert "enough product information" in response.answer
+
+
+def test_engine_resolves_merchant_filter_without_product_rag(tmp_path: Path) -> None:
+    db, item_id = _database(tmp_path)
+    analysis = QuestionAnalysisResult(
+        schema_version="rag_sql_question_analysis_v3",
+        status="ready",
+        language="en",
+        user_goal="Count purchases made at MODEPARK.",
+        target_entity="purchase_count",
+        requested_operation="count",
+        filters=[
+            QueryFilter(
+                filter_id="f001",
+                field="merchant",
+                operator="matches",
+                value="MODEPARK",
+            )
+        ],
+        model="test",
+        attempts=1,
+    )
+    retriever = FakeRetriever(_search_result(item_id, query="unused"))
+    resolver = FakeResolver(
+        CandidateResolutionResult(
+            status="not_found",
+            semantic_entity="unused",
+            candidate_count=0,
+            decisions=[],
+            selected_candidate_ids=[],
+            uncertain_candidate_ids=[],
+            rejected_candidate_ids=[],
+            selected_item_ids=[],
+            uncertain_item_ids=[],
+            rejected_item_ids=[],
+            model="test",
+            attempts=0,
+        )
+    )
+    plan = RagSqlPlanResult(
+        status="ready",
+        sql=(
+            "SELECT COUNT(*) AS value FROM analytics_purchase_items "
+            "WHERE merchant = :f001_merchant_0"
+        ),
+        parameters={"f001_merchant_0": "modepark"},
+        result_shape="scalar",
+        result_entity="purchase_count",
+        display_columns=["value"],
+        answer_instruction="Report the purchase count.",
+        model="test",
+        attempts=1,
+    )
+    planner = FakePlanner(plan)
+    engine = RagSqlEngine(
+        analyzer=FakeAnalyzer(analysis),  # type: ignore[arg-type]
+        retriever=retriever,
+        resolver=resolver,  # type: ignore[arg-type]
+        filter_catalog=SQLiteFilterValueCatalog(db.db_path),
+        planner=planner,  # type: ignore[arg-type]
+        validator=RagSqlValidator(),
+        executor=ReadOnlySqlExecutor(SQLiteAnalyticalQueryRepository(db.db_path)),
+    )
+
+    response = engine.execute("How many items did I buy at MODEPARK?")
+
+    assert response.status == "completed"
+    assert response.data is not None
+    assert response.data.rows == [{"value": 1}]
+    assert planner.last_protected_parameters == {"f001_merchant_0": "modepark"}
+    assert retriever.calls == 0
+    assert resolver.calls == 0
+    resolved = response.diagnostics["resolved_filters"]
+    assert resolved[0]["field"] == "merchant"
+    assert resolved[0]["resolved_values"] == ["modepark"]

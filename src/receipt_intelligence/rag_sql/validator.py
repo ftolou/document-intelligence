@@ -8,10 +8,16 @@ The authorizer is the final object/function access boundary at execution time.
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
-from receipt_intelligence.rag_sql.models import RagSqlPlanResult, ValidatedSqlPlan
+from receipt_intelligence.rag_sql.filter_definitions import get_filter_definition
+from receipt_intelligence.rag_sql.models import (
+    JsonScalar,
+    RagSqlPlanResult,
+    ResolvedQueryFilter,
+    ValidatedSqlPlan,
+)
 from receipt_intelligence.rag_sql.schema_catalog import (
     ALLOWED_ANALYTICS_OBJECTS,
     ALLOWED_SQL_FUNCTIONS,
@@ -104,7 +110,8 @@ class RagSqlValidator:
         self,
         plan: RagSqlPlanResult,
         *,
-        protected_parameters: Mapping[str, int] | None = None,
+        protected_parameters: Mapping[str, JsonScalar] | None = None,
+        resolved_filters: Sequence[ResolvedQueryFilter] | None = None,
     ) -> ValidatedSqlPlan:
         if plan.status != "ready" or not plan.sql or not plan.result_shape:
             raise SqlValidationError("Only a ready SQL plan can be validated.")
@@ -201,6 +208,12 @@ class RagSqlValidator:
                     f"Protected parameter {name!r} is not used in the SQL statement."
                 )
 
+        _validate_resolved_filter_bindings(
+            normalized,
+            resolved_filters or [],
+            protected_parameters,
+        )
+
         if plan.result_shape == "row":
             limit = _literal_limit(normalized)
             if limit != 1:
@@ -225,6 +238,116 @@ class RagSqlValidator:
             referenced_functions=sorted(set(referenced_functions)),
             placeholder_names=placeholder_names,
         )
+
+
+def _validate_resolved_filter_bindings(
+    normalized_sql: str,
+    resolved_filters: Sequence[ResolvedQueryFilter],
+    protected_parameters: Mapping[str, JsonScalar],
+) -> None:
+    for resolved_filter in resolved_filters:
+        if resolved_filter.status != "resolved":
+            continue
+        parameter_names = sorted(
+            name
+            for name in protected_parameters
+            if name.startswith(f"{resolved_filter.filter_id}_")
+        )
+        if not parameter_names:
+            raise SqlValidationError(
+                f"Resolved filter {resolved_filter.filter_id!r} has no protected parameters."
+            )
+        columns = get_filter_definition(resolved_filter.field).sql_columns
+        if not _filter_binding_is_valid(
+            normalized_sql,
+            columns=columns,
+            operator=resolved_filter.operator,
+            parameter_names=parameter_names,
+        ):
+            rendered_columns = ", ".join(columns)
+            raise SqlValidationError(
+                f"Protected filter {resolved_filter.filter_id!r} must constrain "
+                f"{rendered_columns} using operator {resolved_filter.operator!r}."
+            )
+
+
+def _filter_binding_is_valid(
+    normalized_sql: str,
+    *,
+    columns: tuple[str, ...],
+    operator: str,
+    parameter_names: list[str],
+) -> bool:
+    placeholders = [rf":{re.escape(name)}\b" for name in parameter_names]
+
+    if operator == "between":
+        if len(placeholders) != 2:
+            return False
+        for allowed_column in columns:
+            column = _qualified_column_pattern(allowed_column)
+            direct_between = rf"{column}\s+between\s+{placeholders[0]}\s+and\s+{placeholders[1]}"
+            comparison_pair = (
+                rf"(?=.*{column}\s*>=\s*{placeholders[0]})"
+                rf"(?=.*{column}\s*<=\s*{placeholders[1]})"
+            )
+            if re.search(direct_between, normalized_sql) or re.search(
+                comparison_pair,
+                normalized_sql,
+                flags=re.DOTALL,
+            ):
+                return True
+        return False
+
+    comparison_operator = {
+        "greater_than": ">",
+        "greater_than_or_equal": ">=",
+        "less_than": "<",
+        "less_than_or_equal": "<=",
+        "before": "<",
+        "after": ">",
+    }.get(operator)
+    if comparison_operator is not None:
+        if len(placeholders) != 1:
+            return False
+        escaped_operator = re.escape(comparison_operator)
+        reverse_operator = {
+            ">": "<",
+            ">=": "<=",
+            "<": ">",
+            "<=": ">=",
+        }[comparison_operator]
+        for allowed_column in columns:
+            column = _qualified_column_pattern(allowed_column)
+            forward = rf"{column}\s*{escaped_operator}\s*{placeholders[0]}"
+            reverse = rf"{placeholders[0]}\s*{re.escape(reverse_operator)}\s*{column}"
+            if re.search(forward, normalized_sql) or re.search(reverse, normalized_sql):
+                return True
+        return False
+
+    if operator not in {"matches", "equals", "contains", "in"}:
+        return False
+
+    for allowed_column in columns:
+        column = _qualified_column_pattern(allowed_column)
+        if len(placeholders) == 1:
+            equality = (
+                rf"(?:{column}\s*=\s*{placeholders[0]}|"
+                rf"{placeholders[0]}\s*=\s*{column})"
+            )
+            if re.search(equality, normalized_sql):
+                return True
+
+        in_predicates = list(re.finditer(rf"{column}\s+in\s*\((?P<body>[^)]*)\)", normalized_sql))
+        if any(
+            all(re.search(placeholder, match.group("body")) for placeholder in placeholders)
+            for match in in_predicates
+        ):
+            return True
+    return False
+
+
+def _qualified_column_pattern(column: str) -> str:
+    return rf"(?:\b[a-z_][a-z0-9_]*\s*\.\s*)?\b{re.escape(column)}\b"
 
 
 @dataclass(frozen=True)

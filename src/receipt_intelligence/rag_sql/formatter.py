@@ -14,6 +14,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 
 from receipt_intelligence.rag_sql.models import (
+    ResolvedQueryFilter,
     ResolvedSemanticEntity,
     SqlExecutionResult,
     ValidatedSqlPlan,
@@ -61,7 +62,7 @@ def classify_rag_sql_outcome(
     language: str,
     question: str | None = None,
     requested_operation: str | None = None,
-    resolved_entities: Sequence[ResolvedSemanticEntity] = (),
+    resolved_entities: Sequence[ResolvedQueryFilter | ResolvedSemanticEntity] = (),
 ) -> DeterministicAnswerDecision:
     """Classify whether the result is resolved, ambiguous, or lacks evidence."""
 
@@ -142,7 +143,7 @@ def format_rag_sql_outcome(
     language: str,
     question: str | None = None,
     requested_operation: str | None = None,
-    resolved_entities: Sequence[ResolvedSemanticEntity] = (),
+    resolved_entities: Sequence[ResolvedQueryFilter | ResolvedSemanticEntity] = (),
 ) -> tuple[Literal["completed", "not_found", "insufficient_info"], str]:
     """Return the deterministic terminal result without invoking the LLM fallback."""
 
@@ -459,7 +460,7 @@ def format_rag_sql_answer(
     *,
     language: str,
     question: str | None = None,
-    resolved_entities: Sequence[ResolvedSemanticEntity] = (),
+    resolved_entities: Sequence[ResolvedQueryFilter | ResolvedSemanticEntity] = (),
 ) -> str:
     """Render a concise answer from a validated SQL result.
 
@@ -649,14 +650,25 @@ def _monetary_rows(rows: Sequence[dict[str, Any]]) -> list[tuple[Any, str]]:
     return monetary
 
 
-def _resolved_entity_labels(entities: Sequence[ResolvedSemanticEntity]) -> list[str]:
+def _resolved_entity_labels(
+    entities: Sequence[ResolvedQueryFilter | ResolvedSemanticEntity],
+) -> list[str]:
     labels: list[str] = []
     for entity in entities:
         if entity.status != "resolved":
             continue
-        label = " ".join(entity.search_text.split()).strip()
-        if label and label.casefold() not in {existing.casefold() for existing in labels}:
-            labels.append(label)
+        if isinstance(entity, ResolvedQueryFilter):
+            if entity.field not in {"product", "merchant", "category"}:
+                continue
+            raw = entity.original_value
+            raw_values = raw if isinstance(raw, list) else [raw]
+            candidates = [str(value) for value in raw_values]
+        else:
+            candidates = [entity.search_text]
+        for candidate in candidates:
+            label = " ".join(candidate.split()).strip()
+            if label and label.casefold() not in {existing.casefold() for existing in labels}:
+                labels.append(label)
     return labels
 
 

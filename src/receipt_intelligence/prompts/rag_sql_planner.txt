@@ -16,7 +16,7 @@ Return exactly one JSON object matching this schema:
 
 Semantic fidelity rules:
 - The generated SQL must answer the original user question. The original question is authoritative.
-- The structured analysis is supporting context that preserves the user's goal, target entity, and requested operation.
+- The structured analysis is supporting context that preserves the user's goal, target entity, requested operation, and typed filters.
 - Do not replace listing with aggregation, aggregation with listing, counting with summation, or receipt retrieval with item retrieval.
 - Generate SUM, AVG, COUNT, MIN, MAX, or other aggregation only when the original question requests that operation or it is unambiguously required by the stated goal.
 - A request to show, list, or find receipts must return receipt rows, not a spending total.
@@ -25,6 +25,17 @@ Semantic fidelity rules:
 - result_entity must be exactly one lowercase snake_case identifier matching ^[a-z][a-z0-9_]{0,63}$. Valid examples: receipt, purchase_item, spending_amount, purchase_count. Invalid examples: "count of purchased items", "Purchase Count", or SQL text.
 - display_columns must contain only actual SELECT output column names or aliases. Never put SQL expressions such as COUNT(*), COUNT(T1.item_id), SUM(line_total), or "currency AS code" in display_columns.
 - Every computed SQL expression must have a simple lowercase alias, and display_columns must reference that alias. Use COUNT(*) AS value with display_columns=["value"] for counts.
+
+Application-owned filter-to-SQL binding catalog:
+{{FILTER_BINDINGS}}
+
+Resolved-filter guidance:
+- Every resolved filter is supplied with app-owned protected parameters. Use every protected parameter exactly once or as required by IN/between predicates; never replace it with a literal or an LLM-created value.
+- Use the parameter suffixes and SQL columns from the application-owned binding catalog exactly.
+- Product item-ID filters require analytics_purchase_items. Item-level questions with receipt-only fields such as payment_method may require a receipt join.
+- For amount filters, choose grand_total for receipt-level questions or line_total for item-level questions according to the original question.
+- Multiple resolved values for one filter normally use IN. A between filter uses its two protected values as inclusive lower and upper bounds unless the wording explicitly requires exclusive bounds.
+- Do not use text matching as a substitute for any resolved filter.
 
 Reviewed product-semantics guidance:
 - For requested_operation=describe_product, identify_brand, or identify_product_type, query analytics_purchase_items by every protected item-ID parameter and return item_id, description, normalized_name, semantic_description, category, and category_reason as rows with a deterministic LIMIT.
@@ -47,9 +58,9 @@ Safety and scope rules:
 - Do not include SQL comments or a trailing semicolon.
 - Use only named parameters in the form :parameter_name for every user-derived value.
 - The parameters object must contain exactly the named placeholders used in SQL.
-- Copy every protected item-ID parameter and value exactly as supplied. Never replace item IDs with literals.
-- Each resolved product entity must be filtered with analytics_purchase_items.item_id and all of that entity's protected item-ID parameters.
-- Do not use description/category/merchant text matching as a substitute for resolved item IDs.
+- Copy every protected filter parameter and value exactly as supplied. Never replace protected values with literals.
+- Apply every resolved filter to the correct analytics field using all protected parameters belonging to that filter.
+- Do not use description/category/merchant text matching as a substitute for resolved values.
 - Use analytics_receipts.grand_total for complete receipt spending.
 - Use analytics_purchase_items.line_total for spending on products.
 - Do not sum receipt totals after joining receipt rows to item rows.
@@ -65,17 +76,17 @@ Safety and scope rules:
 
 Contract examples:
 1. Count resolved purchases:
-   SQL: SELECT COUNT(*) AS value FROM analytics_purchase_items WHERE item_id = :e001_item_0
+   SQL: SELECT COUNT(*) AS value FROM analytics_purchase_items WHERE item_id = :f001_item_0
    result_shape: scalar
    result_entity: purchase_count
    display_columns: ["value"]
 2. Sum resolved product spending with currency:
-   SQL: SELECT currency, SUM(line_total) AS value FROM analytics_purchase_items WHERE item_id = :e001_item_0 GROUP BY currency ORDER BY currency LIMIT {{MAX_ROWS}}
+   SQL: SELECT currency, SUM(line_total) AS value FROM analytics_purchase_items WHERE item_id = :f001_item_0 GROUP BY currency ORDER BY currency LIMIT {{MAX_ROWS}}
    result_shape: grouped_rows
    result_entity: spending_amount
    display_columns: ["currency", "value"]
 3. Describe a resolved product from reviewed metadata:
-   SQL: SELECT DISTINCT item_id, description, normalized_name, semantic_description, category, category_reason FROM analytics_purchase_items WHERE item_id = :e001_item_0 ORDER BY item_id LIMIT {{MAX_ROWS}}
+   SQL: SELECT DISTINCT item_id, description, normalized_name, semantic_description, category, category_reason FROM analytics_purchase_items WHERE item_id = :f001_item_0 ORDER BY item_id LIMIT {{MAX_ROWS}}
    result_shape: rows
    result_entity: product_description
    display_columns: ["item_id", "description", "normalized_name", "semantic_description", "category", "category_reason"]
@@ -91,8 +102,8 @@ Static schema catalog:
 Question analysis:
 {{ANALYSIS_JSON}}
 
-Resolved semantic entities and protected parameters:
-{{RESOLVED_ENTITIES_JSON}}
+Resolved typed filters and protected parameters:
+{{RESOLVED_FILTERS_JSON}}
 
 Original user question:
 {{QUESTION}}

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -20,10 +21,16 @@ from receipt_intelligence.application.ports.llm import (
     ModelCallMetrics,
 )
 from receipt_intelligence.prompts import render_prompt_template
+from receipt_intelligence.rag_sql.filter_definitions import (
+    get_filter_definition,
+    render_sql_filter_binding_catalog,
+)
 from receipt_intelligence.rag_sql.models import (
+    JsonScalar,
     QuestionAnalysisResult,
     RagSqlPlanPayload,
     RagSqlPlanResult,
+    ResolvedQueryFilter,
     ResolvedSemanticEntity,
 )
 from receipt_intelligence.rag_sql.schema_catalog import (
@@ -92,8 +99,8 @@ class RagSqlPlanner:
         question: str,
         *,
         analysis: QuestionAnalysisResult,
-        resolved_entities: Sequence[ResolvedSemanticEntity],
-        protected_parameters: Mapping[str, int],
+        resolved_entities: Sequence[ResolvedQueryFilter | ResolvedSemanticEntity],
+        protected_parameters: Mapping[str, JsonScalar],
         previous_plan: RagSqlPlanResult | None = None,
         validation_error: str | None = None,
     ) -> RagSqlPlanResult:
@@ -108,23 +115,45 @@ class RagSqlPlanner:
             )
 
         resolved_payload = []
-        for entity in resolved_entities:
-            parameter_names = [
-                name
-                for name in protected_parameters
-                if name.startswith(f"{entity.entity_id}_item_")
-            ]
-            resolved_payload.append(
-                {
-                    "entity_id": entity.entity_id,
-                    "search_text": entity.search_text,
-                    "status": entity.status,
-                    "selected_item_ids": entity.selected_item_ids,
-                    "protected_item_parameters": {
-                        name: protected_parameters[name] for name in sorted(parameter_names)
-                    },
-                }
-            )
+        for resolved_filter in resolved_entities:
+            if isinstance(resolved_filter, ResolvedQueryFilter):
+                parameter_names = [
+                    name
+                    for name in protected_parameters
+                    if name.startswith(f"{resolved_filter.filter_id}_")
+                ]
+                resolved_payload.append(
+                    {
+                        "filter_id": resolved_filter.filter_id,
+                        "field": resolved_filter.field,
+                        "operator": resolved_filter.operator,
+                        "original_value": resolved_filter.original_value,
+                        "status": resolved_filter.status,
+                        "resolved_values": resolved_filter.resolved_values,
+                        "protected_parameters": {
+                            name: protected_parameters[name] for name in sorted(parameter_names)
+                        },
+                    }
+                )
+            else:
+                parameter_names = [
+                    name
+                    for name in protected_parameters
+                    if name.startswith(f"{resolved_filter.entity_id}_item_")
+                ]
+                resolved_payload.append(
+                    {
+                        "filter_id": resolved_filter.entity_id,
+                        "field": "product",
+                        "operator": "matches",
+                        "original_value": resolved_filter.search_text,
+                        "status": resolved_filter.status,
+                        "resolved_values": resolved_filter.selected_item_ids,
+                        "protected_parameters": {
+                            name: protected_parameters[name] for name in sorted(parameter_names)
+                        },
+                    }
+                )
 
         started = time.perf_counter()
         previous_error: str | None = None
@@ -147,7 +176,7 @@ class RagSqlPlanner:
                 f"{json.dumps(previous_payload, ensure_ascii=False, indent=2)}\n\n"
                 "Return a complete replacement JSON plan. Correct the exact validation "
                 "failure without changing the analytical meaning. Preserve every protected "
-                "item-ID parameter name and value exactly. For grouped_rows, preserve all "
+                "filter parameter name and value exactly. For grouped_rows, preserve all "
                 "possible groups by using a deterministic ORDER BY and LIMIT "
                 f"{self.config.maximum_rows} unless the original question explicitly requests "
                 "fewer groups. Never use LIMIT 1 merely to satisfy validation. Do not explain "
@@ -177,10 +206,11 @@ class RagSqlPlanner:
                 TODAY=datetime.now(ZoneInfo("Europe/Berlin")).date().isoformat(),
                 MAX_ROWS=self.config.maximum_rows,
                 SCHEMA_CONTEXT=self.schema_catalog.render_for_prompt(),
+                FILTER_BINDINGS=render_sql_filter_binding_catalog(),
                 ANALYSIS_JSON=json.dumps(
                     analysis.model_dump(mode="json"), ensure_ascii=False, indent=2
                 ),
-                RESOLVED_ENTITIES_JSON=json.dumps(resolved_payload, ensure_ascii=False, indent=2),
+                RESOLVED_FILTERS_JSON=json.dumps(resolved_payload, ensure_ascii=False, indent=2),
                 QUESTION=normalized_question,
                 VALIDATION_REPAIR_BLOCK=validation_repair_block,
                 RETRY_BLOCK=retry_block,
@@ -232,8 +262,8 @@ class RagSqlPlanner:
         question: str,
         *,
         analysis: QuestionAnalysisResult,
-        resolved_entities: Sequence[ResolvedSemanticEntity],
-        protected_parameters: Mapping[str, int],
+        resolved_entities: Sequence[ResolvedQueryFilter | ResolvedSemanticEntity],
+        protected_parameters: Mapping[str, JsonScalar],
         previous_plan: RagSqlPlanResult,
         validation_error: str,
     ) -> RagSqlPlanResult:
@@ -254,34 +284,53 @@ class RagSqlPlanner:
         )
 
 
+def build_protected_filter_parameters(
+    filters: Sequence[ResolvedQueryFilter | ResolvedSemanticEntity],
+) -> dict[str, JsonScalar]:
+    """Create deterministic app-owned bindings for every resolved filter."""
+
+    parameters: dict[str, JsonScalar] = {}
+    for resolved_filter in filters:
+        if isinstance(resolved_filter, ResolvedSemanticEntity):
+            if resolved_filter.status != "resolved":
+                continue
+            for index, item_id in enumerate(resolved_filter.selected_item_ids):
+                parameters[f"{resolved_filter.entity_id}_item_{index}"] = int(item_id)
+            continue
+        if resolved_filter.status != "resolved":
+            continue
+        suffix = get_filter_definition(resolved_filter.field).parameter_suffix
+        for index, value in enumerate(resolved_filter.resolved_values):
+            parameters[f"{resolved_filter.filter_id}_{suffix}_{index}"] = value
+    return parameters
+
+
 def build_protected_item_parameters(
     entities: Sequence[ResolvedSemanticEntity],
 ) -> dict[str, int]:
-    """Create deterministic app-owned bindings for resolved product IDs."""
+    """Compatibility wrapper for the former product-only contract."""
 
-    parameters: dict[str, int] = {}
-    for entity in entities:
-        if entity.status != "resolved":
-            continue
-        for index, item_id in enumerate(entity.selected_item_ids):
-            parameters[f"{entity.entity_id}_item_{index}"] = int(item_id)
-    return parameters
+    return {
+        name: int(value)
+        for name, value in build_protected_filter_parameters(entities).items()
+        if isinstance(value, int)
+    }
 
 
 def _validate_protected_parameters(
     payload: RagSqlPlanPayload,
-    protected_parameters: Mapping[str, int],
+    protected_parameters: Mapping[str, JsonScalar],
 ) -> None:
     if payload.status != "ready":
         return
     unexpected_protected = sorted(
         name
         for name in payload.parameters
-        if name.startswith("e") and "_item_" in name and name not in protected_parameters
+        if re.fullmatch(r"[ef]\d{3}_[a-z][a-z0-9_]*_\d+", name) and name not in protected_parameters
     )
     if unexpected_protected:
         raise ValueError(
-            f"The SQL plan introduced unknown protected item parameters: {unexpected_protected}."
+            f"The SQL plan introduced unknown protected filter parameters: {unexpected_protected}."
         )
     for name, expected_value in protected_parameters.items():
         if name not in payload.parameters:
@@ -297,5 +346,6 @@ __all__ = [
     "RagSqlPlanner",
     "RagSqlPlannerConfig",
     "RagSqlPlanningError",
+    "build_protected_filter_parameters",
     "build_protected_item_parameters",
 ]

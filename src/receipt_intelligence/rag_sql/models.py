@@ -3,24 +3,98 @@
 from __future__ import annotations
 
 import re
+from datetime import date
 from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from receipt_intelligence.application.ports.llm import ModelCallMetrics
+from receipt_intelligence.rag_sql.filter_definitions import (
+    FilterField,
+    FilterOperator,
+    get_filter_definition,
+)
 
-RAG_SQL_ANALYSIS_SCHEMA_VERSION = "rag_sql_question_analysis_v2"
+RAG_SQL_ANALYSIS_SCHEMA_VERSION = "rag_sql_question_analysis_v3"
+RAG_SQL_LEGACY_ANALYSIS_SCHEMA_VERSION = "rag_sql_question_analysis_v2"
 RAG_SQL_PLAN_SCHEMA_VERSION = "rag_sql_plan_v2"
 RAG_SQL_ENGINE_VERSION = "rag_sql_engine_v2"
 
 JsonScalar = str | int | float | None
+FilterScalar = str | int | float
+FilterValue = FilterScalar | list[FilterScalar]
 
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
 
+class QueryFilter(StrictModel):
+    """A reusable typed constraint extracted from natural language."""
+
+    filter_id: str = Field(pattern=r"^[ef]\d{3}$")
+    field: FilterField
+    operator: FilterOperator
+    value: FilterValue
+
+    @field_validator("value", mode="before")
+    @classmethod
+    def reject_boolean_values(cls, value: object) -> object:
+        values = value if isinstance(value, list) else [value]
+        if any(isinstance(item, bool) for item in values):
+            raise ValueError("Boolean filter values are not allowed.")
+        return value
+
+    @model_validator(mode="after")
+    def validate_field_contract(self) -> Self:
+        scalar = not isinstance(self.value, list)
+        values = self.value if isinstance(self.value, list) else [self.value]
+
+        definition = get_filter_definition(self.field)
+        if self.operator not in definition.allowed_operators:
+            raise ValueError(f"Operator {self.operator!r} is not valid for {self.field}.")
+
+        if definition.value_kind == "text":
+            if self.operator == "in" and scalar:
+                raise ValueError("The 'in' operator requires a list value.")
+            if self.operator != "in" and not scalar:
+                raise ValueError(f"Operator {self.operator!r} requires one scalar value.")
+            if not all(isinstance(value, str) and value.strip() for value in values):
+                raise ValueError(f"Filter {self.field!r} requires non-empty string values.")
+        elif definition.value_kind == "date":
+            if self.operator == "between":
+                if scalar or len(values) != 2:
+                    raise ValueError("purchase_date between requires exactly two values.")
+            elif not scalar:
+                raise ValueError(f"Operator {self.operator!r} requires one date value.")
+            if not all(isinstance(value, str) and value.strip() for value in values):
+                raise ValueError("purchase_date requires ISO date strings.")
+            parsed_dates = [date.fromisoformat(str(value)) for value in values]
+            if self.operator == "between" and parsed_dates[0] > parsed_dates[1]:
+                raise ValueError("purchase_date between requires ascending date values.")
+        elif definition.value_kind == "number":
+            if self.operator == "between":
+                if scalar or len(values) != 2:
+                    raise ValueError("amount between requires exactly two numeric values.")
+            elif not scalar:
+                raise ValueError(f"Operator {self.operator!r} requires one numeric value.")
+            if not all(isinstance(value, int | float) for value in values):
+                raise ValueError("amount requires numeric values.")
+            if self.operator == "between" and float(values[0]) > float(values[1]):
+                raise ValueError("amount between requires ascending numeric values.")
+        elif definition.value_kind == "positive_integer":
+            if self.operator == "in" and scalar:
+                raise ValueError("receipt_id in requires a list value.")
+            if self.operator == "equals" and not scalar:
+                raise ValueError("receipt_id equals requires one value.")
+            if not all(isinstance(value, int) and value > 0 for value in values):
+                raise ValueError("receipt_id requires positive integers.")
+        return self
+
+
 class SemanticEntity(StrictModel):
+    """Legacy v2 product-only analysis contract retained for migration."""
+
     entity_id: str = Field(pattern=r"^e\d{3}$")
     search_text: str = Field(min_length=1, max_length=500)
     role: Literal["product_filter"] = "product_filter"
@@ -29,34 +103,80 @@ class SemanticEntity(StrictModel):
 class QuestionAnalysisPayload(StrictModel):
     """Raw structured question-analysis response expected from the LLM."""
 
-    schema_version: Literal["rag_sql_question_analysis_v2"] = RAG_SQL_ANALYSIS_SCHEMA_VERSION
+    schema_version: Literal[
+        "rag_sql_question_analysis_v3",
+        "rag_sql_question_analysis_v2",
+    ] = RAG_SQL_ANALYSIS_SCHEMA_VERSION
     status: Literal["ready", "needs_clarification", "unsupported"]
     language: Literal["de", "en"] = "de"
     user_goal: str | None = Field(default=None, min_length=1, max_length=1500)
     target_entity: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_]{0,63}$")
     requested_operation: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_]{0,63}$")
-    requires_product_resolution: bool
-    entities: list[SemanticEntity] = Field(default_factory=list, max_length=4)
+    filters: list[QueryFilter] = Field(default_factory=list, max_length=8)
     clarification_question: str | None = Field(default=None, max_length=1000)
     reason: str | None = Field(default=None, max_length=1000)
 
+    # Migration-only fields. They are accepted from v2 payloads and constructors,
+    # but omitted from canonical model dumps and planner prompts.
+    requires_product_resolution: bool = Field(default=False, exclude=True)
+    entities: list[SemanticEntity] = Field(default_factory=list, max_length=4, exclude=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_legacy_entities(cls, value: object) -> object:
+        if not isinstance(value, dict):
+            return value
+        data = dict(value)
+        legacy_entities = data.get("entities") or []
+        if legacy_entities and "schema_version" not in data:
+            data["schema_version"] = RAG_SQL_LEGACY_ANALYSIS_SCHEMA_VERSION
+
+        def legacy_value(entity: object, field: str) -> object | None:
+            if isinstance(entity, dict):
+                return entity.get(field)
+            return getattr(entity, field, None)
+
+        if legacy_entities:
+            legacy_ids = [legacy_value(entity, "entity_id") for entity in legacy_entities]
+            expected_legacy_ids = [f"e{index:03d}" for index in range(1, len(legacy_ids) + 1)]
+            if legacy_ids != expected_legacy_ids:
+                raise ValueError(f"Semantic entity IDs must be sequential: {expected_legacy_ids}.")
+        if not data.get("filters") and legacy_entities:
+            data["filters"] = [
+                {
+                    "filter_id": str(legacy_value(entity, "entity_id") or f"e{index:03d}"),
+                    "field": "product",
+                    "operator": "matches",
+                    "value": legacy_value(entity, "search_text"),
+                }
+                for index, entity in enumerate(legacy_entities, start=1)
+            ]
+        return data
+
     @model_validator(mode="after")
     def validate_analysis(self) -> Self:
-        entity_ids = [entity.entity_id for entity in self.entities]
-        if len(entity_ids) != len(set(entity_ids)):
-            raise ValueError("Semantic entity IDs must be unique.")
-        expected_ids = [f"e{index:03d}" for index in range(1, len(self.entities) + 1)]
-        if entity_ids != expected_ids:
-            raise ValueError(f"Semantic entity IDs must be sequential: {expected_ids}.")
+        filter_ids = [query_filter.filter_id for query_filter in self.filters]
+        if len(filter_ids) != len(set(filter_ids)):
+            raise ValueError("Query filter IDs must be unique.")
+        prefix = "e" if self.schema_version == RAG_SQL_LEGACY_ANALYSIS_SCHEMA_VERSION else "f"
+        expected_ids = [f"{prefix}{index:03d}" for index in range(1, len(self.filters) + 1)]
+        if filter_ids != expected_ids:
+            raise ValueError(f"Query filter IDs must be sequential: {expected_ids}.")
+
+        product_filters = [value for value in self.filters if value.field == "product"]
+        self.requires_product_resolution = bool(product_filters)
+        self.entities = [
+            SemanticEntity(
+                entity_id=f"e{index:03d}",
+                search_text=str(query_filter.value),
+            )
+            for index, query_filter in enumerate(product_filters, start=1)
+        ]
 
         if self.status == "ready":
             if not self.user_goal or not self.target_entity or not self.requested_operation:
                 raise ValueError(
                     "ready status requires user_goal, target_entity, and requested_operation."
-                )
-            if self.requires_product_resolution != bool(self.entities):
-                raise ValueError(
-                    "requires_product_resolution must match whether entities are present."
                 )
             if self.clarification_question or self.reason:
                 raise ValueError("ready status cannot include clarification_question or reason.")
@@ -78,7 +198,48 @@ class QuestionAnalysisResult(QuestionAnalysisPayload):
     ollama_calls: list[ModelCallMetrics] = Field(default_factory=list, max_length=20)
 
 
+class ResolvedQueryFilter(StrictModel):
+    filter_id: str = Field(pattern=r"^[ef]\d{3}$")
+    field: FilterField
+    operator: FilterOperator
+    original_value: FilterValue
+    status: Literal["resolved", "needs_clarification", "not_found"]
+    resolved_values: list[FilterScalar] = Field(default_factory=list, max_length=100)
+    candidate_values: list[FilterScalar] = Field(default_factory=list, max_length=20)
+    clarification_question: str | None = Field(default=None, max_length=1000)
+
+    @model_validator(mode="after")
+    def validate_resolution_state(self) -> Self:
+        if self.status == "resolved":
+            if not self.resolved_values:
+                raise ValueError("resolved filter requires resolved_values.")
+            if self.candidate_values or self.clarification_question:
+                raise ValueError(
+                    "resolved filter cannot contain candidate_values or clarification_question."
+                )
+        elif self.status == "needs_clarification":
+            if not self.candidate_values or not self.clarification_question:
+                raise ValueError(
+                    "needs_clarification requires candidate_values and clarification_question."
+                )
+            if self.resolved_values:
+                raise ValueError("needs_clarification cannot contain resolved_values.")
+        elif self.status == "not_found":
+            if self.resolved_values or self.candidate_values or self.clarification_question:
+                raise ValueError(
+                    "not_found filter cannot contain resolved values, candidate values, "
+                    "or clarification_question."
+                )
+        if self.field == "product":
+            values = [*self.resolved_values, *self.candidate_values]
+            if any(not isinstance(value, int) or value <= 0 for value in values):
+                raise ValueError("Resolved product filters require positive item IDs.")
+        return self
+
+
 class ResolvedSemanticEntity(StrictModel):
+    """Legacy product-only resolution model retained for compatibility."""
+
     entity_id: str = Field(pattern=r"^e\d{3}$")
     search_text: str = Field(min_length=1, max_length=500)
     status: Literal["resolved", "needs_clarification", "not_found"]

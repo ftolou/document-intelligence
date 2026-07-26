@@ -4,6 +4,8 @@ import json
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 from receipt_intelligence.rag.vector_codec import vector_to_blob
 from receipt_intelligence.services.database_receipt_editor import DatabaseReceiptEditor
 from receipt_intelligence.services.review_service import ReviewService
@@ -56,6 +58,21 @@ def _seed_embeddings(database: ReceiptDatabase, item_ids: list[int]) -> None:
         connection.commit()
 
 
+def _review_submission(
+    editor: DatabaseReceiptEditor,
+    receipt_id: int,
+    corrections: list[dict],
+) -> tuple[dict, list[dict]]:
+    loaded = editor.load(receipt_id)
+    identity = dict(loaded["review_identity"])
+    item_ids = list(identity["item_ids"])
+    submitted = []
+    for correction in corrections:
+        index = int(correction["index"])
+        submitted.append({**correction, "item_id": item_ids[index]})
+    return identity, submitted
+
+
 def test_database_editor_reindexes_only_product_text_changes(tmp_path: Path) -> None:
     database = ReceiptDatabase(tmp_path / "receipt.db")
     imported = database.import_receipt(job_id="job-1", receipt=_receipt())
@@ -82,14 +99,20 @@ def test_database_editor_reindexes_only_product_text_changes(tmp_path: Path) -> 
         ReviewService(JobStore(tmp_path / "jobs"), database),
         reindex_callback=reindex,
     )
-    result = editor.save(
+    identity, corrections = _review_submission(
+        editor,
         imported.receipt_db_id,
-        fields={"merchant_name": "REWE CITY"},
-        item_corrections=[
+        [
             {"index": 0, "product_description": "VITTEL CLASSIC"},
             {"index": 1, "category_group": "Health", "category_key": "dental"},
         ],
+    )
+    result = editor.save(
+        imported.receipt_db_id,
+        fields={"merchant_name": "REWE CITY"},
+        item_corrections=corrections,
         review={"status": "approved", "reviewer": "tester"},
+        identity=identity,
     )
 
     assert reindex_calls == [item_ids]
@@ -124,14 +147,20 @@ def test_category_only_edit_reindexes_affected_item(tmp_path: Path) -> None:
         ReviewService(JobStore(tmp_path / "jobs"), database),
         reindex_callback=lambda ids: reindex_calls.append(ids) or {"status": "current"},
     )
-    result = editor.save(
+    identity, corrections = _review_submission(
+        editor,
         imported.receipt_db_id,
-        fields={},
-        item_corrections=[
+        [
             {"index": 0, "category_group": "Beverages", "category_key": "mineral_water"},
             {"index": 1},
         ],
+    )
+    result = editor.save(
+        imported.receipt_db_id,
+        fields={},
+        item_corrections=corrections,
         review={"status": "approved"},
+        identity=identity,
     )
 
     assert reindex_calls == [[item_id]]
@@ -162,14 +191,20 @@ def test_embedding_failure_does_not_rollback_database_edit(tmp_path: Path) -> No
         ReviewService(JobStore(tmp_path / "jobs"), database),
         reindex_callback=fail_reindex,
     )
-    result = editor.save(
+    identity, corrections = _review_submission(
+        editor,
         imported.receipt_db_id,
-        fields={},
-        item_corrections=[
+        [
             {"index": 0, "product_description": "VITTEL NATURELLE"},
             {"index": 1},
         ],
+    )
+    result = editor.save(
+        imported.receipt_db_id,
+        fields={},
+        item_corrections=corrections,
         review={"status": "approved"},
+        identity=identity,
     )
 
     assert result["semantic_index"]["status"] == "failed"
@@ -193,10 +228,10 @@ def test_semantic_description_edit_reindexes_only_affected_item(tmp_path: Path) 
         ReviewService(JobStore(tmp_path / "jobs"), database),
         reindex_callback=lambda ids: reindex_calls.append(ids) or {"status": "current"},
     )
-    result = editor.save(
+    identity, corrections = _review_submission(
+        editor,
         imported.receipt_db_id,
-        fields={},
-        item_corrections=[
+        [
             {
                 "index": 0,
                 "semantic_description": "Vittel is bottled mineral water.",
@@ -204,7 +239,13 @@ def test_semantic_description_edit_reindexes_only_affected_item(tmp_path: Path) 
             },
             {"index": 1},
         ],
+    )
+    result = editor.save(
+        imported.receipt_db_id,
+        fields={},
+        item_corrections=corrections,
         review={"status": "approved"},
+        identity=identity,
     )
 
     assert reindex_calls == [[item_ids[0]]]
@@ -252,11 +293,17 @@ def test_first_approval_indexes_all_items_and_refreshes_validation_state(tmp_pat
         ReviewService(JobStore(tmp_path / "jobs"), database),
         reindex_callback=lambda ids: reindex_calls.append(ids) or {"status": "current"},
     )
+    identity, corrections = _review_submission(
+        editor,
+        imported.receipt_db_id,
+        [{"index": 0}, {"index": 1}],
+    )
     result = editor.save(
         imported.receipt_db_id,
         fields={},
-        item_corrections=[{"index": 0}, {"index": 1}],
+        item_corrections=corrections,
         review={"status": "approved", "reviewer": "tester"},
+        identity=identity,
     )
 
     assert reindex_calls == [item_ids]
@@ -270,3 +317,53 @@ def test_first_approval_indexes_all_items_and_refreshes_validation_state(tmp_pat
     assert queue[0]["decision"] == "import"
     assert queue[0]["balanced"] == 1
     assert json.loads(queue[0]["raw_json"])["validation"]["import_decision"] == "import"
+
+
+def test_database_editor_rejects_stale_review_revision(tmp_path: Path) -> None:
+    database = ReceiptDatabase(tmp_path / "stale.db")
+    imported = database.import_receipt(job_id="job-stale", receipt=_receipt())
+    editor = DatabaseReceiptEditor(database, ReviewService(JobStore(tmp_path / "jobs"), database))
+    identity, corrections = _review_submission(
+        editor,
+        imported.receipt_db_id,
+        [{"index": 0}, {"index": 1}],
+    )
+    identity["updated_at"] = "2000-01-01T00:00:00+00:00"
+
+    with pytest.raises(ValueError, match="stale"):
+        editor.save(
+            imported.receipt_db_id,
+            fields={"merchant_name": "WRONG"},
+            item_corrections=corrections,
+            review={"status": "approved"},
+            identity=identity,
+        )
+
+    stored = database.get_receipt_edit_document(imported.receipt_db_id)
+    assert stored is not None
+    assert stored["merchant"]["name"] == "REWE"
+
+
+def test_database_editor_rejects_cross_receipt_item_identity(tmp_path: Path) -> None:
+    database = ReceiptDatabase(tmp_path / "cross-receipt.db")
+    first = database.import_receipt(job_id="job-first", receipt=_receipt())
+    second_receipt = _receipt()
+    second_receipt["merchant"] = {"name": "ARAL"}
+    second = database.import_receipt(job_id="job-second", receipt=second_receipt)
+    editor = DatabaseReceiptEditor(database, ReviewService(JobStore(tmp_path / "jobs"), database))
+    identity, corrections = _review_submission(
+        editor,
+        first.receipt_db_id,
+        [{"index": 0}, {"index": 1}],
+    )
+    foreign_identity = editor.load(second.receipt_db_id)["review_identity"]
+    corrections[0]["item_id"] = foreign_identity["item_ids"][0]
+
+    with pytest.raises(ValueError, match="does not match"):
+        editor.save(
+            first.receipt_db_id,
+            fields={},
+            item_corrections=corrections,
+            review={"status": "approved"},
+            identity=identity,
+        )

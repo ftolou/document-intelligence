@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from receipt_intelligence.application.generation import (
     LegacyGenerateFunction,
@@ -16,6 +18,7 @@ from receipt_intelligence.application.ports.llm import (
     ModelCallMetrics,
 )
 from receipt_intelligence.prompts import render_prompt_template
+from receipt_intelligence.rag_sql.filter_definitions import render_analysis_filter_catalog
 from receipt_intelligence.rag_sql.models import QuestionAnalysisPayload, QuestionAnalysisResult
 
 
@@ -95,6 +98,8 @@ class RagSqlQuestionAnalyzer:
                 )
             prompt = render_prompt_template(
                 "rag_sql_question_analyzer.txt",
+                TODAY=datetime.now(ZoneInfo("Europe/Berlin")).date().isoformat(),
+                FILTER_CAPABILITIES=render_analysis_filter_catalog(),
                 QUESTION=normalized_question,
                 RETRY_BLOCK=retry_block,
             )
@@ -119,9 +124,9 @@ class RagSqlQuestionAnalyzer:
                 if generation.metrics is not None:
                     ollama_calls.append(generation.metrics)
                 payload = QuestionAnalysisPayload.model_validate(parse_json_from_llm(generation))
-                if len(payload.entities) > self.config.maximum_entities:
+                if len(payload.filters) > self.config.maximum_entities:
                     raise ValueError(
-                        f"The analysis returned {len(payload.entities)} entities; maximum is "
+                        f"The analysis returned {len(payload.filters)} filters; maximum is "
                         f"{self.config.maximum_entities}."
                     )
                 return QuestionAnalysisResult(

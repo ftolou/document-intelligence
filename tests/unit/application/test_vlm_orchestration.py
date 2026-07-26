@@ -82,8 +82,8 @@ def test_optional_engine_delegates_and_persists_result(tmp_path: Path) -> None:
 
 def test_composition_selects_remote_client_for_application(tmp_path: Path) -> None:
     from receipt_intelligence.adapters.vlm import RemoteVlmClient
-    from receipt_intelligence.composition import build_client_vlm_engine
     from receipt_intelligence.extraction.config import ExtractionConfig
+    from receipt_intelligence.vlm_client_composition import build_client_vlm_engine
 
     config = ExtractionConfig(
         ocr_json_path=tmp_path / "ocr.json",
@@ -102,15 +102,24 @@ def test_composition_selects_remote_client_for_application(tmp_path: Path) -> No
     assert isinstance(engine.delegate, RemoteVlmClient)
 
 
-def test_composition_places_auto_fallback_outside_local_adapters() -> None:
-    from receipt_intelligence.adapters.vlm import PaddleCliVlmEngine, PaddlePythonVlmEngine
-    from receipt_intelligence.composition import build_vlm_service_engine
+def test_legacy_local_backend_name_still_routes_to_remote_service(tmp_path: Path) -> None:
+    from receipt_intelligence.adapters.vlm import RemoteVlmClient
+    from receipt_intelligence.extraction.config import ExtractionConfig
+    from receipt_intelligence.vlm_client_composition import build_client_vlm_engine
 
-    engine = build_vlm_service_engine(
-        backend_name="paddleocr_vl",
-        runner_name="auto",
+    config = ExtractionConfig(
+        ocr_json_path=tmp_path / "ocr.json",
+        result_dir=tmp_path,
+        run_id="run-legacy-local",
+        ollama_url="http://ollama:11434",
+        model="test-model",
+        vlm_enabled=True,
+        vlm_backend="paddleocr_vl",
+        vlm_service_url="http://receipt-vlm:7870",
     )
 
-    assert isinstance(engine, FallbackVlmEngine)
-    assert isinstance(engine.primary, PaddlePythonVlmEngine)
-    assert isinstance(engine.fallback, PaddleCliVlmEngine)
+    engine = build_client_vlm_engine(config)
+
+    assert isinstance(engine, OptionalVlmEngine)
+    assert isinstance(engine.delegate, RemoteVlmClient)
+    assert engine.backend_name == "http_service"

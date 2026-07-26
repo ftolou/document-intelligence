@@ -11,9 +11,11 @@ from receipt_intelligence.rag_sql.answer_formatter import (
 )
 from receipt_intelligence.rag_sql.formatter import DeterministicAnswerDecision
 from receipt_intelligence.rag_sql.models import (
+    JsonScalar,
     QuestionAnalysisResult,
     RagSqlPlanResult,
     RagSqlResponse,
+    ResolvedQueryFilter,
     ResolvedSemanticEntity,
     SqlExecutionResult,
     ValidatedSqlPlan,
@@ -30,7 +32,7 @@ class RagSqlGraphConfig:
 
 
 RagSqlGraphRoute = Literal[
-    "retrieve",
+    "resolve",
     "plan",
     "validate",
     "repair",
@@ -51,10 +53,14 @@ class RagSqlGraphState(TypedDict, total=False):
     route: RagSqlGraphRoute
 
     analysis: QuestionAnalysisResult
+    filter_index: int
+    resolved_filters: list[ResolvedQueryFilter]
+    filter_diagnostics: list[dict[str, object]]
+    # Compatibility keys for legacy tests and diagnostics.
     entity_index: int
     resolved_entities: list[ResolvedSemanticEntity]
     retrieval_diagnostics: list[dict[str, object]]
-    protected_parameters: dict[str, int]
+    protected_parameters: dict[str, JsonScalar]
 
     plan: RagSqlPlanResult
     validated_plan: ValidatedSqlPlan

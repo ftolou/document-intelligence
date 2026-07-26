@@ -11,6 +11,9 @@ from receipt_intelligence.adapters.llm import ObservedLlmGateway, OllamaGateway
 from receipt_intelligence.adapters.storage.sqlite.analytical_query import (
     SQLiteAnalyticalQueryRepository,
 )
+from receipt_intelligence.adapters.storage.sqlite.filter_catalog import (
+    SQLiteFilterValueCatalog,
+)
 from receipt_intelligence.adapters.storage.sqlite.semantic_search import (
     SQLiteSemanticSearchRepository,
 )
@@ -192,6 +195,7 @@ def build_rag_sql_engine(
         analyzer=RagSqlQuestionAnalyzer(config.analyzer, llm_gateway=llm_gateway),
         retriever=retriever,
         resolver=CandidateResolver(config.resolver, llm_gateway=llm_gateway),
+        filter_catalog=SQLiteFilterValueCatalog(config.database_path),
         planner=RagSqlPlanner(config.planner, llm_gateway=llm_gateway),
         answer_formatter=(
             EvidenceBoundAnswerFormatter(config.answer_formatter, llm_gateway=llm_gateway)

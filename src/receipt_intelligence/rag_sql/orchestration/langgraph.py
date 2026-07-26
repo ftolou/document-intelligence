@@ -63,20 +63,17 @@ class LangGraphRagSqlOrchestratorFactory:
 def compile_rag_sql_graph(components: RagSqlComponents) -> Any:
     nodes = RagSqlGraphNodes(
         analyzer=components.analyzer,
-        retriever=components.retriever,
-        resolver=components.resolver,
+        filter_resolver=components.filter_resolver,
         planner=components.planner,
         validator=components.validator,
         executor=components.executor,
         answer_formatter=components.answer_formatter,
-        retrieval_limit=components.retrieval_limit,
-        retrieval_minimum_score=components.retrieval_minimum_score,
         validation_repair_count=components.validation_repair_count,
     )
 
     graph = StateGraph(RagSqlGraphState)
     graph.add_node("analyze_question", nodes.analyze_question)
-    graph.add_node("retrieve_entity", nodes.retrieve_entity)
+    graph.add_node("resolve_filter", nodes.resolve_filter)
     graph.add_node("generate_sql", nodes.generate_sql)
     graph.add_node("validate_sql", nodes.validate_sql)
     graph.add_node("repair_sql", nodes.repair_sql)
@@ -93,17 +90,17 @@ def compile_rag_sql_graph(components: RagSqlComponents) -> Any:
         "analyze_question",
         lambda state: state.get("route", "fail"),
         {
-            "retrieve": "retrieve_entity",
+            "resolve": "resolve_filter",
             "plan": "generate_sql",
             "terminal": "terminal",
             "fail": "failure",
         },
     )
     graph.add_conditional_edges(
-        "retrieve_entity",
+        "resolve_filter",
         lambda state: state.get("route", "fail"),
         {
-            "retrieve": "retrieve_entity",
+            "resolve": "resolve_filter",
             "plan": "generate_sql",
             "terminal": "terminal",
             "fail": "failure",
@@ -179,9 +176,9 @@ def run_compiled_rag_sql_graph(
                 "stages": [],
                 "graph_trace": [],
             },
-            "entity_index": 0,
-            "resolved_entities": [],
-            "retrieval_diagnostics": [],
+            "filter_index": 0,
+            "resolved_filters": [],
+            "filter_diagnostics": [],
             "validation_attempt": 1,
         },
         config={"recursion_limit": graph_config.recursion_limit},

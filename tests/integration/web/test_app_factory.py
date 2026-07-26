@@ -328,6 +328,7 @@ def test_database_review_endpoint_uses_authoritative_database_even_with_artifact
         assert payload["save_url"] == (f"/api/receipt-db/receipts/{imported.receipt_db_id}/review")
         assert payload["save_method"] == "PUT"
         assert payload["read_only_reason"] is None
+        assert payload["review_identity"]["receipt_id"] == imported.receipt_db_id
 
 
 def test_database_review_endpoint_is_editable_without_any_job_artifact() -> None:
@@ -356,6 +357,7 @@ def test_database_review_endpoint_is_editable_without_any_job_artifact() -> None
         assert payload["save_url"] == (f"/api/receipt-db/receipts/{imported.receipt_db_id}/review")
         assert payload["save_method"] == "PUT"
         assert payload["read_only_reason"] is None
+        assert payload["review_identity"]["receipt_id"] == imported.receipt_db_id
 
 
 def test_database_review_put_updates_sqlite_without_artifacts() -> None:
@@ -382,6 +384,13 @@ def test_database_review_put_updates_sqlite_without_artifacts() -> None:
             },
         )
 
+        review_payload = (
+            app.test_client()
+            .get(f"/api/receipt-db/receipts/{imported.receipt_db_id}/review")
+            .get_json()
+        )
+        item_id = review_payload["review_identity"]["item_ids"][0]
+
         with patch(
             "receipt_intelligence.services.semantic_index_service.settings.RAG_EMBEDDING_ENABLED",
             False,
@@ -389,10 +398,12 @@ def test_database_review_put_updates_sqlite_without_artifacts() -> None:
             response = app.test_client().put(
                 f"/api/receipt-db/receipts/{imported.receipt_db_id}/review",
                 json={
+                    "identity": review_payload["review_identity"],
                     "fields": {"merchant_name": "REWE CITY", "grand_total": 3.5},
                     "items": [
                         {
                             "index": 0,
+                            "item_id": item_id,
                             "product_description": "VITTEL CLASSIC",
                             "category_group": "Beverages",
                             "category_key": "mineral_water",
@@ -446,11 +457,13 @@ def test_job_review_prefers_and_can_update_approved_data_without_job_status() ->
 
         get_response = app.test_client().get("/api/review/durable-job")
         assert get_response.status_code == 200
-        assert get_response.get_json()["receipt"]["merchant"]["name"] == "APPROVED"
+        loaded = get_response.get_json()
+        assert loaded["receipt"]["merchant"]["name"] == "APPROVED"
 
         save_response = app.test_client().post(
             "/api/review/durable-job",
             json={
+                "identity": loaded["review_identity"],
                 "fields": {"merchant_name": "CORRECTED"},
                 "items": [],
                 "review": {"status": "approved", "reviewer": "tester"},

@@ -336,6 +336,22 @@ class ExtractionContext:
         self.require_repair().corrected_semantic_suspicion_result = value
 
     @property
+    def semantic_suspicion_result(self) -> JsonObject | None:
+        return self.repair.semantic_suspicion_result if self.repair is not None else None
+
+    @semantic_suspicion_result.setter
+    def semantic_suspicion_result(self, value: JsonObject | None) -> None:
+        self.require_repair().semantic_suspicion_result = value
+
+    @property
+    def corrected_semantic_suspicion_result(self) -> JsonObject | None:
+        return self.repair.corrected_semantic_suspicion_result if self.repair is not None else None
+
+    @corrected_semantic_suspicion_result.setter
+    def corrected_semantic_suspicion_result(self, value: JsonObject | None) -> None:
+        self.require_repair().corrected_semantic_suspicion_result = value
+
+    @property
     def correction_used(self) -> bool:
         return self.repair.correction_used if self.repair is not None else False
 

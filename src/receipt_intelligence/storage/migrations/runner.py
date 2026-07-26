@@ -14,7 +14,7 @@ from pathlib import Path
 
 from receipt_intelligence.storage.connection import SQLiteConnectionFactory
 
-LATEST_SCHEMA_VERSION = 7
+LATEST_SCHEMA_VERSION = 8
 
 
 @dataclass(frozen=True)
@@ -86,6 +86,7 @@ class MigrationRunner:
             Migration(5, "rag_sql_analytics_views", self._apply_rag_sql_analytics_views),
             Migration(6, "reviewed_product_semantics", self._apply_reviewed_product_semantics),
             Migration(7, "model_call_observability", self._apply_model_call_observability),
+            Migration(8, "approved_analytics_boundary", self._apply_approved_analytics_boundary),
         ]
 
     def _apply_sql(self, connection: sqlite3.Connection, filename: str) -> None:
@@ -168,6 +169,9 @@ class MigrationRunner:
 
     def _apply_model_call_observability(self, connection: sqlite3.Connection) -> None:
         self._apply_sql(connection, "007_model_call_observability.sql")
+
+    def _apply_approved_analytics_boundary(self, connection: sqlite3.Connection) -> None:
+        self._apply_sql(connection, "008_approved_analytics_boundary.sql")
 
     def _apply_reviewed_product_semantics(self, connection: sqlite3.Connection) -> None:
         self._add_missing_columns(

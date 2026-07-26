@@ -87,3 +87,112 @@ def test_validator_rejects_merchant_as_product_brand() -> None:
                 result_entity="product_brand",
             )
         )
+
+
+def test_validator_enforces_merchant_parameter_column_binding() -> None:
+    from receipt_intelligence.rag_sql.models import ResolvedQueryFilter
+
+    resolved = ResolvedQueryFilter(
+        filter_id="f001",
+        field="merchant",
+        operator="matches",
+        original_value="ARAL",
+        status="resolved",
+        resolved_values=["aral"],
+    )
+    plan = _plan(
+        "SELECT COUNT(*) AS value FROM analytics_purchase_items WHERE merchant = :f001_merchant_0",
+        {"f001_merchant_0": "aral"},
+    )
+
+    validated = RagSqlValidator().validate(
+        plan,
+        protected_parameters={"f001_merchant_0": "aral"},
+        resolved_filters=[resolved],
+    )
+
+    assert validated.placeholder_names == ["f001_merchant_0"]
+
+
+def test_validator_rejects_merchant_parameter_bound_to_product_description() -> None:
+    from receipt_intelligence.rag_sql.models import ResolvedQueryFilter
+
+    resolved = ResolvedQueryFilter(
+        filter_id="f001",
+        field="merchant",
+        operator="matches",
+        original_value="ARAL",
+        status="resolved",
+        resolved_values=["aral"],
+    )
+    plan = _plan(
+        "SELECT COUNT(*) AS value FROM analytics_purchase_items "
+        "WHERE description = :f001_merchant_0",
+        {"f001_merchant_0": "aral"},
+    )
+
+    with pytest.raises(SqlValidationError, match="must constrain merchant"):
+        RagSqlValidator().validate(
+            plan,
+            protected_parameters={"f001_merchant_0": "aral"},
+            resolved_filters=[resolved],
+        )
+
+
+def test_validator_enforces_between_filter_operator() -> None:
+    from receipt_intelligence.rag_sql.models import ResolvedQueryFilter
+
+    resolved = ResolvedQueryFilter(
+        filter_id="f001",
+        field="purchase_date",
+        operator="between",
+        original_value=["2026-01-01", "2026-12-31"],
+        status="resolved",
+        resolved_values=["2026-01-01", "2026-12-31"],
+    )
+    parameters = {
+        "f001_date_0": "2026-01-01",
+        "f001_date_1": "2026-12-31",
+    }
+    plan = _plan(
+        "SELECT COUNT(*) AS value FROM analytics_receipts "
+        "WHERE receipt_date BETWEEN :f001_date_0 AND :f001_date_1",
+        parameters,
+    )
+
+    validated = RagSqlValidator().validate(
+        plan,
+        protected_parameters=parameters,
+        resolved_filters=[resolved],
+    )
+
+    assert validated.placeholder_names == ["f001_date_0", "f001_date_1"]
+
+
+def test_validator_rejects_between_bounds_split_across_amount_columns() -> None:
+    from receipt_intelligence.rag_sql.models import ResolvedQueryFilter
+
+    resolved = ResolvedQueryFilter(
+        filter_id="f001",
+        field="amount",
+        operator="between",
+        original_value=[10.0, 20.0],
+        status="resolved",
+        resolved_values=[10.0, 20.0],
+    )
+    parameters = {
+        "f001_amount_0": 10.0,
+        "f001_amount_1": 20.0,
+    }
+    plan = _plan(
+        "SELECT COUNT(*) AS value FROM analytics_purchase_items "
+        "WHERE line_total >= :f001_amount_0 AND grand_total <= :f001_amount_1",
+        parameters,
+    )
+
+    with pytest.raises(SqlValidationError, match="must constrain grand_total, line_total"):
+        RagSqlValidator().validate(
+            plan,
+            protected_parameters=parameters,
+            resolved_filters=[resolved],
+        )

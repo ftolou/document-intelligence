@@ -21,6 +21,7 @@ python -m pip install -r requirements/app.txt -r requirements/dev.txt
 ```powershell
 python scripts/run_tests.py
 python -m pytest
+python scripts/check_python_runtime_contract.py
 python scripts/run_quality_checks.py
 python -m mypy src/receipt_intelligence/rag_sql
 ```
@@ -59,3 +60,10 @@ After an app-runtime dependency rebuild, validate Requests compatibility with:
 ```powershell
 python scripts/check_dependency_compatibility.py
 ```
+
+## Python baselines
+
+The main application targets Python 3.11 and Ruff `py311`. The standalone VLM
+service intentionally retains the known-working Python 3.10 CUDA/Paddle runtime
+and has its own Ruff `py310` configuration under `services/receipt-vlm`. The two
+processes communicate only through HTTP and do not share Python imports.

@@ -12,9 +12,7 @@ from receipt_intelligence.storage.connection import SQLiteConnectionFactory
 
 _PURCHASE_ITEM_TYPES = ("item", "product", "purchase_item", "purchased_product")
 _APPROVED_RECEIPT_PREDICATE = (
-    "(r.approved_receipt_path IS NOT NULL OR "
-    "lower(COALESCE(r.review_status, '')) IN "
-    "('approved', 'accepted', 'saved', 'complete', 'completed'))"
+    "lower(COALESCE(r.review_status, '')) IN ('approved', 'accepted', 'complete', 'completed')"
 )
 
 
@@ -152,6 +150,7 @@ class SQLiteSemanticSearchRepository:
             parameters.append(embedding_model)
         clauses.append("lower(COALESCE(i.parser_item_type, 'item')) IN (?, ?, ?, ?)")
         parameters.extend(_PURCHASE_ITEM_TYPES)
+        clauses.append("lower(COALESCE(i.review_status, '')) NOT IN ('rejected', 'needs_review')")
         if approved_only:
             clauses.append(_APPROVED_RECEIPT_PREDICATE)
 

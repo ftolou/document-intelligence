@@ -13,12 +13,13 @@ from receipt_intelligence.web.request_parsing import as_bool
 receipts_bp = Blueprint("receipts", __name__)
 
 
-def _review_input() -> tuple[dict, list, dict]:
+def _review_input() -> tuple[dict, list, dict, dict]:
     payload = request.get_json(silent=True) or {}
     fields = payload.get("fields") if isinstance(payload.get("fields"), dict) else {}
     items = payload.get("items") if isinstance(payload.get("items"), list) else []
     review = payload.get("review") if isinstance(payload.get("review"), dict) else {}
-    return fields, items, review
+    identity = payload.get("identity") if isinstance(payload.get("identity"), dict) else {}
+    return fields, items, review, identity
 
 
 @receipts_bp.get("/api/receipt-db/summary")
@@ -70,13 +71,14 @@ def receipt_db_get_review(receipt_id: int):
 
 @receipts_bp.put("/api/receipt-db/receipts/<int:receipt_id>/review")
 def receipt_db_update_review(receipt_id: int):
-    fields, item_corrections, review = _review_input()
+    fields, item_corrections, review, identity = _review_input()
     try:
         result = get_app_services().receipts.save_review(
             receipt_id,
             fields=fields,
             item_corrections=item_corrections,
             review=review,
+            identity=identity,
         )
         return jsonify(present_review(result))
     except ApplicationError as exc:

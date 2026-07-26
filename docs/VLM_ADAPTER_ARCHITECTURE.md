@@ -1,53 +1,42 @@
-# VLM adapter architecture
+# VLM service architecture
 
-The visual-model subsystem is separated into transport, application policy, and infrastructure adapters.
-
-## Dependency direction
+The receipt application and PaddleOCR-VL service are separate processes with
+independent Python and dependency baselines.
 
 ```text
-entrypoints/vlm_http
-        |
-        v
-application/vlm
-        |
-        v
-application/ports/vlm
-        ^
-        |
-adapters/vlm
+receipt-app (Python 3.11)
+    RemoteVlmClient
+          |
+          | HTTP/JSON + shared image path
+          v
+receipt-vlm (Python 3.10)
+    receipt_vlm_service
+          |
+          v
+    paddleocr doc_parser CLI
 ```
 
-The Flask service maps HTTP requests to `VlmAnalysisService`. It does not import PaddleOCR-VL runners or command execution functions directly.
+## Boundary rules
 
-## Adapters
+- `receipt-app` never imports PaddleOCR, PaddleX, Torch, or the VLM CLI adapter.
+- `receipt-vlm` never imports `receipt_intelligence`, LLM, RAG, storage, review,
+  or query-observability modules.
+- The VLM image copies only `services/receipt-vlm/src`.
+- The development override mounts only that service source directory, not the
+  complete repository.
+- The API contract is `GET /health` and `POST /api/vlm/analyze`.
+- Runtime configuration is server-owned. Request payloads cannot choose the
+  command, runner, timeout, device, engine, or resize limit.
 
-- `PaddlePythonVlmEngine` runs the PaddleOCR-VL Python API.
-- `PaddleCliVlmEngine` runs the supported `paddleocr doc_parser` command.
-- `RemoteVlmClient` calls the standalone VLM service.
-- `TrustedCommandVlmEngine` runs a deployment-owned command template without a shell.
+## Runtime contracts
 
-Every adapter implements `VlmEngine` and receives a provider-neutral `VlmRequest`.
+The main application uses Python 3.11 and Ruff `py311`. The known-working CUDA
+12.6 VLM runtime remains on Ubuntu 22.04 Python 3.10 and uses its own Ruff
+`py310` configuration in `services/receipt-vlm/pyproject.toml`.
 
-## Application policies
-
-`FallbackVlmEngine` owns Python-to-CLI fallback behavior. Concrete adapters do not select or invoke other adapters.
-
-`OptionalVlmEngine` owns enablement checks, missing-image handling, progress events, and persistence of the application-side VLM result.
-
-`VlmAnalysisService` owns image preparation and result enrichment for the standalone service.
-
-## Composition
-
-`receipt_intelligence.composition` is the only module that selects concrete adapters. The receipt application normally uses `RemoteVlmClient`. Local execution can be enabled through trusted deployment configuration.
-
-The standalone service selects its local runner at startup. Request payloads cannot select backends, commands, timeouts, runners, or resize limits.
-
-## Removing obsolete modules
-
-After extracting the patch over an existing repository, run:
+Run:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\apply_repository_cleanup.ps1
+python scripts/check_python_runtime_contract.py
+python scripts/check_vlm_architecture.py
 ```
-
-The script removes the former monolithic VLM engine, the former service module, and the temporary compatibility adapter. It is safe to run more than once.

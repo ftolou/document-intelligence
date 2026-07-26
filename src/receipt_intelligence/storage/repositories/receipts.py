@@ -362,6 +362,9 @@ class ReceiptRepository(BaseRepository):
         self,
         receipt_id: int,
         receipt: dict[str, Any],
+        *,
+        expected_job_id: str,
+        expected_updated_at: str,
     ) -> dict[str, Any]:
         """Persist a reviewed receipt transactionally without replacing item identities.
 
@@ -391,11 +394,15 @@ class ReceiptRepository(BaseRepository):
 
         with self.connect() as connection:
             stored_receipt = connection.execute(
-                "SELECT id, job_id, review_status FROM receipts WHERE id = ?",
+                "SELECT id, job_id, review_status, updated_at FROM receipts WHERE id = ?",
                 (int(receipt_id),),
             ).fetchone()
             if stored_receipt is None:
                 raise KeyError("receipt not found")
+            if as_str(stored_receipt["job_id"]) != as_str(expected_job_id):
+                raise ValueError("review job identity changed; reload the receipt")
+            if as_str(stored_receipt["updated_at"]) != as_str(expected_updated_at):
+                raise ValueError("review state changed while saving; reload the receipt")
             stored_items = connection.execute(
                 """
                 SELECT id, item_index, raw_name, normalized_name, category,
@@ -424,9 +431,9 @@ class ReceiptRepository(BaseRepository):
                 if not isinstance(item, dict):
                     raise ValueError(f"item {index} must be an object")
                 raw_id = item.get("_db_item_id")
-                item_id = (
-                    int(raw_id) if raw_id not in (None, "") else int(stored_items[index]["id"])
-                )
+                if raw_id in (None, ""):
+                    raise ValueError(f"item {index} is missing its database identity")
+                item_id = int(raw_id)
                 if item_id not in stored_by_id or item_id in seen_item_ids:
                     raise ValueError(f"item {index} has an invalid database identity")
                 seen_item_ids.add(item_id)

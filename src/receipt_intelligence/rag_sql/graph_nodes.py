@@ -5,10 +5,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 
-from receipt_intelligence.rag.candidate_resolver import (
-    CandidateResolutionError,
-    CandidateResolver,
-)
+from receipt_intelligence.rag.candidate_resolver import CandidateResolutionError
 from receipt_intelligence.rag_sql.answer_formatter import (
     AnswerFormattingError,
     AnswerValidationResult,
@@ -17,19 +14,20 @@ from receipt_intelligence.rag_sql.answer_formatter import (
     validate_answer_formatter_result,
 )
 from receipt_intelligence.rag_sql.executor import ReadOnlySqlExecutor, SqlExecutionError
+from receipt_intelligence.rag_sql.filter_resolution import (
+    FilterResolutionError,
+    QueryFilterResolver,
+)
 from receipt_intelligence.rag_sql.formatter import (
     DeterministicAnswerDecision,
     classify_rag_sql_outcome,
 )
 from receipt_intelligence.rag_sql.graph_state import RagSqlGraphState
 from receipt_intelligence.rag_sql.graph_support import (
-    RagSqlRetrievalError,
-    SemanticRetriever,
     append_graph_trace,
     append_stage,
     attach_model_call_summary,
     error_response,
-    map_resolved_entity,
     model_call_details,
     terminal_response,
 )
@@ -37,7 +35,7 @@ from receipt_intelligence.rag_sql.models import RagSqlResponse
 from receipt_intelligence.rag_sql.planner import (
     RagSqlPlanner,
     RagSqlPlanningError,
-    build_protected_item_parameters,
+    build_protected_filter_parameters,
 )
 from receipt_intelligence.rag_sql.question_analyzer import (
     QuestionAnalysisError,
@@ -49,14 +47,11 @@ from receipt_intelligence.rag_sql.validator import RagSqlValidator, SqlValidatio
 @dataclass(slots=True)
 class RagSqlGraphNodes:
     analyzer: RagSqlQuestionAnalyzer
-    retriever: SemanticRetriever
-    resolver: CandidateResolver
+    filter_resolver: QueryFilterResolver
     planner: RagSqlPlanner
     validator: RagSqlValidator
     executor: ReadOnlySqlExecutor
     answer_formatter: EvidenceBoundAnswerFormatter | None
-    retrieval_limit: int
-    retrieval_minimum_score: float | None
     validation_repair_count: int
 
     @staticmethod
@@ -95,7 +90,7 @@ class RagSqlGraphNodes:
                 exc=exc,
                 diagnostics=diagnostics,
             )
-        except Exception as exc:  # defensive boundary around provider adapters
+        except Exception as exc:
             return self._failure(
                 state,
                 node="analyze_question",
@@ -104,6 +99,10 @@ class RagSqlGraphNodes:
                 diagnostics=diagnostics,
             )
 
+        resolution_filter_count = sum(
+            value.field in {"product", "merchant", "category", "payment_method", "currency"}
+            for value in analysis.filters
+        )
         append_stage(
             diagnostics,
             "analyze_question",
@@ -111,6 +110,8 @@ class RagSqlGraphNodes:
             analysis.duration_ms,
             {
                 "status": analysis.status,
+                "filter_count": len(analysis.filters),
+                "resolution_filter_count": resolution_filter_count,
                 "requires_product_resolution": analysis.requires_product_resolution,
                 "entity_count": len(analysis.entities),
                 "attempts": analysis.attempts,
@@ -137,159 +138,132 @@ class RagSqlGraphNodes:
                 or "The question is not supported by receipt analytics.",
             }
         else:
-            route = "retrieve" if analysis.entities else "plan"
+            route = "resolve" if analysis.filters else "plan"
             result = {
                 "analysis": analysis,
-                "entity_index": 0,
-                "resolved_entities": [],
-                "retrieval_diagnostics": [],
+                "filter_index": 0,
+                "resolved_filters": [],
+                "filter_diagnostics": [],
             }
 
         append_graph_trace(diagnostics, node="analyze_question", route=route)
         result.update({"diagnostics": diagnostics, "route": route})
         return result
 
-    def retrieve_entity(self, state: RagSqlGraphState) -> RagSqlGraphState:
+    def resolve_filter(self, state: RagSqlGraphState) -> RagSqlGraphState:
         diagnostics = self._diagnostics(state)
         analysis = state["analysis"]
-        entity_index = int(state.get("entity_index", 0))
-        if entity_index >= len(analysis.entities):
-            append_graph_trace(diagnostics, node="retrieve_entity", route="plan")
+        filter_index = int(state.get("filter_index", 0))
+        if filter_index >= len(analysis.filters):
+            append_graph_trace(diagnostics, node="resolve_filter", route="plan")
             return {"diagnostics": diagnostics, "route": "plan"}
 
-        entity = analysis.entities[entity_index]
-        search_started = time.perf_counter()
+        query_filter = analysis.filters[filter_index]
         try:
-            search_result = self.retriever.search(
-                entity.search_text,
-                limit=self.retrieval_limit,
-                minimum_score=self.retrieval_minimum_score,
-            )
-        except Exception as exc:
-            wrapped = RagSqlRetrievalError(
-                f"Retrieval failed for {entity.entity_id}/{entity.search_text!r}: "
-                f"{type(exc).__name__}: {exc}"
-            )
-            return self._failure(
-                state,
-                node="retrieve_entity",
-                error_code="semantic_retrieval_failed",
-                exc=wrapped,
-                diagnostics=diagnostics,
-            )
-
-        search_duration_ms = (time.perf_counter() - search_started) * 1000.0
-        retrieval_diagnostics = list(state.get("retrieval_diagnostics") or [])
-        retrieval_event = {
-            "entity_id": entity.entity_id,
-            "search_text": entity.search_text,
-            "returned_candidates": len(search_result.matches),
-            "total_candidates": search_result.total_candidates,
-            "duration_ms": search_duration_ms,
-            "model": search_result.model,
-            **model_call_details(search_result.ollama_calls),
-        }
-        retrieval_diagnostics.append(retrieval_event)
-        append_stage(
-            diagnostics,
-            f"retrieve_{entity.entity_id}",
-            "done",
-            search_duration_ms,
-            retrieval_event,
-        )
-
-        try:
-            resolution = self.resolver.resolve(
-                entity.search_text,
-                search_result.matches,
+            bundle = self.filter_resolver.resolve(
+                query_filter,
                 user_question=state["question"],
+                language=analysis.language,
             )
         except CandidateResolutionError as exc:
             return self._failure(
                 state,
-                node="retrieve_entity",
+                node="resolve_filter",
                 error_code="candidate_resolution_failed",
+                exc=exc,
+                diagnostics=diagnostics,
+            )
+        except FilterResolutionError as exc:
+            return self._failure(
+                state,
+                node="resolve_filter",
+                error_code="filter_resolution_failed",
                 exc=exc,
                 diagnostics=diagnostics,
             )
         except Exception as exc:
             return self._failure(
                 state,
-                node="retrieve_entity",
-                error_code="candidate_resolution_failed",
+                node="resolve_filter",
+                error_code="filter_resolution_failed",
                 exc=exc,
                 diagnostics=diagnostics,
             )
 
+        resolution = bundle.resolution
+        filter_diagnostics = list(state.get("filter_diagnostics") or [])
+        filter_event = {
+            "filter_id": query_filter.filter_id,
+            "field": query_filter.field,
+            "operator": query_filter.operator,
+            "status": resolution.status,
+            "resolved_value_count": len(resolution.resolved_values),
+            "candidate_value_count": len(resolution.candidate_values),
+            **bundle.details,
+            **model_call_details(bundle.model_calls),
+        }
+        filter_diagnostics.append(filter_event)
         append_stage(
             diagnostics,
-            f"resolve_{entity.entity_id}",
+            f"resolve_{query_filter.filter_id}",
             "done",
-            resolution.duration_ms,
-            {
-                "status": resolution.status,
-                "candidate_count": resolution.candidate_count,
-                "selected_item_count": len(resolution.selected_item_ids),
-                "uncertain_item_count": len(resolution.uncertain_item_ids),
-                "attempts": resolution.attempts,
-                "model": resolution.model,
-                **model_call_details(resolution.ollama_calls),
-            },
+            bundle.duration_ms,
+            filter_event,
         )
-        resolved_entities = list(state.get("resolved_entities") or [])
-        resolved = map_resolved_entity(entity.entity_id, entity.search_text, resolution)
-        resolved_entities.append(resolved)
-        diagnostics["retrieval"] = retrieval_diagnostics
-        diagnostics["resolved_entities"] = [
-            value.model_dump(mode="json") for value in resolved_entities
+
+        resolved_filters = list(state.get("resolved_filters") or [])
+        resolved_filters.append(resolution)
+        diagnostics["filter_resolution"] = filter_diagnostics
+        diagnostics["resolved_filters"] = [
+            value.model_dump(mode="json") for value in resolved_filters
         ]
 
         result: RagSqlGraphState = {
             "diagnostics": diagnostics,
-            "retrieval_diagnostics": retrieval_diagnostics,
-            "resolved_entities": resolved_entities,
-            "entity_index": entity_index + 1,
+            "filter_diagnostics": filter_diagnostics,
+            "resolved_filters": resolved_filters,
+            "filter_index": filter_index + 1,
         }
-        if resolved.status == "needs_clarification":
+        if resolution.status == "needs_clarification":
             route = "terminal"
             result.update(
                 {
                     "terminal_status": "needs_clarification",
-                    "terminal_answer": resolved.clarification_question
+                    "terminal_answer": resolution.clarification_question
                     or "Clarification is required.",
-                    "clarification_question": resolved.clarification_question,
+                    "clarification_question": resolution.clarification_question,
                 }
             )
-        elif resolved.status == "not_found":
+        elif resolution.status == "not_found":
             route = "terminal"
             result.update(
                 {
                     "terminal_status": "not_found",
-                    "terminal_answer": (
-                        f"No purchased products matching '{entity.search_text}' were found."
-                        if analysis.language == "en"
-                        else f"Keine passenden gekauften Produkte für „{entity.search_text}“ gefunden."
+                    "terminal_answer": _not_found_answer(
+                        analysis.language,
+                        query_filter.field,
+                        query_filter.value,
                     ),
                 }
             )
-        elif entity_index + 1 < len(analysis.entities):
-            route = "retrieve"
+        elif filter_index + 1 < len(analysis.filters):
+            route = "resolve"
         else:
             route = "plan"
 
-        append_graph_trace(diagnostics, node="retrieve_entity", route=route)
+        append_graph_trace(diagnostics, node="resolve_filter", route=route)
         result["route"] = route
         return result
 
     def generate_sql(self, state: RagSqlGraphState) -> RagSqlGraphState:
         diagnostics = self._diagnostics(state)
-        resolved_entities = list(state.get("resolved_entities") or [])
-        protected_parameters = build_protected_item_parameters(resolved_entities)
+        resolved_filters = list(state.get("resolved_filters") or [])
+        protected_parameters = build_protected_filter_parameters(resolved_filters)
         try:
             plan = self.planner.plan(
                 state["question"],
                 analysis=state["analysis"],
-                resolved_entities=resolved_entities,
+                resolved_entities=resolved_filters,
                 protected_parameters=protected_parameters,
             )
         except RagSqlPlanningError as exc:
@@ -364,6 +338,7 @@ class RagSqlGraphNodes:
             validated_plan = self.validator.validate(
                 state["plan"],
                 protected_parameters=state.get("protected_parameters") or {},
+                resolved_filters=list(state.get("resolved_filters") or []),
             )
         except SqlValidationError as exc:
             duration_ms = (time.perf_counter() - started) * 1000.0
@@ -436,7 +411,7 @@ class RagSqlGraphNodes:
             repaired_plan = self.planner.repair_after_validation_failure(
                 state["question"],
                 analysis=state["analysis"],
-                resolved_entities=list(state.get("resolved_entities") or []),
+                resolved_entities=list(state.get("resolved_filters") or []),
                 protected_parameters=state.get("protected_parameters") or {},
                 previous_plan=state["plan"],
                 validation_error=str(state.get("validation_error") or "SQL validation failed."),
@@ -583,7 +558,7 @@ class RagSqlGraphNodes:
                 language=state["analysis"].language,
                 question=state["question"],
                 requested_operation=state["analysis"].requested_operation,
-                resolved_entities=list(state.get("resolved_entities") or []),
+                resolved_entities=list(state.get("resolved_filters") or []),
             )
         except Exception as exc:
             return self._failure(
@@ -831,3 +806,26 @@ class RagSqlGraphNodes:
             state["started_at_perf"],
         )
         return {"diagnostics": diagnostics, "final_response": response}
+
+
+def _not_found_answer(language: str, field: str, value: object) -> str:
+    rendered = str(value)
+    if language == "de":
+        labels = {
+            "product": "gekauften Produkte",
+            "merchant": "Händler",
+            "category": "Kategorien",
+            "payment_method": "Zahlungsarten",
+            "currency": "Währungen",
+        }
+        label = labels.get(field, "Werte")
+        return f"Keine passenden {label} für „{rendered}“ gefunden."
+    labels = {
+        "product": "purchased products",
+        "merchant": "merchants",
+        "category": "categories",
+        "payment_method": "payment methods",
+        "currency": "currencies",
+    }
+    label = labels.get(field, "values")
+    return f"No matching {label} for '{rendered}' were found."

@@ -182,6 +182,26 @@ def test_search_deduplicates_product_occurrences_and_retains_all_item_ids(
     assert [match.description for match in result.matches].count("KRAWATTE") == 1
 
 
+def test_rejected_receipt_with_stale_embedding_is_not_retrieved(tmp_path: Path) -> None:
+    database = _database(tmp_path)
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "UPDATE receipts SET review_status='rejected', approved_receipt_path='/legacy.json' "
+            "WHERE id=2"
+        )
+        connection.commit()
+
+    result = ItemSemanticRetriever(
+        repository=SQLiteSemanticSearchRepository(database),
+        embedding_client=StaticEmbeddingClient([1.0, 0.0]),
+    ).search("Krawatte", limit=10)
+
+    krawatte = next(match for match in result.matches if match.description == "KRAWATTE")
+    assert krawatte.item_ids == [2]
+    assert krawatte.occurrence_count == 1
+    assert [match.description for match in result.matches].count("KRAWATTE") == 1
+
+
 def test_search_can_disable_deduplication(tmp_path: Path) -> None:
     result = ItemSemanticRetriever(
         repository=SQLiteSemanticSearchRepository(_database(tmp_path)),

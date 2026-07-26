@@ -234,3 +234,40 @@ def test_analyzer_accepts_provider_neutral_gateway() -> None:
     assert result.status == "ready"
     assert len(gateway.requests) == 1
     assert gateway.requests[0].model == "gemma4"
+
+
+def test_analyzer_emits_generic_merchant_filter_for_at_merchant_question() -> None:
+    def generate(**kwargs: object) -> str:
+        prompt = str(kwargs["prompt"])
+        assert '"merchant": {' in prompt
+        assert '"allowed_operators": [' in prompt
+        assert 'ARAL in "what did I buy at ARAL" is a merchant' in prompt
+        return json.dumps(
+            {
+                "schema_version": "rag_sql_question_analysis_v3",
+                "status": "ready",
+                "language": "en",
+                "user_goal": "List purchases made at ARAL.",
+                "target_entity": "purchase_item",
+                "requested_operation": "list",
+                "filters": [
+                    {
+                        "filter_id": "f001",
+                        "field": "merchant",
+                        "operator": "matches",
+                        "value": "ARAL",
+                    }
+                ],
+                "clarification_question": None,
+                "reason": None,
+            }
+        )
+
+    result = RagSqlQuestionAnalyzer(
+        QuestionAnalyzerConfig(retry_count=0), generate=generate
+    ).analyze("What did I buy at ARAL?")
+
+    assert result.schema_version == "rag_sql_question_analysis_v3"
+    assert result.filters[0].field == "merchant"
+    assert result.filters[0].value == "ARAL"
+    assert result.requires_product_resolution is False

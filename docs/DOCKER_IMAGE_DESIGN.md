@@ -2,77 +2,63 @@
 
 ## Goal
 
-Avoid rebuilding the 25 GB CUDA/PaddleOCR-VL image whenever application code changes.
+Keep the application and GPU VLM service independently buildable. Application
+changes must not rebuild or alter the known-working PaddleOCR-VL runtime.
 
 ## Image layers
 
 ```text
 receipt-app-runtime:py311
-  Python 3.11 slim
-  system packages
-  requirements/app.txt
+  Python 3.11
+  application dependencies
 
 paddle-gemma-receipt-app:latest
   FROM receipt-app-runtime:py311
-  application source code
+  src/receipt_intelligence
 
 receipt-vlm-runtime:cu126
   NVIDIA CUDA 12.6 runtime
-  Python
-  PaddlePaddle GPU
-  PaddleOCR doc-parser
-  PaddleX OCR
+  Ubuntu 22.04 Python 3.10
+  PaddlePaddle GPU 3.2.1
+  PaddleOCR/PaddleX
   Torch/Torchvision cu126
-  Transformers stack
 
 paddle-gemma-receipt-vlm:gpu-python-cu126
   FROM receipt-vlm-runtime:cu126
-  vlm_service.py
-  vl_engine.py
+  services/receipt-vlm/src only
 ```
+
+The VLM thin image intentionally does not copy `src/receipt_intelligence`.
 
 ## Local workflow
 
 Use already-built images:
 
 ```powershell
-docker compose up -d --no-build
-```
-
-Use source bind mounts for development:
-
-```powershell
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --no-build
 ```
 
-Restart only the changed service:
-
-```powershell
-docker compose -f docker-compose.yml -f docker-compose.dev.yml restart receipt-vlm
-```
+The development override mounts only `services/receipt-vlm/src` into the VLM
+container. Main-application code is not visible to that process.
 
 ## Build workflow
 
-Build runtime images rarely:
+Rebuild the heavy VLM runtime only when its CUDA/system/Python dependencies or
+`requirements/vlm-gpu-cu126.txt` change:
 
 ```powershell
-.\scripts\docker\build-app-runtime.ps1
 .\scripts\docker\build-vlm-runtime.ps1
 ```
 
-Build thin images often:
+For VLM service-code changes, rebuild only the thin image:
 
 ```powershell
-.\scripts\docker\build-app.ps1
 .\scripts\docker\build-vlm.ps1
 ```
 
-## Why the default compose has no build section
-
-`docker-compose.yml` intentionally references prebuilt images only. This prevents accidental dependency reinstalls when running:
+The app and VLM intentionally use different Python contracts. Validate them with:
 
 ```powershell
-docker compose build receipt-vlm
+python scripts/check_python_runtime_contract.py
+python scripts/check_vlm_architecture.py
 ```
-
-Explicit builds are done through scripts or `docker-compose.build.yml`.

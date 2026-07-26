@@ -13,6 +13,8 @@ TARGETS = [
     "src/receipt_intelligence/application",
     "src/receipt_intelligence/adapters",
     "src/receipt_intelligence/composition.py",
+    "src/receipt_intelligence/vlm_client_composition.py",
+    "src/receipt_intelligence/vlm_composition.py",
     "src/receipt_intelligence/rag",
     "src/receipt_intelligence/rag_sql",
     "src/receipt_intelligence/observability",
@@ -46,6 +48,7 @@ TARGETS = [
     "scripts/run_tests.py",
     "scripts/run_test_profile.py",
     "scripts/check_dependency_compatibility.py",
+    "scripts/check_python_runtime_contract.py",
     "scripts/check_security_boundaries.py",
     "scripts/check_configuration_contracts.py",
     "scripts/check_model_boundaries.py",
@@ -65,6 +68,7 @@ if importlib.util.find_spec("ruff") is None:
     raise SystemExit("Ruff is not installed. Run: python -m pip install -r requirements/dev.txt")
 
 commands = [
+    [sys.executable, "scripts/check_python_runtime_contract.py"],
     [sys.executable, "scripts/check_security_boundaries.py"],
     [sys.executable, "scripts/check_configuration_contracts.py"],
     [sys.executable, "scripts/check_model_boundaries.py"],
@@ -76,8 +80,30 @@ commands = [
     [sys.executable, "scripts/check_rag_sql_composition.py"],
     [sys.executable, "scripts/check_observability_boundaries.py"],
     [sys.executable, "scripts/check_model_call_observability.py"],
+    [sys.executable, "-m", "pytest", "-q", "services/receipt-vlm/tests"],
     [sys.executable, "-m", "ruff", "check", *TARGETS],
     [sys.executable, "-m", "ruff", "format", "--check", *TARGETS],
+    [
+        sys.executable,
+        "-m",
+        "ruff",
+        "check",
+        "--config",
+        "services/receipt-vlm/pyproject.toml",
+        "services/receipt-vlm/src",
+        "services/receipt-vlm/tests",
+    ],
+    [
+        sys.executable,
+        "-m",
+        "ruff",
+        "format",
+        "--check",
+        "--config",
+        "services/receipt-vlm/pyproject.toml",
+        "services/receipt-vlm/src",
+        "services/receipt-vlm/tests",
+    ],
 ]
 
 for command in commands:

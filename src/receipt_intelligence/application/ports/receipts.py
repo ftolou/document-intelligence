@@ -122,6 +122,7 @@ class ReceiptEditor(Protocol):
         fields: dict[str, Any],
         item_corrections: list[dict[str, Any]],
         review: dict[str, Any],
+        identity: dict[str, Any],
     ) -> dict[str, Any]: ...
 
 

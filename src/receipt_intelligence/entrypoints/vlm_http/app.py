@@ -13,8 +13,8 @@ from flask import Flask, jsonify, request
 from werkzeug.utils import secure_filename
 
 from receipt_intelligence.application.vlm import VlmAnalysisService
-from receipt_intelligence.composition import build_vlm_service_engine
 from receipt_intelligence.entrypoints.vlm_http.settings import VlmHttpSettings
+from receipt_intelligence.vlm_composition import build_vlm_service_engine
 
 
 def is_within(path: Path, root: Path) -> bool:

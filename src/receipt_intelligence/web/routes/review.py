@@ -12,12 +12,13 @@ from receipt_intelligence.web.presentation import present_review
 review_bp = Blueprint("review", __name__)
 
 
-def _review_input() -> tuple[dict, list, dict]:
+def _review_input() -> tuple[dict, list, dict, dict]:
     payload = request.get_json(silent=True) or {}
     fields = payload.get("fields") if isinstance(payload.get("fields"), dict) else {}
     items = payload.get("items") if isinstance(payload.get("items"), list) else []
     review = payload.get("review") if isinstance(payload.get("review"), dict) else {}
-    return fields, items, review
+    identity = payload.get("identity") if isinstance(payload.get("identity"), dict) else {}
+    return fields, items, review, identity
 
 
 @review_bp.get("/api/review/<job_id>")
@@ -32,13 +33,14 @@ def get_human_review(job_id: str):
 
 @review_bp.post("/api/review/<job_id>")
 def save_human_review(job_id: str):
-    fields, item_corrections, review = _review_input()
+    fields, item_corrections, review, identity = _review_input()
     try:
         result = get_app_services().reviews.save_review(
             job_id,
             fields=fields,
             item_corrections=item_corrections,
             review=review,
+            identity=identity,
         )
         return jsonify(present_review(result))
     except ApplicationError as exc:

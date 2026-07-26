@@ -1,13 +1,9 @@
-"""Visual-model infrastructure adapters."""
+"""Application-side VLM adapters.
 
-from receipt_intelligence.adapters.vlm.paddle_cli import PaddleCliVlmEngine
-from receipt_intelligence.adapters.vlm.paddle_python import PaddlePythonVlmEngine
-from receipt_intelligence.adapters.vlm.remote_client import RemoteVlmClient
-from receipt_intelligence.adapters.vlm.trusted_command import TrustedCommandVlmEngine
+The main application imports only the remote HTTP client. Local PaddleOCR-VL
+engines remain legacy modules and are never imported by package initialization.
+"""
 
-__all__ = [
-    "PaddleCliVlmEngine",
-    "PaddlePythonVlmEngine",
-    "RemoteVlmClient",
-    "TrustedCommandVlmEngine",
-]
+from receipt_intelligence.adapters.vlm.remote_client import RemoteVlmClient, call_remote_vlm
+
+__all__ = ["RemoteVlmClient", "call_remote_vlm"]

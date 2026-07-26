@@ -1,11 +1,12 @@
-# Thin PaddleOCR-VL service image.
-# It reuses the heavy CUDA/PaddleOCR-VL runtime and copies only service code.
+# Thin standalone PaddleOCR-VL HTTP service image.
+# It reuses the known-working Python 3.10 CUDA/Paddle runtime and copies only
+# the service package. Main-application source is intentionally excluded.
 ARG VLM_RUNTIME_IMAGE=receipt-vlm-runtime:cu126
 FROM ${VLM_RUNTIME_IMAGE}
 
 WORKDIR /app
 
-COPY src /app/src
+COPY services/receipt-vlm/src /app/src
 COPY VERSION /app/VERSION
 
 RUN mkdir -p /app/var/uploads /app/var/jobs /app/var/database /app/var/reports /app/var/batch_input /app/var/logs
@@ -15,4 +16,4 @@ EXPOSE 7870
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
     CMD curl -fsS http://localhost:7870/health || exit 1
 
-CMD ["python", "-m", "receipt_intelligence.entrypoints.vlm_http.app"]
+CMD ["python", "-m", "receipt_vlm_service.app"]

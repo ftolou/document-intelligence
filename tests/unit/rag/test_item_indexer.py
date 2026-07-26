@@ -259,3 +259,21 @@ def test_item_level_rejection_is_not_embedded_and_existing_vector_is_pruned(
             "SELECT COUNT(*) FROM rag_item_embeddings WHERE item_id=1"
         ).fetchone()[0]
     assert remaining == 0
+
+
+def test_rejected_receipt_with_legacy_approved_path_is_not_indexed(tmp_path: Path) -> None:
+    database = _database(tmp_path)
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "UPDATE receipts SET review_status='rejected', approved_receipt_path='/legacy.json' "
+            "WHERE id=1"
+        )
+        connection.commit()
+
+    report = ItemEmbeddingIndexer(
+        repository=SQLiteSemanticIndexRepository(database),
+        embedding_client=FakeEmbeddingClient(),
+    ).rebuild()
+
+    assert report.eligible_items == 0
+    assert report.embedded == 0

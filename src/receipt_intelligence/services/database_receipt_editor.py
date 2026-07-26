@@ -58,6 +58,7 @@ class DatabaseReceiptEditor:
             "source": "database",
             "editable": True,
             "read_only_reason": None,
+            "review_identity": _review_identity(receipt_id, receipt, record),
         }
 
     def save(
@@ -67,10 +68,20 @@ class DatabaseReceiptEditor:
         fields: dict[str, Any],
         item_corrections: list[dict[str, Any]],
         review: dict[str, Any],
+        identity: dict[str, Any],
     ) -> dict[str, Any]:
         current = self.receipt_db.get_receipt_edit_document(receipt_id)
         if current is None:
             raise KeyError("receipt not found")
+
+        database_record = self.receipt_db.get_receipt_review_record(receipt_id) or {}
+        expected_identity = _validate_review_identity(
+            receipt_id,
+            current,
+            database_record,
+            item_corrections,
+            identity,
+        )
 
         updated, changed_fields = apply_human_review(
             current,
@@ -78,7 +89,6 @@ class DatabaseReceiptEditor:
             item_corrections,
             review,
         )
-        database_record = self.receipt_db.get_receipt_review_record(receipt_id) or {}
         job_id = str(
             database_record.get("job_id") or (current.get("_database") or {}).get("job_id") or ""
         ).strip()
@@ -88,7 +98,12 @@ class DatabaseReceiptEditor:
             requested_status=review.get("status"),
         )
         updated = finalization["receipt"]
-        database_update = self.receipt_db.update_receipt_from_review(receipt_id, updated)
+        database_update = self.receipt_db.update_receipt_from_review(
+            receipt_id,
+            updated,
+            expected_job_id=expected_identity["job_id"],
+            expected_updated_at=expected_identity["updated_at"],
+        )
 
         previous_status = str(database_update.get("previous_review_status") or "")
         effective_status = str(database_update.get("review_status") or "")
@@ -181,3 +196,77 @@ class DatabaseReceiptEditor:
 
 
 __all__ = ["DatabaseReceiptEditor"]
+
+
+def _review_identity(
+    receipt_id: int,
+    receipt: dict[str, Any],
+    record: dict[str, Any],
+) -> dict[str, Any]:
+    database = receipt.get("_database") if isinstance(receipt.get("_database"), dict) else {}
+    items = receipt.get("items") if isinstance(receipt.get("items"), list) else []
+    item_ids = [
+        int(item["_db_item_id"])
+        for item in items
+        if isinstance(item, dict) and item.get("_db_item_id") not in (None, "")
+    ]
+    return {
+        "source": "database",
+        "receipt_id": int(receipt_id),
+        "job_id": str(record.get("job_id") or database.get("job_id") or ""),
+        "updated_at": str(record.get("updated_at") or database.get("updated_at") or ""),
+        "item_ids": item_ids,
+    }
+
+
+def _validate_review_identity(
+    receipt_id: int,
+    current: dict[str, Any],
+    record: dict[str, Any],
+    item_corrections: list[dict[str, Any]],
+    identity: dict[str, Any],
+) -> dict[str, Any]:
+    expected = _review_identity(receipt_id, current, record)
+    if not isinstance(identity, dict) or not identity:
+        raise ValueError("review identity is required; reload the receipt before saving")
+    if str(identity.get("source") or "") != "database":
+        raise ValueError("review identity source does not match the database receipt")
+    try:
+        submitted_receipt_id = int(identity.get("receipt_id"))
+    except (TypeError, ValueError):
+        submitted_receipt_id = -1
+    if submitted_receipt_id != expected["receipt_id"]:
+        raise ValueError("review receipt identity does not match; reload the receipt")
+    if str(identity.get("job_id") or "") != expected["job_id"]:
+        raise ValueError("review job identity does not match; reload the receipt")
+    if str(identity.get("updated_at") or "") != expected["updated_at"]:
+        raise ValueError("review state is stale; reload the receipt before saving")
+
+    try:
+        submitted_item_ids = [int(value) for value in identity.get("item_ids") or []]
+    except (TypeError, ValueError):
+        submitted_item_ids = []
+    if submitted_item_ids != expected["item_ids"]:
+        raise ValueError("review item identities do not match; reload the receipt")
+
+    if len(item_corrections) != len(expected["item_ids"]):
+        raise ValueError("review must submit every existing database item row")
+    seen_indexes: set[int] = set()
+    seen_item_ids: set[int] = set()
+    for correction in item_corrections:
+        if not isinstance(correction, dict):
+            raise ValueError("each item correction must be an object")
+        try:
+            index = int(correction.get("index"))
+            item_id = int(correction.get("item_id"))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("each database item correction requires index and item_id") from exc
+        if index < 0 or index >= len(expected["item_ids"]):
+            raise ValueError("review item index is invalid; reload the receipt")
+        if index in seen_indexes or item_id in seen_item_ids:
+            raise ValueError("review contains duplicate item identities")
+        if expected["item_ids"][index] != item_id:
+            raise ValueError("review item identity does not match its receipt row")
+        seen_indexes.add(index)
+        seen_item_ids.add(item_id)
+    return expected

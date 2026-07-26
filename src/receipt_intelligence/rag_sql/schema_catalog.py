@@ -141,9 +141,10 @@ class StaticSchemaCatalog:
             ],
             "business_rules": [
                 "Query only the two listed analytics views; never query storage tables directly.",
-                "For product-resolved questions, filter analytics_purchase_items.item_id with the supplied named parameters.",
+                "Apply every resolved typed filter with its supplied protected named parameters.",
+                "Product filters constrain analytics_purchase_items.item_id; merchant filters constrain merchant; category filters constrain category; date filters constrain receipt_date.",
                 "For receipt lookup by resolved product IDs, join purchase items to receipts and return DISTINCT receipt rows rather than aggregating unless the user requested an aggregate.",
-                "Do not text-match description, category, or merchant after an entity has been resolved to item IDs.",
+                "Do not text-match description, category, merchant, payment method, or currency after the corresponding filter has been resolved.",
                 "Use analytics_receipts.grand_total for whole-receipt totals and analytics_purchase_items.line_total for product totals.",
                 "Do not sum receipt totals after joining to item rows because that duplicates receipt amounts.",
                 "For monetary results, retain or group by currency rather than silently mixing currencies.",

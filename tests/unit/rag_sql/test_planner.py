@@ -5,8 +5,10 @@ import json
 import pytest
 
 from receipt_intelligence.rag_sql.models import (
+    QueryFilter,
     QuestionAnalysisResult,
     RagSqlPlanResult,
+    ResolvedQueryFilter,
     ResolvedSemanticEntity,
     SemanticEntity,
 )
@@ -14,6 +16,7 @@ from receipt_intelligence.rag_sql.planner import (
     RagSqlPlanner,
     RagSqlPlannerConfig,
     RagSqlPlanningError,
+    build_protected_filter_parameters,
     build_protected_item_parameters,
 )
 
@@ -423,3 +426,78 @@ def test_planner_prompt_forbids_treating_merchant_as_brand() -> None:
         protected_parameters=protected,
     )
     assert "merchant" not in (result.sql or "").casefold()
+
+
+def test_planner_preserves_app_owned_merchant_parameter() -> None:
+    analysis = QuestionAnalysisResult(
+        schema_version="rag_sql_question_analysis_v3",
+        status="ready",
+        language="en",
+        user_goal="List purchases made at ARAL.",
+        target_entity="purchase_item",
+        requested_operation="list",
+        filters=[
+            QueryFilter(
+                filter_id="f001",
+                field="merchant",
+                operator="matches",
+                value="ARAL",
+            )
+        ],
+        model="test",
+        attempts=1,
+    )
+    resolved = [
+        ResolvedQueryFilter(
+            filter_id="f001",
+            field="merchant",
+            operator="matches",
+            original_value="ARAL",
+            status="resolved",
+            resolved_values=["ARAL Tankstelle"],
+        )
+    ]
+    protected = build_protected_filter_parameters(resolved)
+
+    def generate(**kwargs: object) -> str:
+        prompt = str(kwargs["prompt"])
+        assert '"field": "merchant"' in prompt
+        assert '"f001_merchant_0": "ARAL Tankstelle"' in prompt
+        return json.dumps(
+            {
+                "schema_version": "rag_sql_plan_v2",
+                "status": "ready",
+                "sql": (
+                    "SELECT item_id, receipt_id, receipt_date, merchant, description, "
+                    "line_total, currency FROM analytics_purchase_items "
+                    "WHERE merchant = :f001_merchant_0 "
+                    "ORDER BY receipt_date DESC, item_id DESC LIMIT 100"
+                ),
+                "parameters": protected,
+                "result_shape": "rows",
+                "result_entity": "purchase_item",
+                "display_columns": [
+                    "item_id",
+                    "receipt_id",
+                    "receipt_date",
+                    "merchant",
+                    "description",
+                    "line_total",
+                    "currency",
+                ],
+                "answer_instruction": "List purchases made at the resolved merchant.",
+                "clarification_question": None,
+                "reason": None,
+            }
+        )
+
+    result = RagSqlPlanner(RagSqlPlannerConfig(retry_count=0), generate=generate).plan(
+        "What did I buy at ARAL?",
+        analysis=analysis,
+        resolved_entities=resolved,
+        protected_parameters=protected,
+    )
+
+    assert protected == {"f001_merchant_0": "ARAL Tankstelle"}
+    assert result.parameters == protected
+    assert ":f001_merchant_0" in str(result.sql)

@@ -47,6 +47,7 @@ let currentArtifacts = {};
 let currentReviewSaveUrl = null;
 let currentReviewSaveMethod = 'POST';
 let currentReviewEditable = true;
+let currentReviewIdentity = null;
 let appConfig = {};
 let queryProgressTimer = null;
 let queryProgressStartedAt = null;
@@ -620,6 +621,7 @@ function collectHumanReviewPayload() {
   const items = Array.from(itemMap.values()).sort((a, b) => a.index - b.index);
 
   return {
+    identity: currentReviewIdentity || {},
     fields,
     items,
     review: {
@@ -679,6 +681,7 @@ async function saveHumanReview() {
     renderReceiptSummary(data.receipt);
     currentReceiptDbId = data.receipt_db_id || data.receipt_db_import?.receipt_db_id || currentReceiptDbId;
     currentReviewEditable = data.editable !== false;
+    currentReviewIdentity = data.review_identity || currentReviewIdentity;
     currentReviewSaveUrl = data.save_url || currentReviewSaveUrl;
     currentReviewSaveMethod = String(data.save_method || currentReviewSaveMethod || 'POST').toUpperCase();
     renderHumanReview(data.receipt, currentArtifacts, {
@@ -819,6 +822,7 @@ function renderReviewLoadError(message) {
   currentReviewSaveUrl = null;
   currentReviewSaveMethod = 'POST';
   currentReviewEditable = false;
+  currentReviewIdentity = null;
   setActiveTab('run');
   if (statusCard) {
     statusCard.classList.remove('hidden');
@@ -850,6 +854,7 @@ function applyReviewPayload(data) {
   currentReviewSaveUrl = data.save_url || (currentJobId ? `/api/review/${encodeURIComponent(currentJobId)}` : null);
   currentReviewSaveMethod = String(data.save_method || 'POST').toUpperCase();
   currentReviewEditable = data.editable !== false && Boolean(currentReviewSaveUrl);
+  currentReviewIdentity = data.review_identity || null;
 
   setActiveTab('run');
   if (statusCard) {
@@ -1788,6 +1793,7 @@ form.addEventListener('submit', async (e) => {
   currentReviewSaveUrl = null;
   currentReviewSaveMethod = 'POST';
   currentReviewEditable = true;
+  currentReviewIdentity = null;
   summaryEl.textContent = 'Uploading image...';
   if (progressFillEl) progressFillEl.style.width = '5%';
 
