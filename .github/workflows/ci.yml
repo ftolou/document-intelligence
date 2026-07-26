@@ -24,6 +24,9 @@ jobs:
       - name: Install scoped lint tooling
         run: python -m pip install "ruff>=0.6,<1"
 
+      - name: Install pytest
+        run: python -m pip install pytest
+
       - name: Run maintainability quality checks
         run: python scripts/run_quality_checks.py
 
