@@ -63,14 +63,12 @@ class FinalizationStage:
             "response_schema_enforced": bool(llm_result.get("response_schema_enforced")),
             "no_deterministic_fallback": True,
             "llm_error": llm_result.get("error"),
-            "vlm_enabled": config.vlm_enabled,
-            "vlm_first": bool(config.vlm_enabled),
-            "region_reocr_first": bool(config.vlm_enabled and config.source_image_path),
+            "vlm_enabled": True,
+            "vlm_first": True,
+            "region_reocr_first": bool(config.source_image_path),
             "visual_evidence_used_by_main_llm": bool(llm_result.get("visual_evidence_used")),
             "vlm_status": (
-                context.visual_result.get("status")
-                if context.visual_result
-                else ("disabled" if not config.vlm_enabled else "skipped")
+                context.visual_result.get("status") if context.visual_result else "skipped"
             ),
             "correction_used": context.correction_used,
             "consistency_postprocess_actions": context.postprocess_actions,
@@ -107,7 +105,7 @@ class FinalizationStage:
             context.emit(
                 "item_categorization",
                 "running",
-                "Running V14.14 LLM-first item categorization on final receipt items.",
+                "Running LLM-first item categorization on final receipt items.",
             )
             try:
                 context.categorization_result = categorize_receipt_items_llm(
@@ -231,10 +229,10 @@ class FinalizationStage:
             },
             "right_column_reocr": self._reocr_meta(context),
             "vlm": {
-                "enabled": config.vlm_enabled,
+                "enabled": True,
                 "backend": config.vlm_backend,
-                "vlm_first": bool(config.vlm_enabled),
-                "region_reocr_first": bool(config.vlm_enabled and config.source_image_path),
+                "vlm_first": True,
+                "region_reocr_first": bool(config.source_image_path),
                 "triggered": context.visual_result is not None,
                 "used_by_main_llm": bool(llm_result.get("visual_evidence_used")),
                 "status": context.visual_result.get("status") if context.visual_result else None,

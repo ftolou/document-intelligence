@@ -226,6 +226,3 @@ The geometry-first main parser may populate additional item-level pricing fields
 - `tax_code`
 
 These fields separate product identity from pricing context for receipt analytics and later RAG/DB import. Product categories should be reviewed against the clean product description, not against discount, coupon or loyalty text.
-
-Historical table-interpretation refinements are retained under
-`docs/archive/historical-patch-notes/TABLE_INTERPRETATION_REFINEMENTS.md`.

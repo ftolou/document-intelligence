@@ -33,17 +33,6 @@ def form_float(name: str, default: float) -> float:
         return default
 
 
-def normalize_vlm_backend(backend: str, service_url: str) -> str:
-    """Route retained local-backend form values to the separate VLM service."""
-    value = (backend or "").strip()
-    if not value:
-        return settings.VLM_BACKEND
-    local_names = {"paddleocr_vl", "paddleocr-vl", "paddleocrvl", "local"}
-    if value.lower() in local_names and not getattr(settings, "VLM_ALLOW_LOCAL_BACKEND", False):
-        return "http_service" if service_url else value
-    return value
-
-
 def build_options_from_request() -> dict[str, Any]:
     """Read parser/runtime options from the current Flask request form."""
     # Infrastructure endpoints and executable commands are trusted server-side settings.
@@ -75,13 +64,8 @@ def build_options_from_request() -> dict[str, Any]:
         "validation_tolerance": form_float("validation_tolerance", settings.VALIDATION_TOLERANCE),
         "json_retry_count": form_int("json_retry_count", settings.LLM_JSON_RETRY_COUNT),
         "format_json": as_bool(request.form.get("format_json"), settings.OLLAMA_FORMAT_JSON),
-        "vlm_enabled": as_bool(request.form.get("vlm_enabled"), settings.VLM_ENABLED),
         "vlm_service_url": service_url,
-        "vlm_backend": normalize_vlm_backend(
-            settings.VLM_BACKEND,
-            service_url,
-        ),
-        "vlm_command": settings.VLM_COMMAND,
+        "vlm_backend": settings.VLM_BACKEND,
         "vlm_timeout_seconds": settings.VLM_TIMEOUT_SECONDS,
         "vlm_max_chars": form_int("vlm_max_chars", settings.VLM_MAX_CHARS),
         "vlm_correction_enabled": as_bool(

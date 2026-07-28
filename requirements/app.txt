@@ -12,15 +12,12 @@ python-dotenv==1.1.1
 # Keep NumPy below 2.3 for SciPy/sklearn/paddlex compatibility.
 numpy==2.2.6
 
-# PaddleOCR stack copied from the known-working V13 Docker setup.
+# PaddleOCR stack for the application OCR runtime.
 paddlepaddle==3.2.0
 paddleocr>=3.0.0,<4.0.0
 
-# Optional V14.5 VLM layer:
-# Keep disabled unless your PaddleOCR package/runtime exposes PaddleOCRVL or you
-# provide a trusted server-side VLM_COMMAND executed without a shell. Extra VLM
-# dependencies are intentionally not forced here
-# to preserve the known-working V13/V14 Docker OCR runtime.
+# PaddleOCR-VL is mandatory and runs in the separate receipt-vlm service.
+# Its GPU-specific dependencies are pinned in requirements/vlm-gpu-cu126.txt.
 
 # RAG-SQL graph orchestration and typed validation.
 langgraph==1.2.7

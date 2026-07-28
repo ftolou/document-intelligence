@@ -52,7 +52,7 @@ class CandidateResolutionError(RuntimeError):
 class CandidateResolverConfig:
     enabled: bool = True
     ollama_url: str = "http://localhost:11434"
-    model: str = "gemma4"
+    model: str = "gemma4:latest"
     num_ctx: int = 4096
     num_predict: int = 1536
     timeout_seconds: float = 120.0

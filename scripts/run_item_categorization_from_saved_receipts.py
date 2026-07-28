@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run V14.14 item categorization from saved final receipt JSON files.
+"""Run item categorization from saved final receipt JSON files.
 
 This does not rerun OCR, VLM, receipt parsing, correction, or validation.
 It reads existing final receipt JSON files and writes categorized copies.
@@ -171,7 +171,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Run V14.14 LLM-first item categorization from saved final receipts only."
+        description="Run LLM-first item categorization from saved final receipts only."
     )
     parser.add_argument(
         "--results-root",
@@ -186,7 +186,7 @@ def main() -> int:
         help="Where categorized receipt JSON files should be written",
     )
     parser.add_argument("--ollama-url", default="http://localhost:11434")
-    parser.add_argument("--model", default="gemma4")
+    parser.add_argument("--model", default="gemma4:latest")
     parser.add_argument("--num-ctx", type=int, default=8192)
     parser.add_argument("--num-predict", type=int, default=4096)
     parser.add_argument("--timeout", type=float, default=180.0)

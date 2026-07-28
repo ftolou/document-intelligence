@@ -1,6 +1,6 @@
 # Regression Reporting
 
-The app already stores each job under `var/jobs/<job_id>/`. Phase 1 adds a dependency-free report generator that converts these saved job statuses into quality metrics.
+The app stores each job under `var/jobs/<job_id>/`. The dependency-free report generator converts these saved job statuses into quality metrics.
 
 ## Generate report
 

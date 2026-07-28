@@ -34,20 +34,18 @@ class ExtractionConfig:
 
     spatial_canvas_width: int = 112
 
-    max_lines_for_llm: int = 260
+    max_lines_for_llm: int = 220
     num_ctx: int = 24384
     num_predict: int = 8192
     keep_alive: str | None = None
-    llm_timeout_seconds: float = 240.0
+    llm_timeout_seconds: float = 300.0
     json_retry_count: int = 1
     format_json: bool = True
 
     source_image_path: Path | None = None
-    vlm_enabled: bool = False
     vlm_backend: str = "http_service"
     vlm_service_url: str = "http://receipt-vlm:7870"
-    vlm_command: str = ""
-    vlm_timeout_seconds: float = 180.0
+    vlm_timeout_seconds: float = 900.0
     vlm_max_chars: int = 12000
 
     correction_enabled: bool = True

@@ -56,7 +56,7 @@ class RagSqlPlanningError(RuntimeError):
 class RagSqlPlannerConfig:
     enabled: bool = True
     ollama_url: str = "http://localhost:11434"
-    model: str = "gemma4"
+    model: str = "gemma4:latest"
     num_ctx: int = 6144
     num_predict: int = 2048
     timeout_seconds: float = 120.0

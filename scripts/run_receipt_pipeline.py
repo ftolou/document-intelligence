@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CLI wrapper for the V14 receipt pipeline."""
+"""CLI wrapper for the receipt extraction pipeline."""
 
 from __future__ import annotations
 
@@ -50,13 +50,13 @@ def progress(event: dict[str, Any]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Run V14 pure LLM-main receipt parser + deterministic validation"
+        description="Run the geometry-first receipt parser with mandatory PaddleOCR-VL evidence"
     )
     parser.add_argument("ocr_json", type=Path, help="Full-image OCR JSON from the app/PaddleOCR")
     parser.add_argument("--out-dir", type=Path, default=Path("var/reports/manual_pipeline"))
     parser.add_argument("--run-id", default=None)
     parser.add_argument("--ollama-url", default="http://localhost:11434")
-    parser.add_argument("--model", default="gemma4")
+    parser.add_argument("--model", default="gemma4:latest")
     parser.add_argument("--tolerance", type=float, default=0.03)
     parser.add_argument("--max-lines-for-llm", type=int, default=260)
     parser.add_argument("--num-ctx", type=int, default=24384)
@@ -72,19 +72,11 @@ def main() -> int:
     parser.add_argument(
         "--source-image",
         type=Path,
-        default=None,
-        help="Original receipt image path for optional VLM evidence",
-    )
-    parser.add_argument(
-        "--enable-vlm",
-        action="store_true",
-        help="Run optional PaddleOCR-VL/VLM evidence after validation failures",
+        required=True,
+        help="Original receipt image path required by PaddleOCR-VL",
     )
     parser.add_argument("--vlm-backend", default="paddleocr_vl")
     parser.add_argument("--vlm-service-url", default="http://receipt-vlm:7870")
-    parser.add_argument(
-        "--vlm-command", default="", help="Optional command template with {image} and {output_json}"
-    )
     parser.add_argument("--vlm-timeout-seconds", type=float, default=240.0)
     parser.add_argument("--disable-vlm-correction", action="store_true")
     args = parser.parse_args()
@@ -105,10 +97,8 @@ def main() -> int:
         json_retry_count=args.json_retry_count,
         format_json=not args.no_format_json,
         source_image_path=args.source_image,
-        vlm_enabled=args.enable_vlm,
         vlm_backend=args.vlm_backend,
         vlm_service_url=args.vlm_service_url,
-        vlm_command=args.vlm_command,
         vlm_timeout_seconds=args.vlm_timeout_seconds,
         correction_enabled=not args.disable_vlm_correction,
         progress_callback=progress,

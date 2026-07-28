@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the stable Phase 7 pytest profiles."""
+"""Run the stable pytest profiles."""
 
 from __future__ import annotations
 

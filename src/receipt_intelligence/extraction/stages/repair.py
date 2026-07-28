@@ -4,14 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from receipt_intelligence.application.ports import ModelLifecycleRequest, VlmRequest
+from receipt_intelligence.application.ports import ModelLifecycleRequest
 from receipt_intelligence.extraction.artifacts import save_json, write_text
 from receipt_intelligence.extraction.context import ExtractionContext
 from receipt_intelligence.extraction.evidence.spatial_document import (
     spatial_document_to_prompt_text,
 )
 from receipt_intelligence.extraction.evidence.visual import (
-    build_visual_evidence,
     visual_evidence_to_prompt_text,
 )
 from receipt_intelligence.extraction.repair.line_price_fusion import (
@@ -69,23 +68,8 @@ class RepairAndCorrectionStage:
         if config.correction_enabled and should_correct and not llm_result.get("error"):
             if needs_visual_recovery:
                 self._run_bounded_reocr(context)
-                self._run_late_vlm_if_needed(context)
+                self._reuse_vlm_evidence(context)
             self._run_patch_correction(context)
-        elif not config.correction_enabled:
-            save_json(
-                context.paths["vlm_raw_output"],
-                {"status": "skipped", "message": "Correction/VLM layer disabled."},
-            )
-        elif not config.vlm_enabled:
-            save_json(
-                context.paths["vlm_raw_output"],
-                {"status": "disabled", "message": "VLM layer disabled."},
-            )
-        else:
-            save_json(
-                context.paths["vlm_raw_output"],
-                {"status": "skipped", "message": "VLM layer not triggered."},
-            )
         return context
 
     def _run_spatial_line_price_fusion(self, context: ExtractionContext) -> None:
@@ -162,7 +146,7 @@ class RepairAndCorrectionStage:
             "running",
             (
                 "Validation did not pass cleanly; running bounded right-column re-OCR "
-                "evidence pass before optional VLM."
+                "evidence pass after the mandatory VLM stage."
             ),
             decision=context.report.get("import_decision"),
         )
@@ -196,74 +180,17 @@ class RepairAndCorrectionStage:
                 visual_evidence_to_prompt_text(context.visual_evidence),
             )
 
-    def _run_late_vlm_if_needed(self, context: ExtractionContext) -> None:
-        config = context.config
-        if config.vlm_enabled and context.visual_result is None:
-            self._unload_ollama_if_requested(context)
-            context.emit(
-                "visual_evidence",
-                "running",
-                "Validation did not pass cleanly; running optional VLM visual evidence layer.",
-                decision=context.report.get("import_decision"),
+    def _reuse_vlm_evidence(self, context: ExtractionContext) -> None:
+        if context.visual_result is None:
+            raise RuntimeError(
+                "Mandatory PaddleOCR-VL evidence is missing before the repair stage."
             )
-            context.visual_result = context.dependencies.vlm_engine.analyze(
-                VlmRequest(
-                    image_path=config.source_image_path,
-                    result_dir=config.result_dir,
-                    run_id=config.run_id,
-                    enabled=config.vlm_enabled,
-                    timeout_seconds=config.vlm_timeout_seconds,
-                    progress_callback=config.progress_callback,
-                )
-            )
-            self._reload_ollama_if_requested(context)
-            save_json(context.paths["vlm_raw_output"], context.visual_result)
-            if context.visual_result.get("status") == "ok":
-                vlm_evidence = build_visual_evidence(
-                    context.visual_result,
-                    context.report,
-                    max_chars=config.vlm_max_chars,
-                )
-                context.visual_evidence = merge_visual_evidence(
-                    context.visual_evidence,
-                    vlm_evidence,
-                    backend_suffix="paddleocr_vl_structured_tables",
-                )
-                save_json(context.paths["visual_evidence"], context.visual_evidence)
-                write_text(
-                    context.paths["visual_evidence_text"],
-                    visual_evidence_to_prompt_text(context.visual_evidence),
-                )
-            else:
-                context.emit(
-                    "visual_evidence",
-                    "done",
-                    (
-                        "VLM visual layer did not produce usable evidence; bounded re-OCR/"
-                        "original LLM output kept."
-                    ),
-                    vlm_status=context.visual_result.get("status"),
-                    error=context.visual_result.get("error"),
-                )
-        elif not config.vlm_enabled:
-            save_json(
-                context.paths["vlm_raw_output"],
-                {
-                    "status": "disabled",
-                    "message": "VLM layer disabled; bounded right-column re-OCR may still run.",
-                },
-            )
-
-        if config.vlm_enabled and context.visual_result is not None:
-            context.emit(
-                "visual_evidence",
-                "done",
-                (
-                    "Reusing VLM-first visual evidence for the correction pass; VLM was not "
-                    "run a second time."
-                ),
-                vlm_status=context.visual_result.get("status"),
-            )
+        context.emit(
+            "visual_evidence",
+            "done",
+            "Reusing mandatory PaddleOCR-VL evidence for the correction pass.",
+            vlm_status=context.visual_result.get("status"),
+        )
 
     def _run_patch_correction(self, context: ExtractionContext) -> None:
         evidence = context.visual_evidence or {}

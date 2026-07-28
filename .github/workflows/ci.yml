@@ -68,7 +68,7 @@ jobs:
           WORKDIR /app
           RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/* \
               && python -m pip install --no-cache-dir flask pillow werkzeug
-          CMD ["python", "vlm_service.py"]
+          CMD ["python", "-c", "print(\"mock VLM runtime\")"]
           DOCKERFILE
           docker build -f /tmp/Dockerfile.vlm-runtime-mock -t receipt-vlm-runtime:ci .
 

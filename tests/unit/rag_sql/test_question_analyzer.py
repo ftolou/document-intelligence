@@ -233,7 +233,7 @@ def test_analyzer_accepts_provider_neutral_gateway() -> None:
 
     assert result.status == "ready"
     assert len(gateway.requests) == 1
-    assert gateway.requests[0].model == "gemma4"
+    assert gateway.requests[0].model == "gemma4:latest"
 
 
 def test_analyzer_emits_generic_merchant_filter_for_at_merchant_question() -> None:

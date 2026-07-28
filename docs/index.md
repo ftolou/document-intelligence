@@ -23,8 +23,3 @@
 - [VLM troubleshooting](VLM_TROUBLESHOOTING.md)
 - [VLM adapter architecture](VLM_ADAPTER_ARCHITECTURE.md)
 - [Spatial geometry extraction](SPATIAL_OVERVIEW_EXTRACTION.md)
-
-## Historical material
-
-Completed phase documents, patch notes, and portfolio snapshots are under
-[`archive/`](archive/README.md).

@@ -1569,7 +1569,7 @@ def main() -> int:
     parser.add_argument("--prompt-out", type=Path)
     parser.add_argument("--raw-out", type=Path)
     parser.add_argument("--ollama-url", default="http://localhost:11434")
-    parser.add_argument("--model", default="gemma4")
+    parser.add_argument("--model", default="gemma4:latest")
     parser.add_argument("--max-lines", type=int, default=260)
     parser.add_argument("--num-ctx", type=int, default=24384)
     parser.add_argument("--num-predict", type=int, default=8192)

@@ -1,4 +1,4 @@
-"""Application policies that compose visual-model adapters."""
+"""Application policies that compose the mandatory visual-model adapter."""
 
 from __future__ import annotations
 
@@ -31,16 +31,6 @@ def _emit(
         pass
 
 
-class DisabledVlmEngine(VlmEngine):
-    """Explicit no-op engine used when no VLM backend is configured."""
-
-    def __init__(self, message: str = "VLM evidence is disabled by configuration.") -> None:
-        self.message = message
-
-    def analyze(self, request: VlmRequest) -> dict[str, Any]:
-        return {"status": "disabled", "backend": "disabled", "message": self.message}
-
-
 class UnsupportedVlmEngine(VlmEngine):
     """Return a structured result for an unsupported configured backend."""
 
@@ -49,37 +39,14 @@ class UnsupportedVlmEngine(VlmEngine):
 
     def analyze(self, request: VlmRequest) -> dict[str, Any]:
         return {
-            "status": "skipped",
+            "status": "error",
             "backend": self.backend_name,
-            "message": f"Unsupported VLM backend: {self.backend_name}",
+            "error": f"Unsupported VLM backend: {self.backend_name}",
         }
 
 
-class FallbackVlmEngine(VlmEngine):
-    """Run a fallback adapter only when the primary adapter does not succeed."""
-
-    def __init__(self, primary: VlmEngine, fallback: VlmEngine) -> None:
-        self.primary = primary
-        self.fallback = fallback
-
-    def analyze(self, request: VlmRequest) -> dict[str, Any]:
-        primary_result = self.primary.analyze(request)
-        if primary_result.get("status") == "ok":
-            return primary_result
-
-        fallback_result = self.fallback.analyze(request)
-        if fallback_result.get("status") == "ok":
-            fallback_result.setdefault("primary_error", primary_result.get("error"))
-            fallback_result.setdefault("primary_backend", primary_result.get("backend"))
-            return fallback_result
-
-        combined = dict(primary_result)
-        combined["fallback"] = fallback_result
-        return combined
-
-
-class OptionalVlmEngine(VlmEngine):
-    """Apply enablement, input validation, progress, and persistence policy."""
+class RequiredVlmEngine(VlmEngine):
+    """Apply input validation, progress, and persistence for mandatory VLM execution."""
 
     def __init__(self, delegate: VlmEngine, *, backend_name: str) -> None:
         self.delegate = delegate
@@ -87,28 +54,13 @@ class OptionalVlmEngine(VlmEngine):
 
     def analyze(self, request: VlmRequest) -> dict[str, Any]:
         out_json = request.result_dir / f"{request.run_id}_v14_7_vlm_raw_output.json"
-        if not request.enabled:
-            result = {
-                "status": "disabled",
-                "backend": self.backend_name,
-                "message": "VLM evidence is disabled by configuration.",
-            }
-            save_json(out_json, result)
-            return result
-
         if request.image_path is None or not request.image_path.exists():
-            result = {
-                "status": "skipped",
-                "backend": self.backend_name,
-                "message": "No source image path available for VLM evidence.",
-            }
-            save_json(out_json, result)
-            return result
+            raise FileNotFoundError("A source receipt image is required for PaddleOCR-VL.")
 
         _emit(
             request,
             "running",
-            "Running optional PaddleOCR-VL / VLM evidence pass.",
+            "Running mandatory PaddleOCR-VL evidence extraction.",
             backend=self.backend_name,
         )
         result = dict(self.delegate.analyze(request))
@@ -118,7 +70,7 @@ class OptionalVlmEngine(VlmEngine):
         _emit(
             request,
             result.get("status", "done"),
-            "Optional VLM evidence pass finished.",
+            "PaddleOCR-VL evidence extraction finished.",
             backend=self.backend_name,
             vlm_status=result.get("status"),
             error=result.get("error"),
@@ -127,8 +79,6 @@ class OptionalVlmEngine(VlmEngine):
 
 
 __all__ = [
-    "DisabledVlmEngine",
-    "FallbackVlmEngine",
-    "OptionalVlmEngine",
+    "RequiredVlmEngine",
     "UnsupportedVlmEngine",
 ]

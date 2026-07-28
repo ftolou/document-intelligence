@@ -278,7 +278,7 @@ pre {
   white-space: nowrap;
 }
 
-/* Phase 1 portfolio feature: auditable human review */
+/* Auditable human review */
 .review-panel.empty {
   color: #94a3b8;
   background: #0b1220;
@@ -312,7 +312,7 @@ pre {
 }
 #batch-progress-bar-fill { height: 100%; width: 0%; background: #2563eb; transition: width .25s ease; }
 
-/* Phase 2.1: side-by-side human review with receipt image and item correction */
+/* Side-by-side human review with receipt image and item correction */
 .review-layout {
   display: grid;
   grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.2fr);
@@ -375,7 +375,7 @@ pre {
   .review-receipt-image { max-height: 520px; }
 }
 
-/* Phase 2.2: separated parser row type vs product/spending category review */
+/* Separated parser row type and product/spending category review */
 .review-items-table {
   min-width: 1640px;
 }
@@ -395,7 +395,7 @@ pre {
   min-width: 170px;
 }
 
-/* Phase 2.6: batch review queue, duplicate detection and DB management */
+/* Batch review queue, duplicate detection, and database management */
 .compact-actions { gap: 10px; align-items: end; }
 .inline-field { max-width: 280px; }
 .queue-actions { min-width: 280px; }

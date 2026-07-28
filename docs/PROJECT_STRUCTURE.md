@@ -35,7 +35,7 @@ The only supported generated-data root is `var/`. Old roots such as `outputs/`,
 
 Active extraction code is organized by responsibility rather than release number:
 
-- `extraction/evidence/` prepares OCR, layout, and optional VLM evidence;
+- `extraction/evidence/` prepares OCR, layout, and mandatory PaddleOCR-VL evidence;
 - `extraction/parsing/` owns LLM receipt parsing and table interpretation;
 - `extraction/validation/` applies deterministic consistency checks;
 - `extraction/repair/` contains bounded, validation-gated re-OCR and correction;

@@ -23,7 +23,6 @@ blocked = (
     "receipt_intelligence.adapters.vlm.paddle_cli",
     "receipt_intelligence.adapters.vlm.paddle_python",
     "receipt_intelligence.adapters.vlm.trusted_command",
-    "receipt_intelligence.entrypoints.vlm_http",
 )
 
 

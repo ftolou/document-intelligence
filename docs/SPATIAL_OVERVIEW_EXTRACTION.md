@@ -7,7 +7,7 @@ only supported extraction path; there is no legacy/current strategy switch.
 
 ```text
 OCR words and normalized boxes
-    -> optional VLM and region re-OCR hypotheses
+    -> mandatory PaddleOCR-VL and region re-OCR evidence
     -> canonical spatial document map
     -> deterministic same-band row and column grouping
     -> high-resolution region item-price candidates
@@ -46,8 +46,7 @@ For the manual runner:
 
 ```bash
 python scripts/run_receipt_pipeline.py OCR.json \
-  --source-image receipt.jpg \
-  --enable-vlm
+  --source-image receipt.jpg
 ```
 
 ## Evidence hierarchy

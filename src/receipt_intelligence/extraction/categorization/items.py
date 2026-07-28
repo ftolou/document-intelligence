@@ -1124,7 +1124,7 @@ def main() -> int:
     parser.add_argument("--out-dir", type=Path, required=True)
     parser.add_argument("--run-id", default=None)
     parser.add_argument("--ollama-url", default="http://localhost:11434")
-    parser.add_argument("--model", default="gemma4")
+    parser.add_argument("--model", default="gemma4:latest")
     parser.add_argument("--num-ctx", type=int, default=8192)
     parser.add_argument("--num-predict", type=int, default=4096)
     parser.add_argument("--timeout", type=float, default=180.0)

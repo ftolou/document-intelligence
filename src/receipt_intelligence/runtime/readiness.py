@@ -103,9 +103,9 @@ def build_readiness_report(
 ) -> dict[str, Any]:
     """Build a deterministic readiness report.
 
-    Database and writable runtime storage are always required. Ollama and the
-    VLM service can be probed as optional dependencies or promoted to required
-    checks through environment configuration.
+    Database and writable runtime storage are always required. Ollama may be
+    optional for selected endpoints, while the production composition always
+    probes and requires the PaddleOCR-VL service.
     """
 
     checks = {

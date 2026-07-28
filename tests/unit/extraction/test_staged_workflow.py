@@ -117,10 +117,20 @@ class StagedExtractionWorkflowTests(unittest.TestCase):
             root = Path(temporary_directory)
             ocr_path = root / "ocr.json"
             ocr_path.write_text(json.dumps({"words": []}), encoding="utf-8")
+            image_path = root / "receipt.jpg"
+            image_path.write_bytes(b"synthetic-image")
             with (
                 patch(
                     "receipt_intelligence.extraction.stages.prepare.build_ocr_context",
                     return_value=ocr_context,
+                ),
+                patch(
+                    "receipt_intelligence.adapters.vlm.remote_client.RemoteVlmClient.analyze",
+                    return_value={"status": "ok", "raw_result": {}},
+                ),
+                patch(
+                    "receipt_intelligence.extraction.stages.visual.run_vlm_region_reocr",
+                    return_value={"status": "skipped", "selected_region_count": 0},
                 ),
                 patch(
                     "receipt_intelligence.extraction.stages.parse.run_llm_main_parser",
@@ -153,7 +163,7 @@ class StagedExtractionWorkflowTests(unittest.TestCase):
                     run_id="spatial-1",
                     ollama_url="http://ollama",
                     model="gemma",
-                    vlm_enabled=False,
+                    source_image_path=image_path,
                     correction_enabled=False,
                     categorization_enabled=False,
                 )
@@ -192,11 +202,21 @@ class StagedExtractionWorkflowTests(unittest.TestCase):
             root = Path(temporary_directory)
             ocr_path = root / "ocr.json"
             ocr_path.write_text(json.dumps({"pages": []}), encoding="utf-8")
+            image_path = root / "receipt.jpg"
+            image_path.write_bytes(b"synthetic-image")
 
             with (
                 patch(
                     "receipt_intelligence.extraction.stages.prepare.build_ocr_context",
                     return_value=ocr_context,
+                ),
+                patch(
+                    "receipt_intelligence.adapters.vlm.remote_client.RemoteVlmClient.analyze",
+                    return_value={"status": "ok", "raw_result": {}},
+                ),
+                patch(
+                    "receipt_intelligence.extraction.stages.visual.run_vlm_region_reocr",
+                    return_value={"status": "skipped", "selected_region_count": 0},
                 ),
                 patch(
                     "receipt_intelligence.extraction.stages.parse.run_llm_main_parser",
@@ -229,7 +249,7 @@ class StagedExtractionWorkflowTests(unittest.TestCase):
                     run_id="receipt-1",
                     ollama_url="http://ollama",
                     model="gemma",
-                    vlm_enabled=False,
+                    source_image_path=image_path,
                     correction_enabled=False,
                     categorization_enabled=False,
                 )

@@ -7,7 +7,7 @@ receipt data is the source of truth for later analytics.
 flowchart TD
     A[Receipt image] --> B[Flask UI/API]
     B --> C[PaddleOCR evidence]
-    B --> D{Optional PaddleOCR-VL}
+    B --> D[Mandatory PaddleOCR-VL]
     C --> E[LLM receipt extraction]
     D --> E
     E --> F[Deterministic validation and repair]
@@ -86,7 +86,7 @@ See [Observability and readiness](operations/OBSERVABILITY.md).
 
 ```text
 receipt-app  Flask UI/API, OCR, extraction, review, SQLite, hybrid RAG, RAG-SQL LangGraph
-receipt-vlm  Optional GPU PaddleOCR-VL evidence service
+receipt-vlm  Mandatory GPU PaddleOCR-VL evidence service
 Ollama       Local generation and embedding models on the host
 ```
 

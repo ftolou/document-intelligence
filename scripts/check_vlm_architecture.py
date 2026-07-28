@@ -12,6 +12,19 @@ SERVICE_ROOT = ROOT / "services" / "receipt-vlm"
 SERVICE_PACKAGE = SERVICE_ROOT / "src" / "receipt_vlm_service"
 violations: list[str] = []
 
+
+legacy_paths = (
+    ROOT / "vlm_service.py",
+    APP_PACKAGE / "entrypoints" / "vlm_http",
+    APP_PACKAGE / "vlm_composition.py",
+    APP_PACKAGE / "adapters" / "vlm" / "paddle_cli.py",
+    APP_PACKAGE / "adapters" / "vlm" / "paddle_python.py",
+    APP_PACKAGE / "adapters" / "vlm" / "trusted_command.py",
+)
+for path in legacy_paths:
+    if path.exists():
+        violations.append(f"Obsolete in-process VLM path still exists: {path.relative_to(ROOT)}")
+
 required_service_files = (
     SERVICE_ROOT / "pyproject.toml",
     SERVICE_PACKAGE / "app.py",

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Import approved receipt artifacts into the Phase 2 receipt intelligence DB.
+"""Import approved receipt artifacts into the receipt intelligence database.
 
 Usage:
   python scripts/import_approved_receipts_to_db.py --results-dir var/jobs
 
-This is useful for backfilling old jobs after adding Phase 2. Human review imports
+This is useful for backfilling old jobs after adding the reviewed-data store. Human review imports
 new approved receipts automatically through the web app.
 """
 

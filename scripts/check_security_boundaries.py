@@ -55,13 +55,13 @@ for field in (
         )
 
 vlm_service_source = (
-    ROOT / "src" / "receipt_intelligence" / "entrypoints" / "vlm_http" / "app.py"
+    ROOT / "services" / "receipt-vlm" / "src" / "receipt_vlm_service" / "app.py"
 ).read_text(encoding="utf-8")
 for field in ("backend", "runner", "command", "timeout_seconds", "max_side_limit"):
     fragment = f'payload.get("{field}")'
     if fragment in vlm_service_source:
         violations.append(
-            "src/receipt_intelligence/entrypoints/vlm_http/app.py: "
+            "services/receipt-vlm/src/receipt_vlm_service/app.py: "
             f"execution-policy field remains request-controlled: {field}"
         )
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply V14.14.1 category confidence calibration to saved categorized receipts.
+"""Apply category confidence calibration to saved categorized receipts.
 
 This does not call Ollama and does not rerun OCR/VLM/parser/categorization.
 It only backfills/updates:
@@ -139,7 +139,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Backfill V14.14.1 category confidence calibration on saved categorized receipts."
+        description="Backfill category confidence calibration on saved categorized receipts."
     )
     parser.add_argument("--results-root", type=Path, required=True)
     parser.add_argument("--out-root", type=Path, required=True)

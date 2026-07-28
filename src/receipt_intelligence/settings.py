@@ -1,4 +1,4 @@
-"""Runtime configuration for the V14 receipt app."""
+"""Runtime configuration for the receipt intelligence application."""
 
 from __future__ import annotations
 
@@ -26,11 +26,11 @@ REPORTS_DIR = RUNTIME_PATHS.reports_dir
 LOGS_DIR = RUNTIME_PATHS.logs_dir
 RECEIPT_DB_PATH = RUNTIME_PATHS.receipt_db_path
 APP_HOST = os.getenv("APP_HOST", "0.0.0.0")
-APP_PORT = int(os.getenv("APP_PORT", "5000"))
+APP_PORT = int(os.getenv("APP_PORT", "7860"))
 DEBUG = os.getenv("FLASK_DEBUG", "0").lower() in {"1", "true", "yes"}
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma4")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma4:latest")
 OLLAMA_KEEP_ALIVE = os.getenv(
     "OLLAMA_KEEP_ALIVE", ""
 )  # empty => omit keep_alive from Ollama request
@@ -50,7 +50,7 @@ RAG_EMBEDDING_ENABLED = os.getenv("RAG_EMBEDDING_ENABLED", "1").lower() in {
     "yes",
     "on",
 }
-RAG_EMBEDDING_MODEL = os.getenv("RAG_EMBEDDING_MODEL", "embeddinggemma")
+RAG_EMBEDDING_MODEL = os.getenv("RAG_EMBEDDING_MODEL", "embeddinggemma:latest")
 RAG_EMBEDDING_BATCH_SIZE = int(os.getenv("RAG_EMBEDDING_BATCH_SIZE", "32"))
 RAG_EMBEDDING_TIMEOUT_SECONDS = float(os.getenv("RAG_EMBEDDING_TIMEOUT_SECONDS", "120"))
 RAG_EMBEDDING_KEEP_ALIVE = os.getenv("RAG_EMBEDDING_KEEP_ALIVE", "30m")
@@ -159,27 +159,16 @@ OCR_DISABLE_PADDLE_PIR = os.getenv("OCR_DISABLE_PADDLE_PIR", "0").lower() in {"1
 
 VALIDATION_TOLERANCE = float(os.getenv("VALIDATION_TOLERANCE", "0.03"))
 
-# V14.5 optional visual evidence layer. Disabled by default so the normal
-# V13-known-good PaddleOCR runtime remains the fast path.
-VLM_ENABLED = os.getenv("VLM_ENABLED", "0").lower() in {"1", "true", "yes", "on"}
-VLM_BACKEND = os.getenv("VLM_BACKEND", "http_service")
-VLM_ALLOW_LOCAL_BACKEND = os.getenv("VLM_ALLOW_LOCAL_BACKEND", "0").strip().lower() in {
-    "1",
-    "true",
-    "yes",
-    "on",
-}
-# For V14.7 two-container mode, the main app calls a separate receipt-vlm HTTP service.
+# PaddleOCR-VL is a mandatory production dependency. The main application
+# communicates with the standalone GPU service through the internal HTTP boundary.
+VLM_BACKEND = "http_service"
 VLM_SERVICE_URL = os.getenv("VLM_SERVICE_URL", "http://receipt-vlm:7870")
-# Optional command template, e.g.
-# python my_paddleocr_vl_wrapper.py --image "{image}" --out "{output_json}"
-VLM_COMMAND = os.getenv("VLM_COMMAND", "")
 VLM_TIMEOUT_SECONDS = float(os.getenv("VLM_TIMEOUT_SECONDS", "900"))
 VLM_MAX_CHARS = int(os.getenv("VLM_MAX_CHARS", "12000"))
 
-# V14.7.2 VLM service controls. The service resizes very large receipt images before PaddleOCR-VL
-# to avoid long CPU stalls/timeouts on full-resolution photos.
-VLM_SERVICE_MAX_SIDE_LIMIT = int(os.getenv("VLM_SERVICE_MAX_SIDE_LIMIT", "1600"))
+# The service resizes very large receipt images before PaddleOCR-VL to avoid
+# long stalls and timeouts on full-resolution photos.
+VLM_SERVICE_MAX_SIDE_LIMIT = int(os.getenv("VLM_SERVICE_MAX_SIDE_LIMIT", "1200"))
 VLM_SERVICE_REQUEST_TIMEOUT_SECONDS = float(
     os.getenv("VLM_SERVICE_REQUEST_TIMEOUT_SECONDS", os.getenv("VLM_TIMEOUT_SECONDS", "900"))
 )
@@ -220,10 +209,8 @@ JOB_RECOVER_PENDING = os.getenv("JOB_RECOVER_PENDING", "1").lower() in {
 }
 
 
-# V14.7.3 optional sequential GPU orchestration for Ollama + VLM.
-VLM_GPU_ORCHESTRATION = (
-    os.getenv("VLM_GPU_ORCHESTRATION", "none").strip().lower()
-)  # ignored by V14.10 VLM-first path
+# Optional sequential GPU orchestration for Ollama and the mandatory VLM service.
+VLM_GPU_ORCHESTRATION = os.getenv("VLM_GPU_ORCHESTRATION", "none").strip().lower()
 OLLAMA_UNLOAD_BEFORE_VLM = os.getenv("OLLAMA_UNLOAD_BEFORE_VLM", "0").lower() in {
     "1",
     "true",
@@ -241,12 +228,12 @@ OLLAMA_CONTROL_TIMEOUT_SECONDS = float(os.getenv("OLLAMA_CONTROL_TIMEOUT_SECONDS
 OLLAMA_UNLOAD_COMMAND = os.getenv("OLLAMA_UNLOAD_COMMAND", "")
 OLLAMA_START_COMMAND = os.getenv("OLLAMA_START_COMMAND", "")
 OLLAMA_RELOAD_PROMPT = os.getenv("OLLAMA_RELOAD_PROMPT", "ok")
-OLLAMA_GPU_HANDOFF_WAIT_SECONDS = float(os.getenv("OLLAMA_GPU_HANDOFF_WAIT_SECONDS", "3"))
+OLLAMA_GPU_HANDOFF_WAIT_SECONDS = float(os.getenv("OLLAMA_GPU_HANDOFF_WAIT_SECONDS", "0"))
 
-# V14.7.9 PaddleOCR-VL confirmed working local route
+# PaddleOCR-VL engine used by the standalone service.
 VLM_ENGINE = os.getenv("VLM_ENGINE", "transformers").strip()
 
-# V14.14 LLM-first item categorization. Runs after final receipt extraction and validation.
+# LLM-first item categorization runs after final receipt extraction and validation.
 CATEGORIZATION_ENABLED = os.getenv("CATEGORIZATION_ENABLED", "1").lower() in {
     "1",
     "true",
@@ -264,7 +251,7 @@ CATEGORIZATION_FORMAT_JSON = os.getenv("CATEGORIZATION_FORMAT_JSON", "1").lower(
     "on",
 }
 
-# Phase 7 local observability and readiness controls.
+# Local observability and readiness controls.
 QUERY_TELEMETRY_ENABLED = os.getenv("QUERY_TELEMETRY_ENABLED", "1").lower() in {
     "1",
     "true",
@@ -280,24 +267,14 @@ READINESS_PROBE_OLLAMA = os.getenv("READINESS_PROBE_OLLAMA", "1").lower() in {
     "yes",
     "on",
 }
-READINESS_PROBE_VLM = os.getenv("READINESS_PROBE_VLM", "1").lower() in {
-    "1",
-    "true",
-    "yes",
-    "on",
-}
+READINESS_PROBE_VLM = True
 READINESS_REQUIRE_OLLAMA = os.getenv("READINESS_REQUIRE_OLLAMA", "0").lower() in {
     "1",
     "true",
     "yes",
     "on",
 }
-READINESS_REQUIRE_VLM = os.getenv("READINESS_REQUIRE_VLM", "0").lower() in {
-    "1",
-    "true",
-    "yes",
-    "on",
-}
+READINESS_REQUIRE_VLM = True
 READINESS_TIMEOUT_SECONDS = float(os.getenv("READINESS_TIMEOUT_SECONDS", "2"))
 
 MODEL_CALL_TELEMETRY_ENABLED = os.getenv("MODEL_CALL_TELEMETRY_ENABLED", "1").lower() in {

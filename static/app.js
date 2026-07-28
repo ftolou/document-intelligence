@@ -119,7 +119,6 @@ async function loadConfig() {
   if (askReceiptsLogHelpEl && appConfig.ask_receipts_json_log_dir) {
     askReceiptsLogHelpEl.textContent = `Off by default. Enabled queries are saved to ${appConfig.ask_receipts_json_log_dir}. Logs contain full prompts, model responses, diagnostics, and errors.`;
   }
-  syncVlmCheckboxFromConfig();
   syncCategorizationCheckboxFromConfig();
   updateAppVersionFromConfig();
 }
@@ -138,13 +137,6 @@ function updateAppVersionFromConfig() {
   if (heading) heading.textContent = 'Receipt Intelligence';
   if (badge) badge.textContent = version;
   if (runButton) runButton.textContent = `Run ${version} parser`; 
-}
-
-function syncVlmCheckboxFromConfig() {
-  const vlm = document.getElementById('vlm_enabled');
-  if (vlm && appConfig.vlm_enabled !== undefined) {
-    vlm.checked = Boolean(appConfig.vlm_enabled);
-  }
 }
 
 function syncCategorizationCheckboxFromConfig() {

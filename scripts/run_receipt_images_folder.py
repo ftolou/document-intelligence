@@ -40,7 +40,7 @@ def main() -> int:
     parser.add_argument("image_folder", type=Path)
     parser.add_argument("--out-dir", type=Path, default=Path("var/reports/receipt_images_batch"))
     parser.add_argument("--ollama-url", default="http://localhost:11434")
-    parser.add_argument("--model", default="gemma4")
+    parser.add_argument("--model", default="gemma4:latest")
     parser.add_argument("--ocr-lang", default="german")
     parser.add_argument("--ocr-device", default="cpu")
     parser.add_argument("--ocr-max-side-limit", type=int, default=4000)
@@ -55,16 +55,8 @@ def main() -> int:
         help="Disable Ollama JSON grammar; prompt still asks for JSON",
     )
     parser.add_argument("--max-lines-for-llm", type=int, default=260)
-    parser.add_argument(
-        "--enable-vlm",
-        action="store_true",
-        help="Run optional PaddleOCR-VL/VLM evidence after validation failures",
-    )
     parser.add_argument("--vlm-backend", default="paddleocr_vl")
     parser.add_argument("--vlm-service-url", default="http://receipt-vlm:7870")
-    parser.add_argument(
-        "--vlm-command", default="", help="Optional command template with {image} and {output_json}"
-    )
     parser.add_argument("--vlm-timeout-seconds", type=float, default=240.0)
     parser.add_argument("--disable-vlm-correction", action="store_true")
     parser.add_argument("--tolerance", type=float, default=0.03)
@@ -109,10 +101,8 @@ def main() -> int:
                 json_retry_count=args.json_retry_count,
                 format_json=not args.no_format_json,
                 source_image_path=image_path,
-                vlm_enabled=args.enable_vlm,
                 vlm_backend=args.vlm_backend,
                 vlm_service_url=args.vlm_service_url,
-                vlm_command=args.vlm_command,
                 vlm_timeout_seconds=args.vlm_timeout_seconds,
                 correction_enabled=not args.disable_vlm_correction,
                 progress_callback=progress,

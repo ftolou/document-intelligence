@@ -31,7 +31,7 @@ This repository implements that complete path for German and European retail rec
 
 ```mermaid
 flowchart LR
-    A[Receipt image] --> B[OCR and optional VLM evidence]
+    A[Receipt image] --> B[OCR and mandatory PaddleOCR-VL evidence]
     B --> C[LLM semantic extraction]
     C --> D[Validation and bounded repair]
     D --> E[Human review]
@@ -56,7 +56,7 @@ The current published evidence focuses on software and workflow validation. It d
 
 | Check | Current evidence |
 |---|---:|
-| Containerized unit test suite | **198 passed** |
+| Application unit test suite | **280 passed** |
 | Deterministic RAG-SQL regression corpus | **1 passed** |
 | Python compilation and scoped Ruff checks | Automated in GitHub Actions |
 | Frontend JavaScript syntax | Automated in GitHub Actions |
@@ -73,7 +73,7 @@ Replace this comment with a genuine screenshot showing a grounded answer:
 
 ### Staged extraction with an explicit trust boundary
 
-OCR and optional VLM output are treated as evidence rather than final truth. An LLM performs semantic extraction, while deterministic code validates schema, arithmetic, totals, and consistency before bounded repair is considered. A human reviewer can correct the result, and only approved data is used for downstream analytics.
+OCR and mandatory PaddleOCR-VL output are treated as evidence rather than final truth. An LLM performs semantic extraction, while deterministic code validates schema, arithmetic, totals, and consistency before bounded repair is considered. A human reviewer can correct the result, and only approved data is used for downstream analytics.
 
 See [`src/receipt_intelligence/extraction/`](src/receipt_intelligence/extraction/) and [`docs/HUMAN_REVIEW.md`](docs/HUMAN_REVIEW.md).
 
@@ -91,7 +91,7 @@ See [`src/receipt_intelligence/rag_sql/`](src/receipt_intelligence/rag_sql/), [`
 
 ### Local models are isolated behind replaceable services
 
-The application uses Ollama for local generation and embeddings, while the optional GPU-intensive VLM runs as a separate service. Heavy runtime images are separated from thin application images so normal code changes do not rebuild the complete AI stack. Model-specific integration remains behind explicit adapters and settings rather than spreading across the application.
+The application uses Ollama for local generation and embeddings, while mandatory PaddleOCR-VL runs as a separate GPU service. Heavy runtime images are separated from thin application images so normal code changes do not rebuild the complete AI stack. Model-specific integration remains behind explicit adapters and settings rather than spreading across the application.
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`docs/DOCKER_IMAGE_DESIGN.md`](docs/DOCKER_IMAGE_DESIGN.md).
 
@@ -100,7 +100,7 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`docs/DOCKER_IMAGE_DESIG
 | Decision | Trade-off |
 |---|---|
 | LLM-first parsing plus deterministic validation | Handles diverse layouts better than a rule-only parser, but requires strict contracts and post-validation. |
-| Optional VLM evidence | Improves difficult layout interpretation, but increases latency and GPU demand. |
+| Mandatory PaddleOCR-VL evidence | Preserves difficult layout structure for every extraction, but requires a CUDA-capable GPU and increases latency. |
 | Human approval before analytics | Adds review effort, but establishes a clear source of truth for exact calculations. |
 | Hybrid dense and lexical retrieval | Improves semantic and exact-term matching, but requires fusion and separate retrieval evaluation. |
 | Resolve item IDs before SQL planning | Adds an explicit resolution stage, but prevents fragile product matching inside generated SQL. |
@@ -112,10 +112,10 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`docs/DOCKER_IMAGE_DESIG
 ### Prerequisites
 
 - Windows 11 with Docker Desktop
-- NVIDIA GPU support for the default VLM service
+- NVIDIA GPU support for the mandatory PaddleOCR-VL service
 - Ollama running on the host
-- A compatible local generation model, for example `gemma4`
-- A compatible embedding model, for example `embeddinggemma`
+- The tested generation model `gemma4:latest`
+- The tested embedding model `embeddinggemma:latest`
 
 ### 1. Configure the environment
 
@@ -124,6 +124,22 @@ Copy-Item .env.example .env
 ```
 
 Review model names, model-cache paths, and GPU settings in `.env`.
+
+The baseline used for the current repository was tested on an NVIDIA RTX A4000 Laptop GPU with 8 GB VRAM:
+
+| Ollama model | Tested tag | Tested manifest ID | Local size |
+|---|---|---|---:|
+| Generation | `gemma4:latest` | `c6eb396dbd59` | 9.6 GB |
+| Embeddings | `embeddinggemma:latest` | `85462619ee72` | 621 MB |
+
+Because `latest` is mutable, the manifest IDs above document the exact local baseline used during testing.
+
+Pull the configured models before starting the application:
+
+```powershell
+ollama pull gemma4:latest
+ollama pull embeddinggemma:latest
+```
 
 ### 2. Build the runtime and application images
 
@@ -148,10 +164,10 @@ Open:
 http://localhost:7860
 ```
 
-Check the optional VLM service:
+Check the mandatory VLM service:
 
 ```powershell
-Invoke-RestMethod http://localhost:7870/health | ConvertTo-Json -Depth 5
+docker compose exec receipt-vlm curl -fsS http://localhost:7870/health
 ```
 
 ## Typical workflow
@@ -184,7 +200,7 @@ GitHub Actions covers compilation, linting, frontend syntax, Docker builds, depe
 - The extraction workflow is currently optimized for German and European retail receipts.
 - Human review remains part of the trust boundary; unreviewed model output is not treated as accounting truth.
 - The default setup targets a local single-user environment, not a hardened multi-tenant SaaS deployment.
-- VLM processing is computationally expensive and intentionally isolated as an optional service.
+- PaddleOCR-VL is mandatory for extraction and is isolated in a dedicated GPU service because it is computationally expensive.
 - Quality depends on the selected local models and the diversity of the reviewed receipt corpus.
 - A representative public benchmark for extraction, retrieval, SQL validity, and latency is still in preparation.
 - The project is not financial, accounting, or tax software.

@@ -21,7 +21,7 @@ def _path_from_env(
 class RuntimePaths:
     """Resolved runtime paths.
 
-    Phase 6 completes the cutover to the canonical ``var/`` directory. Legacy
+    The runtime uses the canonical ``var/`` directory. Legacy
     roots such as ``outputs/results`` and ``data`` are no longer searched or
     used as implicit fallbacks.
     """

@@ -76,16 +76,12 @@
         </div>
 
         <div class="llm-box">
-          <h2>Optional VLM evidence layer</h2>
+          <h2>Mandatory PaddleOCR-VL evidence</h2>
           <div class="grid">
-            <div class="field">
-              <label class="checkline"><input name="vlm_enabled" id="vlm_enabled" type="checkbox" /> Enable VLM-first structured evidence</label>
-              <small>Enabling this runs PaddleOCR-VL first for layout regions, OCRs detected crops, then sends compact region evidence to Gemma.</small>
-            </div>
             <div class="field">
               <label>VLM backend</label>
               <input id="vlm_backend" disabled />
-              <small>Server-managed deployment setting.</small>
+              <small>PaddleOCR-VL runs before the main LLM parser and cannot be disabled in production.</small>
             </div>
             <div class="field">
               <label>VLM service URL</label>
@@ -365,7 +361,7 @@
         <section class="card model-filter-bar">
           <label>Range<select id="model-call-hours"><option value="1">1 hour</option><option value="24" selected>24 hours</option><option value="168">7 days</option><option value="720">30 days</option><option value="all">All</option></select></label>
           <label>Provider<input id="model-call-provider" placeholder="ollama" /></label>
-          <label>Model<input id="model-call-model" placeholder="gemma4" /></label>
+          <label>Model<input id="model-call-model" placeholder="gemma4:latest" /></label>
           <label>Operation<input id="model-call-operation" placeholder="receipt_main_parse" /></label>
           <label>Status<select id="model-call-status"><option value="">All</option><option value="completed">Completed</option><option value="failed">Failed</option></select></label>
         </section>

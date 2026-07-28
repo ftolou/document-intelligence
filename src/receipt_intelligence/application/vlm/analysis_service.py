@@ -115,7 +115,6 @@ class VlmAnalysisService:
                     image_path=prepared_path,
                     result_dir=result_dir,
                     run_id=run_id,
-                    enabled=True,
                     timeout_seconds=self.timeout_seconds,
                 )
             )

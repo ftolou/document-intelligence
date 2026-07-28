@@ -31,6 +31,37 @@ def _json_object(value: Any) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {}
 
 
+def _category_review_reason_codes(receipt: dict[str, Any]) -> set[str]:
+    categorization = (
+        receipt.get("categorization") if isinstance(receipt.get("categorization"), dict) else {}
+    )
+    items = receipt.get("items") if isinstance(receipt.get("items"), list) else []
+    category_items = [item for item in items if isinstance(item, dict)]
+    has_category_contract = bool(categorization) or any(
+        "category_key" in item or "category_review_required" in item for item in category_items
+    )
+    if not has_category_contract:
+        return set()
+
+    codes: set[str] = set()
+    status = str(categorization.get("status") or "").strip().lower()
+    if categorization and status != "ok":
+        codes.add("CATEGORIZATION_INCOMPLETE")
+
+    declared_review_count = categorization.get("category_review_count")
+    if isinstance(declared_review_count, (int, float)) and declared_review_count > 0:
+        codes.add("CATEGORY_REVIEW_REQUIRED")
+
+    for item in category_items:
+        category_key = str(item.get("category_key") or "").strip().lower()
+        if item.get("category_review_required") is True:
+            codes.add("CATEGORY_REVIEW_REQUIRED")
+        if not category_key or category_key == "unknown":
+            codes.add("UNKNOWN_ITEM_CATEGORY")
+
+    return codes
+
+
 def _review_reason_codes(receipt: dict[str, Any]) -> list[str]:
     validation = receipt.get("validation") if isinstance(receipt.get("validation"), dict) else {}
     issues = validation.get("issues") if isinstance(validation.get("issues"), list) else []

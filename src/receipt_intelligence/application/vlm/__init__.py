@@ -1,17 +1,10 @@
 """Application-level visual-model orchestration."""
 
 from receipt_intelligence.application.vlm.analysis_service import VlmAnalysisService
-from receipt_intelligence.application.vlm.engines import (
-    DisabledVlmEngine,
-    FallbackVlmEngine,
-    OptionalVlmEngine,
-    UnsupportedVlmEngine,
-)
+from receipt_intelligence.application.vlm.engines import RequiredVlmEngine, UnsupportedVlmEngine
 
 __all__ = [
-    "DisabledVlmEngine",
-    "FallbackVlmEngine",
-    "OptionalVlmEngine",
+    "RequiredVlmEngine",
     "UnsupportedVlmEngine",
     "VlmAnalysisService",
 ]

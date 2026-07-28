@@ -2,17 +2,31 @@ repos:
   - repo: local
     hooks:
       - id: ruff-check
-        name: ruff check
+        name: ruff check (application)
         entry: python -m ruff check
         language: system
         types: [python]
-        files: ^(src/receipt_intelligence/(query|observability|web|runtime|extraction)/|tests/|scripts/(run_(tests|quality_checks|test_profile)|check_dependency_compatibility)\.py$)
+        files: ^(src/receipt_intelligence/|tests/|scripts/|app\.py$)
+        exclude: ^services/receipt-vlm/
       - id: ruff-format
-        name: ruff format check
+        name: ruff format check (application)
         entry: python -m ruff format --check
         language: system
         types: [python]
-        files: ^(src/receipt_intelligence/(query|observability|web|runtime|extraction)/|tests/|scripts/(run_(tests|quality_checks|test_profile)|check_dependency_compatibility)\.py$)
+        files: ^(src/receipt_intelligence/|tests/|scripts/|app\.py$)
+        exclude: ^services/receipt-vlm/
+      - id: ruff-check-vlm-service
+        name: ruff check (VLM service, Python 3.10)
+        entry: python -m ruff check --config services/receipt-vlm/pyproject.toml
+        language: system
+        types: [python]
+        files: ^services/receipt-vlm/(src|tests)/
+      - id: ruff-format-vlm-service
+        name: ruff format check (VLM service, Python 3.10)
+        entry: python -m ruff format --check --config services/receipt-vlm/pyproject.toml
+        language: system
+        types: [python]
+        files: ^services/receipt-vlm/(src|tests)/
       - id: pytest-fast
         name: pytest fast suite
         entry: python -m pytest -m "not gpu and not ollama"

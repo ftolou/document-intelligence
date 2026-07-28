@@ -15,7 +15,6 @@ class VlmRequest:
     image_path: Path | None
     result_dir: Path
     run_id: str
-    enabled: bool = False
     timeout_seconds: float = 180.0
     progress_callback: ProgressCallback | None = None
 

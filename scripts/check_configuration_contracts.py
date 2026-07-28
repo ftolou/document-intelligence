@@ -12,6 +12,7 @@ PIPELINE_PATH = (
     ROOT / "src" / "receipt_intelligence" / "pipeline" / "integrated_receipt_pipeline.py"
 )
 JOB_SERVICE_PATH = ROOT / "src" / "receipt_intelligence" / "services" / "job_processing.py"
+SETTINGS_PATH = ROOT / "src" / "receipt_intelligence" / "settings.py"
 
 violations: list[str] = []
 
@@ -52,6 +53,44 @@ if "**unused_kwargs" in pipeline_source:
     violations.append("The pipeline must not silently accept **unused_kwargs")
 if "extraction_request_from_mapping" not in pipeline_source:
     violations.append("The compatibility entry point must use the strict argument mapper")
+
+
+env_example_source = (ROOT / ".env.example").read_text(encoding="utf-8")
+for obsolete_name in (
+    "EXTRACTION_STRATEGY",
+    "SPATIAL_OVERVIEW_NUM_CTX",
+    "SPATIAL_OVERVIEW_NUM_PREDICT",
+    "SPATIAL_OVERVIEW_TIMEOUT_SECONDS",
+    "MAX_REOCR_IMAGES",
+    "VLM_ENABLED",
+    "READINESS_PROBE_VLM",
+    "READINESS_REQUIRE_VLM",
+):
+    if f"{obsolete_name}=" in env_example_source:
+        violations.append(f".env.example contains obsolete setting: {obsolete_name}")
+
+compose_source = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+if compose_source.count("env_file:") < 2:
+    violations.append("Both Docker Compose services must load .env through env_file")
+if "VLM_ENABLED" in compose_source:
+    violations.append("Docker Compose must not expose a VLM enable/disable switch")
+if 'VLM_BACKEND: "http_service"' not in compose_source:
+    violations.append("Docker Compose must force the standalone PaddleOCR-VL HTTP backend")
+if "condition: service_healthy" not in compose_source:
+    violations.append("The application must wait for the mandatory PaddleOCR-VL service")
+if 'READINESS_REQUIRE_VLM: "1"' not in compose_source:
+    violations.append("Docker Compose readiness must require the PaddleOCR-VL service")
+if "OLLAMA_MODEL=gemma4:latest" not in env_example_source:
+    violations.append(".env.example must document the tested gemma4:latest baseline")
+if "RAG_EMBEDDING_MODEL=embeddinggemma:latest" not in env_example_source:
+    violations.append(".env.example must document the tested embeddinggemma:latest baseline")
+if "vlm_enabled:" in config_source or "vlm_enabled:" in pipeline_source:
+    violations.append("The extraction API must not expose a VLM enable/disable switch")
+settings_source = SETTINGS_PATH.read_text(encoding="utf-8")
+if "VLM_ENABLED" in settings_source:
+    violations.append("Runtime settings must not expose a VLM enable/disable switch")
+if 'VLM_BACKEND = "http_service"' not in settings_source:
+    violations.append("Runtime settings must force the standalone PaddleOCR-VL backend")
 
 job_service_source = JOB_SERVICE_PATH.read_text(encoding="utf-8")
 if "run_integrated_receipt_pipeline" in job_service_source:

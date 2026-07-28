@@ -90,11 +90,6 @@ The database import intentionally separates parser/OCR row type from product/spe
 The import does **not** use parser row types as spending categories. This prevents bad analytics such as every normal product being categorized only as `item`. For specific questions such as “Which receipt had shampoo?”, the import first uses product aliases and item text to derive specific categories such as `personal_care/shampoo`; otherwise it falls back to the reviewed product category key/group.
 
 
-## Phase 2.2 refinement
-
-See `docs/archive/historical-patch-notes/archive/historical-patch-notes/TABLE_INTERPRETATION_REFINEMENTS.md` for the product-description/line-note separation, settlement/tender refinement, and printed-change validation added in `v1.6-phase2-table-refinement`.
-
-
 ## Query Planner upgrade
 
 The current Ask path uses the RAG-SQL LangGraph engine. Semantic product concepts are resolved to item IDs, an LLM proposes a typed read-only SQL plan, and deterministic validation/execution enforce the approved analytics scope. See `docs/RAG_SQL_ENGINE.md`.

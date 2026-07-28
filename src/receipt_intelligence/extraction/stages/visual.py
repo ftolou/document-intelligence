@@ -1,4 +1,4 @@
-"""Build optional VLM, region re-OCR, and deterministic table evidence."""
+"""Build mandatory VLM, region re-OCR, and deterministic table evidence."""
 
 from __future__ import annotations
 
@@ -31,13 +31,21 @@ class VisualEvidenceStage:
         paths = context.paths
         emit = context.emit
 
-        if config.vlm_enabled and config.source_image_path:
-            self._unload_ollama_if_requested(context)
+        if config.source_image_path is None:
+            result = {
+                "status": "error",
+                "error": "A source receipt image is required for mandatory PaddleOCR-VL execution.",
+            }
+            save_json(paths["vlm_raw_output"], result)
+            raise ValueError(result["error"])
+
+        self._unload_ollama_if_requested(context)
+        try:
             emit(
                 "visual_evidence",
                 "running",
                 (
-                    "VLM-first mode: running PaddleOCR-VL before the main LLM parser "
+                    "Running mandatory PaddleOCR-VL before the main LLM parser "
                     "to build structured table evidence."
                 ),
                 backend=config.vlm_backend,
@@ -47,51 +55,43 @@ class VisualEvidenceStage:
                     image_path=config.source_image_path,
                     result_dir=config.result_dir,
                     run_id=config.run_id,
-                    enabled=config.vlm_enabled,
                     timeout_seconds=config.vlm_timeout_seconds,
                     progress_callback=config.progress_callback,
                 )
             )
             save_json(paths["vlm_raw_output"], context.visual_result)
-            if context.visual_result.get("status") == "ok":
-                context.visual_evidence = build_visual_evidence(
-                    context.visual_result,
-                    {"import_decision": "pre_llm_vlm_first", "issues": []},
-                    max_chars=config.vlm_max_chars,
-                )
-                self._run_region_reocr(context)
-                self._run_table_arbitration(context)
-                save_json(paths["visual_evidence"], context.visual_evidence)
-                write_text(
-                    paths["visual_evidence_text"],
-                    visual_evidence_to_prompt_text(context.visual_evidence),
-                )
+            if context.visual_result.get("status") != "ok":
                 emit(
                     "visual_evidence",
-                    "done",
-                    "VLM-region-first evidence is ready for the main LLM parser.",
-                    summary=context.visual_evidence.get("summary"),
-                )
-            else:
-                emit(
-                    "visual_evidence",
-                    "done",
-                    "VLM-first layer did not produce usable evidence; using OCR-only LLM prompt.",
+                    "error",
+                    "Mandatory PaddleOCR-VL did not produce usable evidence.",
                     vlm_status=context.visual_result.get("status"),
                     error=context.visual_result.get("error"),
                 )
+                detail = context.visual_result.get("error") or context.visual_result.get("message")
+                raise RuntimeError(f"Mandatory PaddleOCR-VL failed: {detail or 'unknown error'}")
+
+            context.visual_evidence = build_visual_evidence(
+                context.visual_result,
+                {"import_decision": "pre_llm_vlm_first", "issues": []},
+                max_chars=config.vlm_max_chars,
+            )
+            self._run_region_reocr(context)
+            self._run_table_arbitration(context)
+            save_json(paths["visual_evidence"], context.visual_evidence)
+            write_text(
+                paths["visual_evidence_text"],
+                visual_evidence_to_prompt_text(context.visual_evidence),
+            )
+            emit(
+                "visual_evidence",
+                "done",
+                "PaddleOCR-VL and region evidence are ready for the main LLM parser.",
+                summary=context.visual_evidence.get("summary"),
+            )
+            return context
+        finally:
             self._reload_ollama_if_requested(context)
-        elif config.vlm_enabled:
-            save_json(
-                paths["vlm_raw_output"],
-                {"status": "skipped", "message": "VLM enabled but source_image_path was missing."},
-            )
-        else:
-            save_json(
-                paths["vlm_raw_output"],
-                {"status": "disabled", "message": "VLM layer disabled."},
-            )
-        return context
 
     def _run_region_reocr(self, context: ExtractionContext) -> None:
         config = context.config
