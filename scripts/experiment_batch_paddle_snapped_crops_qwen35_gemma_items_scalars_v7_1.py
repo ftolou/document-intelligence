@@ -1116,7 +1116,7 @@ def detect_paddle_boxes(
     filtered_small = 0
 
     for source_index, (polygon, score) in enumerate(
-        zip(polygons, scores),
+        zip(polygons, scores, strict=False),
         start=1,
     ):
         xs = [point[0] for point in polygon]
@@ -1378,7 +1378,6 @@ def build_subgroup(
     else:
         bottom = math.ceil((lines[last_index].y_max + lines[last_index + 1].y_min) / 2.0)
 
-    selected = [lines[index] for index in line_indices]
     left = max(
         0,
         math.floor(min(line.x_min for line in lines) - horizontal_padding),
