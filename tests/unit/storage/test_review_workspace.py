@@ -136,3 +136,126 @@ def test_review_revision_rejects_stale_expected_revision(tmp_path: Path) -> None
             receipt_db_id=None,
             expected_revision=0,
         )
+
+
+def _enqueue_automatic_receipt(
+    database: ReceiptDatabase,
+    *,
+    job_id: str,
+    receipt: dict,
+) -> dict:
+    return database.upsert_review_queue(
+        job_id=job_id,
+        receipt=receipt,
+        decision="import",
+        balanced=True,
+        difference=0.0,
+        issue_count=0,
+        image_path=None,
+        final_receipt_path=None,
+    )
+
+
+def test_unknown_item_category_prevents_auto_validation(tmp_path: Path) -> None:
+    database = ReceiptDatabase(tmp_path / "receipt.db")
+    receipt = _receipt("Sergent Major")
+    receipt["validation"]["issues"] = []
+    receipt["categorization"] = {
+        "status": "ok",
+        "category_review_count": 1,
+    }
+    receipt["items"] = [
+        {
+            "description": "PLOTO PETTEN Naturel",
+            "line_total": 5.0,
+            "category_key": "unknown",
+            "category_review_required": True,
+        }
+    ]
+
+    result = _enqueue_automatic_receipt(
+        database,
+        job_id="job-unknown-category",
+        receipt=receipt,
+    )
+    queue = database.get_review_queue_record("job-unknown-category")
+
+    assert result["queue_status"] == "needs_review"
+    assert result["reason_codes"] == [
+        "CATEGORY_REVIEW_REQUIRED",
+        "UNKNOWN_ITEM_CATEGORY",
+    ]
+    assert queue is not None
+    assert queue["queue_status"] == "needs_review"
+    assert queue["reason_codes"] == result["reason_codes"]
+
+
+def test_explicit_category_review_flag_prevents_auto_validation(tmp_path: Path) -> None:
+    database = ReceiptDatabase(tmp_path / "receipt.db")
+    receipt = _receipt()
+    receipt["validation"]["issues"] = []
+    receipt["categorization"] = {
+        "status": "ok",
+        "category_review_count": 1,
+    }
+    receipt["items"] = [
+        {
+            "description": "Ambiguous product",
+            "line_total": 5.0,
+            "category_key": "clothing_shoes",
+            "category_review_required": True,
+        }
+    ]
+
+    result = _enqueue_automatic_receipt(
+        database,
+        job_id="job-category-review",
+        receipt=receipt,
+    )
+
+    assert result["queue_status"] == "needs_review"
+    assert result["reason_codes"] == ["CATEGORY_REVIEW_REQUIRED"]
+
+
+def test_complete_item_categories_allow_auto_validation(tmp_path: Path) -> None:
+    database = ReceiptDatabase(tmp_path / "receipt.db")
+    receipt = _receipt()
+    receipt["validation"]["issues"] = []
+    receipt["categorization"] = {
+        "status": "ok",
+        "category_review_count": 0,
+    }
+    receipt["items"] = [
+        {
+            "description": "T-Shirt",
+            "line_total": 5.0,
+            "category_key": "clothing_shoes",
+            "category_review_required": False,
+        }
+    ]
+
+    result = _enqueue_automatic_receipt(
+        database,
+        job_id="job-categorized",
+        receipt=receipt,
+    )
+
+    assert result["queue_status"] == "auto_validated"
+    assert result["reason_codes"] == []
+
+
+def test_legacy_receipt_without_category_contract_keeps_previous_behavior(
+    tmp_path: Path,
+) -> None:
+    database = ReceiptDatabase(tmp_path / "receipt.db")
+    receipt = _receipt()
+    receipt["validation"]["issues"] = []
+
+    result = _enqueue_automatic_receipt(
+        database,
+        job_id="job-legacy",
+        receipt=receipt,
+    )
+
+    assert result["queue_status"] == "auto_validated"
+    assert result["reason_codes"] == []

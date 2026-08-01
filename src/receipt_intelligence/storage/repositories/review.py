@@ -70,6 +70,7 @@ def _review_reason_codes(receipt: dict[str, Any]) -> list[str]:
         for issue in issues
         if isinstance(issue, dict) and str(issue.get("code") or "").strip()
     }
+    codes.update(_category_review_reason_codes(receipt))
     human_review = (
         receipt.get("human_review") if isinstance(receipt.get("human_review"), dict) else {}
     )
@@ -165,19 +166,24 @@ class ReviewRepository(BaseRepository):
             default=0.0,
         )
         duplicate_status = "duplicate_candidate" if max_score >= 70 else None
+        category_reason_codes = _category_review_reason_codes(receipt)
+        reason_codes = _review_reason_codes(receipt)
         if queue_status is None:
             if duplicate_status:
                 queue_status = "duplicate_candidate"
             elif decision in {"reject", "llm_failed"}:
                 queue_status = "rejected"
-            elif decision in {"import", "ok", "auto_validated"} and balanced is True:
+            elif (
+                decision in {"import", "ok", "auto_validated"}
+                and balanced is True
+                and not category_reason_codes
+            ):
                 queue_status = "auto_validated"
             else:
                 queue_status = "needs_review"
 
         now = utc_now()
         raw_json = json.dumps(receipt, ensure_ascii=False, default=str)
-        reason_codes = _review_reason_codes(receipt)
         human_review = (
             receipt.get("human_review") if isinstance(receipt.get("human_review"), dict) else {}
         )
