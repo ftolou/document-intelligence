@@ -43,6 +43,7 @@ ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["B011"]
+"src/receipt_pipeline_v7_7_correction_integration/tests/**/*.py" = ["E402"]
 
 [tool.mypy]
 python_version = "3.11"
