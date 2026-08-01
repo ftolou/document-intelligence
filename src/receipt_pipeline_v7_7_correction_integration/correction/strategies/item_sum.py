@@ -3,8 +3,9 @@ from __future__ import annotations
 import difflib
 import re
 import unicodedata
+from collections.abc import Sequence
 from decimal import Decimal
-from typing import Any, Sequence
+from typing import Any
 
 from ..evidence import money_float, parse_decimal_literal, parse_rows
 
@@ -36,8 +37,7 @@ def validate_item_sum_evidence(answer: Any, transcription: str) -> dict[str, Any
             "metrics": {"item_block_count": 0, "unresolved_group_count": 0},
         }
     warnings.extend(
-        {"code": "TRANSCRIPTION_WARNING", "message": value}
-        for value in source_warnings
+        {"code": "TRANSCRIPTION_WARNING", "message": value} for value in source_warnings
     )
     source = {row["row_id"]: row["text"] for row in rows}
     order = {row["row_id"]: index for index, row in enumerate(rows)}
@@ -74,14 +74,10 @@ def validate_item_sum_evidence(answer: Any, transcription: str) -> dict[str, Any
         indices: list[int] = []
         for row_id in value:
             if not isinstance(row_id, str) or row_id not in source:
-                errors.append(
-                    {"code": "UNKNOWN_SOURCE_ROW", "location": location, "value": row_id}
-                )
+                errors.append({"code": "UNKNOWN_SOURCE_ROW", "location": location, "value": row_id})
                 continue
             if row_id in used_rows:
-                errors.append(
-                    {"code": "SOURCE_ROW_REUSED", "location": location, "value": row_id}
-                )
+                errors.append({"code": "SOURCE_ROW_REUSED", "location": location, "value": row_id})
             used_rows.add(row_id)
             valid.append(row_id)
             indices.append(order[row_id])
@@ -104,11 +100,18 @@ def validate_item_sum_evidence(answer: Any, transcription: str) -> dict[str, Any
             value = block.get(field_name)
             if not isinstance(value, str) or not value.strip():
                 errors.append(
-                    {"code": f"INVALID_{field_name.upper()}", "location": f"{location}.{field_name}"}
+                    {
+                        "code": f"INVALID_{field_name.upper()}",
+                        "location": f"{location}.{field_name}",
+                    }
                 )
             elif value not in joined:
                 errors.append(
-                    {"code": "VALUE_NOT_LITERAL_IN_SOURCE_ROWS", "location": f"{location}.{field_name}", "value": value}
+                    {
+                        "code": "VALUE_NOT_LITERAL_IN_SOURCE_ROWS",
+                        "location": f"{location}.{field_name}",
+                        "value": value,
+                    }
                 )
         unit_price = block.get("unit_price")
         if unit_price is not None:
@@ -116,7 +119,11 @@ def validate_item_sum_evidence(answer: Any, transcription: str) -> dict[str, Any
                 errors.append({"code": "INVALID_UNIT_PRICE", "location": f"{location}.unit_price"})
             elif unit_price not in joined:
                 errors.append(
-                    {"code": "VALUE_NOT_LITERAL_IN_SOURCE_ROWS", "location": f"{location}.unit_price", "value": unit_price}
+                    {
+                        "code": "VALUE_NOT_LITERAL_IN_SOURCE_ROWS",
+                        "location": f"{location}.unit_price",
+                        "value": unit_price,
+                    }
                 )
 
     for index, group in enumerate(unresolved):
@@ -275,7 +282,11 @@ def build_item_sum_patch(
             )
 
     if not source_blocks:
-        return {"patches": []}, {"status": "abstained", "reason": "no_usable_source_item_blocks", "rejected_blocks": rejected}
+        return {"patches": []}, {
+            "status": "abstained",
+            "reason": "no_usable_source_item_blocks",
+            "rejected_blocks": rejected,
+        }
 
     matches, match_diagnostics = _match_blocks(source_blocks, current_items)
     matched_count = len(matches)
@@ -317,9 +328,17 @@ def build_item_sum_patch(
             )
 
     if len(replacements) > _MAX_REPLACEMENTS:
-        return {"patches": []}, {"status": "abstained", "reason": "too_many_price_replacements", "replacement_count": len(replacements)}
+        return {"patches": []}, {
+            "status": "abstained",
+            "reason": "too_many_price_replacements",
+            "replacement_count": len(replacements),
+        }
     if len(unmatched) > _MAX_INSERTIONS:
-        return {"patches": []}, {"status": "abstained", "reason": "too_many_missing_source_items", "insertion_count": len(unmatched)}
+        return {"patches": []}, {
+            "status": "abstained",
+            "reason": "too_many_missing_source_items",
+            "insertion_count": len(unmatched),
+        }
 
     insertions: list[dict[str, Any]] = []
     positions: list[int | None] = list(range(len(current_items)))
@@ -331,7 +350,10 @@ def build_item_sum_patch(
             try:
                 cursor = positions.index(current_index) + 1
             except ValueError:
-                return {"patches": []}, {"status": "abstained", "reason": "matched_item_position_lost"}
+                return {"patches": []}, {
+                    "status": "abstained",
+                    "reason": "matched_item_position_lost",
+                }
             continue
         if source_index not in unmatched_set or block.get("_amount") is None:
             continue
@@ -368,7 +390,11 @@ def build_item_sum_patch(
             "rejected_blocks": rejected,
         }
     if len(patches) > _MAX_PATCHES:
-        return {"patches": []}, {"status": "abstained", "reason": "patch_limit_exceeded", "patch_count": len(patches)}
+        return {"patches": []}, {
+            "status": "abstained",
+            "reason": "patch_limit_exceeded",
+            "patch_count": len(patches),
+        }
     return {"patches": patches}, {
         "status": "patch_built",
         "source_item_block_count": len(source_blocks),

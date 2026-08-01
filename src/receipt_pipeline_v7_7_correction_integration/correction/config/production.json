@@ -4,6 +4,12 @@
   "retain_accepted_partial_corrections": true,
   "max_rounds": 6,
   "routes": {
+    "ITEM_CONTRACT": [
+      "item_sum_source_blocks_v3"
+    ],
+    "ITEM_PRICES_COMPLETE": [
+      "item_sum_source_blocks_v3"
+    ],
     "ITEM_SUM_RECONCILIATION": [
       "item_sum_source_blocks_v3",
       "final_total_source_evidence_v2_4"

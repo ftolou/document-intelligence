@@ -74,11 +74,7 @@ class PromptRegistry:
                 if entry.get("schema_path")
                 else None
             ),
-            schema_sha256=(
-                str(entry["schema_sha256"])
-                if entry.get("schema_sha256")
-                else None
-            ),
+            schema_sha256=(str(entry["schema_sha256"]) if entry.get("schema_sha256") else None),
         )
 
     def load(self, prompt_id: str, version: str) -> str:
@@ -97,7 +93,6 @@ class PromptRegistry:
         text = content.rstrip("\n")
         self._text_cache[key] = text
         return text
-
 
     def load_schema(self, prompt_id: str, version: str) -> dict[str, Any]:
         key = (prompt_id, version)
@@ -126,9 +121,7 @@ class PromptRegistry:
         record = self.record(prompt_id, version)
         missing = [name for name in record.variables if name not in values]
         if missing:
-            raise KeyError(
-                f"Missing template variables for {prompt_id}@{version}: {missing}"
-            )
+            raise KeyError(f"Missing template variables for {prompt_id}@{version}: {missing}")
         rendered = Template(self.load(prompt_id, version)).substitute(
             {name: str(value) for name, value in values.items()}
         )

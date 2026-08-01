@@ -12,7 +12,6 @@ sys.path.insert(0, str(ROOT))
 from correction.coordinator import CorrectionCallbacks, run_correction_coordinator
 from correction.profile import CorrectionProfile, StrategyConfig
 
-
 SOURCE = """BEGIN_RECEIPT
 R0001 :: APPLE 1,00
 R0002 :: SUMME 2,00
@@ -71,12 +70,8 @@ def _validation(
             "failed": len(failed),
             "skipped": 0,
             "observed": 0,
-            "error_count": sum(
-                1 for check in failed if check.get("severity") == "error"
-            ),
-            "review_count": sum(
-                1 for check in failed if check.get("severity") == "review"
-            ),
+            "error_count": sum(1 for check in failed if check.get("severity") == "error"),
+            "review_count": sum(1 for check in failed if check.get("severity") == "review"),
         },
         "checks": checks,
     }
@@ -194,9 +189,7 @@ class CorrectionCoordinatorTests(unittest.TestCase):
             invoke_source_evidence=invoke_source,
             validate_receipt=lambda candidate, _: _validation(candidate),
             effective_item_pipeline=lambda previous, candidate: previous,
-            write_artifact=lambda name, value: artifacts.__setitem__(
-                name, copy.deepcopy(value)
-            ),
+            write_artifact=lambda name, value: artifacts.__setitem__(name, copy.deepcopy(value)),
         )
         corrected, validation, _, report = run_correction_coordinator(
             profile=_profile(
@@ -216,12 +209,8 @@ class CorrectionCoordinatorTests(unittest.TestCase):
         self.assertEqual(1.0, corrected["items"][0]["final_price"])
         self.assertEqual(19.0, corrected["tax"]["vat_lines"][0]["rate_percent"])
         self.assertEqual("review_required", validation["status"])
-        self.assertEqual(
-            ["ITEM_SUM_RECONCILIATION"], report["exhausted_target_codes"]
-        )
-        self.assertEqual(
-            "accepted_partial_open_failures", report["status"]
-        )
+        self.assertEqual(["ITEM_SUM_RECONCILIATION"], report["exhausted_target_codes"])
+        self.assertEqual("accepted_partial_open_failures", report["status"])
         self.assertEqual(1, report["normalization_summary"]["normalized_attempt_count"])
         self.assertEqual(
             "normalized",
@@ -265,15 +254,11 @@ class CorrectionCoordinatorTests(unittest.TestCase):
             write_artifact=lambda name, value: None,
         )
         corrected, validation, _, report = run_correction_coordinator(
-            profile=_profile(
-                {"VAT_LINE_RATE_ARITHMETIC": ("vat_source_evidence_v9",)}
-            ),
+            profile=_profile({"VAT_LINE_RATE_ARITHMETIC": ("vat_source_evidence_v9",)}),
             callbacks=callbacks,
             transcription=SOURCE,
             receipt=receipt,
-            initial_validation=_validation(
-                receipt, include_unrouted_failure=True
-            ),
+            initial_validation=_validation(receipt, include_unrouted_failure=True),
             item_pipeline_result=None,
             enabled=True,
         )
@@ -281,12 +266,82 @@ class CorrectionCoordinatorTests(unittest.TestCase):
         self.assertEqual(19.0, corrected["tax"]["vat_lines"][0]["rate_percent"])
         self.assertEqual("review_required", validation["status"])
         self.assertEqual(["ITEM_CONTRACT"], report["open_no_strategy_codes"])
-        self.assertEqual(
-            ["ITEM_CONTRACT"], report["remaining_failed_codes"]
-        )
+        self.assertEqual(["ITEM_CONTRACT"], report["remaining_failed_codes"])
         self.assertEqual(
             ["open_no_strategy", "accepted"],
             [entry["status"] for entry in report["target_outcomes"]],
+        )
+
+    def test_non_missing_price_item_contract_does_not_invoke_item_strategy(
+        self,
+    ) -> None:
+        receipt = _receipt()
+        receipt["totals"]["final_purchase_total"]["final_purchase_total"] = 1.0
+        receipt["tax"]["vat_lines"][0]["rate_percent"] = 19.0
+        validation = {
+            "status": "review_required",
+            "policy": {
+                "changes_model_values": False,
+                "correction_applied": False,
+            },
+            "summary": {
+                "passed": 1,
+                "failed": 1,
+                "skipped": 0,
+                "observed": 0,
+                "error_count": 0,
+                "review_count": 1,
+            },
+            "checks": [
+                {
+                    "code": "BASE_CONTRACT",
+                    "status": "passed",
+                    "severity": "info",
+                    "message": "base remains valid",
+                },
+                {
+                    "code": "ITEM_CONTRACT",
+                    "status": "failed",
+                    "severity": "review",
+                    "message": "negative discount is not a missing price",
+                    "details": [
+                        {
+                            "code": "NEGATIVE_DISCOUNT_AMOUNT",
+                            "location": "items[0].discount_amount",
+                        }
+                    ],
+                },
+            ],
+        }
+        callbacks = CorrectionCallbacks(
+            invoke_source_evidence=lambda *args: self.fail(
+                "non-missing-price contract must not invoke V3"
+            ),
+            validate_receipt=lambda candidate, _: validation,
+            effective_item_pipeline=lambda previous, candidate: previous,
+            write_artifact=lambda name, value: None,
+        )
+        corrected, final_validation, _, report = run_correction_coordinator(
+            profile=_profile({"ITEM_CONTRACT": ("item_sum_source_blocks_v3",)}),
+            callbacks=callbacks,
+            transcription=SOURCE,
+            receipt=receipt,
+            initial_validation=validation,
+            item_pipeline_result=None,
+            enabled=True,
+        )
+
+        self.assertEqual(receipt, corrected)
+        self.assertEqual(validation, final_validation)
+        self.assertEqual(["ITEM_CONTRACT"], report["open_no_strategy_codes"])
+        self.assertEqual([], report["rounds"][0]["strategy_chain"])
+        self.assertEqual(
+            ["item_sum_source_blocks_v3"],
+            report["rounds"][0]["configured_strategy_chain"],
+        )
+        self.assertIn(
+            "only when every contract detail is MISSING_FINAL_PRICE",
+            report["rounds"][0]["ineligible_strategies"][0]["reason"],
         )
 
     def test_clean_validation_skips_correction(self) -> None:

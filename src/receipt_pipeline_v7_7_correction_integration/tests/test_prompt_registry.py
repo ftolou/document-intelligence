@@ -16,9 +16,7 @@ class PromptRegistryTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.registry = PromptRegistry(ROOT / "prompts")
-        cls.manifest = json.loads(
-            (ROOT / "prompts" / "manifest.json").read_text(encoding="utf-8")
-        )
+        cls.manifest = json.loads((ROOT / "prompts" / "manifest.json").read_text(encoding="utf-8"))
 
     def test_all_manifest_entries_load_and_hash_verify(self) -> None:
         entries = self.manifest["prompts"]
@@ -71,7 +69,6 @@ class PromptRegistryTests(unittest.TestCase):
         for call in calls:
             keyword_names = {keyword.arg for keyword in call.keywords}
             self.assertIn("prompt_id", keyword_names)
-
 
     def test_json_repair_prompt_renders_without_strategy_schema_changes(self) -> None:
         rendered = self.registry.render(

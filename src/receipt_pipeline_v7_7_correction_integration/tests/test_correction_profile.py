@@ -15,9 +15,7 @@ from prompt_registry import PromptRegistry
 
 class CorrectionProfileTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.profile = load_correction_profile(
-            ROOT / "correction" / "config" / "production.json"
-        )
+        self.profile = load_correction_profile(ROOT / "correction" / "config" / "production.json")
         self.registry = PromptRegistry(ROOT / "prompts")
 
     def test_item_sum_route_contains_only_existing_specialists(self) -> None:
@@ -28,21 +26,24 @@ class CorrectionProfileTests(unittest.TestCase):
             ),
             tuple(
                 strategy.strategy_id
-                for strategy in self.profile.strategy_chain(
-                    "ITEM_SUM_RECONCILIATION"
-                )
+                for strategy in self.profile.strategy_chain("ITEM_SUM_RECONCILIATION")
             ),
         )
 
+    def test_missing_price_routes_use_item_source_specialist(self) -> None:
+        for code in ("ITEM_CONTRACT", "ITEM_PRICES_COMPLETE"):
+            self.assertEqual(
+                ("item_sum_source_blocks_v3",),
+                tuple(strategy.strategy_id for strategy in self.profile.strategy_chain(code)),
+            )
+
     def test_unknown_validation_code_has_no_fallback_strategy(self) -> None:
-        self.assertEqual((), self.profile.strategy_chain("ITEM_CONTRACT"))
+        self.assertEqual((), self.profile.strategy_chain("UNSUPPORTED_VALIDATION_CODE"))
 
     def test_vat_and_final_total_are_enabled(self) -> None:
         vat_chain = {
             strategy.strategy_id
-            for strategy in self.profile.strategy_chain(
-                "VAT_LINES_GROSS_RECONCILIATION"
-            )
+            for strategy in self.profile.strategy_chain("VAT_LINES_GROSS_RECONCILIATION")
         }
         self.assertIn("vat_source_evidence_v9", vat_chain)
         self.assertIn("final_total_source_evidence_v2_4", vat_chain)
@@ -91,9 +92,7 @@ class CorrectionProfileTests(unittest.TestCase):
             rendered = self.registry.render(
                 strategy.prompt_id,
                 strategy.prompt_version,
-                source_evidence=(
-                    "BEGIN_RECEIPT\nR0001 :: TEST 1,00\nEND_RECEIPT"
-                ),
+                source_evidence=("BEGIN_RECEIPT\nR0001 :: TEST 1,00\nEND_RECEIPT"),
                 output_schema='{"type":"object"}',
             )
             self.assertFalse(
@@ -104,9 +103,7 @@ class CorrectionProfileTests(unittest.TestCase):
     def test_every_strategy_prompt_binding_exists(self) -> None:
         for strategy in self.profile.strategies.values():
             self.registry.load(strategy.prompt_id, strategy.prompt_version)
-            self.registry.load_schema(
-                strategy.prompt_id, strategy.prompt_version
-            )
+            self.registry.load_schema(strategy.prompt_id, strategy.prompt_version)
 
 
 if __name__ == "__main__":

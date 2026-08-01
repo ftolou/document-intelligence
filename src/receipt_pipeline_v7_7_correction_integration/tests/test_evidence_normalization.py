@@ -11,7 +11,6 @@ from correction.normalization import normalize_source_evidence
 from correction.strategies.item_sum import validate_item_sum_evidence
 from correction.strategies.vat import validate_vat_evidence
 
-
 SOURCE = """BEGIN_RECEIPT
 R0001 :: APPLE 1,00
 R0002 :: Artikel 12345
@@ -38,17 +37,13 @@ class EvidenceNormalizationTests(unittest.TestCase):
                 "unit_price": None,
             },
         }
-        normalized, report = normalize_source_evidence(
-            "item_sum_source_blocks_v3", answer, SOURCE
-        )
+        normalized, report = normalize_source_evidence("item_sum_source_blocks_v3", answer, SOURCE)
         self.assertEqual("normalized", report["status"])
         self.assertEqual(
             [{"source_rows": ["R0002"]}],
             normalized["unresolved_candidate_rows"],
         )
-        self.assertEqual(
-            "valid", validate_item_sum_evidence(normalized, SOURCE)["status"]
-        )
+        self.assertEqual("valid", validate_item_sum_evidence(normalized, SOURCE)["status"])
         self.assertEqual(answer["unresolved_candidate_rows"]["name"], "Artikel 12345")
 
     def test_vat_full_source_row_reference_is_reduced_to_existing_row_id(self) -> None:
@@ -68,13 +63,9 @@ class EvidenceNormalizationTests(unittest.TestCase):
             ],
             "unresolved_candidate_rows": [],
         }
-        normalized, report = normalize_source_evidence(
-            "vat_source_evidence_v9", answer, SOURCE
-        )
+        normalized, report = normalize_source_evidence("vat_source_evidence_v9", answer, SOURCE)
         self.assertEqual("normalized", report["status"])
-        self.assertEqual(
-            "R0004", normalized["vat_evidence_blocks"][0]["source_row"]
-        )
+        self.assertEqual("R0004", normalized["vat_evidence_blocks"][0]["source_row"])
         self.assertEqual("valid", validate_vat_evidence(normalized, SOURCE)["status"])
 
     def test_unknown_row_reference_is_not_rewritten(self) -> None:

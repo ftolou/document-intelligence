@@ -37,7 +37,6 @@ import argparse
 import base64
 import concurrent.futures
 import copy
-import difflib
 import hashlib
 import inspect
 import json
@@ -47,15 +46,15 @@ import sys
 import time
 import urllib.error
 import urllib.request
-import unicodedata
 import zipfile
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
-from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from datetime import UTC, datetime
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from io import BytesIO
 from pathlib import Path
+from typing import Any
 
-from prompt_registry import PromptRegistry
 from correction.coordinator import (
     CorrectionCallbacks,
     run_correction_coordinator,
@@ -65,18 +64,13 @@ from correction.profile import (
     StrategyConfig,
     load_correction_profile,
 )
-from typing import Any, Iterable, Sequence
-
-from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageOps
-
+from PIL import Image, ImageDraw, ImageFilter, ImageOps
+from prompt_registry import PromptRegistry
 
 PROMPT_REGISTRY_ROOT = Path(__file__).resolve().parent / "prompts"
 PROMPT_REGISTRY = PromptRegistry(PROMPT_REGISTRY_ROOT)
 CORRECTION_PROFILE_PATH = (
-    Path(__file__).resolve().parent
-    / "correction"
-    / "config"
-    / "production.json"
+    Path(__file__).resolve().parent / "correction" / "config" / "production.json"
 )
 CORRECTION_PROFILE = load_correction_profile(CORRECTION_PROFILE_PATH)
 PROMPT_VERSIONS: dict[str, str] = {
@@ -102,7 +96,7 @@ PROMPT_VERSIONS: dict[str, str] = {
     "gemma.template.correction_evidence": "1.0.0",
     "gemma.template.correction_retry_suffix": "1.0.0",
     "gemma.template.task_envelope": "1.0.0",
-    "qwen.transcription": "1.0.0"
+    "qwen.transcription": "1.0.0",
 }
 for _strategy_config in CORRECTION_PROFILE.strategies.values():
     PROMPT_VERSIONS[_strategy_config.prompt_id] = _strategy_config.prompt_version
@@ -143,10 +137,10 @@ IMAGE_EXTENSIONS = {
 }
 
 
-QWEN_TRANSCRIPTION_PROMPT_TEMPLATE = _prompt('qwen.transcription')
+QWEN_TRANSCRIPTION_PROMPT_TEMPLATE = _prompt("qwen.transcription")
 
 
-GEMMA_SYSTEM_PROMPT = _prompt('gemma.system.receipt_interpreter')
+GEMMA_SYSTEM_PROMPT = _prompt("gemma.system.receipt_interpreter")
 
 
 ROW_ROLES = (
@@ -347,7 +341,7 @@ DIRECT_ITEMS_SCHEMA: dict[str, Any] = {
                     "quantity",
                     "unit",
                     "discount_amount",
-                    "original_price"
+                    "original_price",
                 ],
             },
         },
@@ -356,7 +350,7 @@ DIRECT_ITEMS_SCHEMA: dict[str, Any] = {
 }
 
 
-DIRECT_ITEMS_QUESTION = _prompt('gemma.items.direct')
+DIRECT_ITEMS_QUESTION = _prompt("gemma.items.direct")
 
 
 SCALAR_TASK_ORDER = (
@@ -394,85 +388,84 @@ SCALAR_TASKS: dict[str, dict[str, Any]] = {
     "merchant_name": {
         "schema": named_text_schema("merchant_name"),
         "num_predict": 96,
-        "question": _prompt('gemma.scalar.merchant_name'),
+        "question": _prompt("gemma.scalar.merchant_name"),
     },
     "merchant_address": {
         "schema": MERCHANT_ADDRESS_SCHEMA,
         "num_predict": 192,
-        "question": _prompt('gemma.scalar.merchant_address'),
+        "question": _prompt("gemma.scalar.merchant_address"),
     },
     "receipt_date": {
         "schema": named_text_schema("receipt_date"),
         "num_predict": 64,
-        "question": _prompt('gemma.scalar.receipt_date'),
+        "question": _prompt("gemma.scalar.receipt_date"),
     },
     "receipt_time": {
         "schema": named_text_schema("receipt_time"),
         "num_predict": 64,
-        "question": _prompt('gemma.scalar.receipt_time'),
+        "question": _prompt("gemma.scalar.receipt_time"),
     },
     "receipt_number": {
         "schema": named_text_schema("receipt_number"),
         "num_predict": 96,
-        "question": _prompt('gemma.scalar.receipt_number'),
+        "question": _prompt("gemma.scalar.receipt_number"),
     },
     "currency": {
         "schema": named_text_schema("currency"),
         "num_predict": 48,
-        "question": _prompt('gemma.scalar.currency'),
+        "question": _prompt("gemma.scalar.currency"),
     },
     "final_purchase_total": {
         "schema": named_money_schema("final_purchase_total"),
         "num_predict": 128,
-        "question": _prompt('gemma.scalar.final_purchase_total'),
+        "question": _prompt("gemma.scalar.final_purchase_total"),
     },
     "pre_discount_total": {
         "schema": named_money_schema("pre_discount_total"),
         "num_predict": 128,
-        "question": _prompt('gemma.scalar.pre_discount_total'),
+        "question": _prompt("gemma.scalar.pre_discount_total"),
     },
     "discount_total": {
         "schema": named_money_schema("discount_total"),
         "num_predict": 128,
-        "question": _prompt('gemma.scalar.discount_total'),
+        "question": _prompt("gemma.scalar.discount_total"),
     },
     "payment_method": {
         "schema": named_text_schema("payment_method"),
         "num_predict": 64,
-        "question": _prompt('gemma.scalar.payment_method'),
+        "question": _prompt("gemma.scalar.payment_method"),
     },
     "payment_received": {
         "schema": named_money_schema("payment_received"),
         "num_predict": 128,
-        "question": _prompt('gemma.scalar.payment_received'),
+        "question": _prompt("gemma.scalar.payment_received"),
     },
     "change_returned": {
         "schema": named_money_schema("change_returned"),
         "num_predict": 128,
-        "question": _prompt('gemma.scalar.change_returned'),
+        "question": _prompt("gemma.scalar.change_returned"),
     },
     "transaction_status": {
         "schema": TRANSACTION_STATUS_SCHEMA,
         "num_predict": 48,
-        "question": _prompt('gemma.scalar.transaction_status'),
+        "question": _prompt("gemma.scalar.transaction_status"),
     },
     "net_amount": {
         "schema": named_money_schema("net_amount"),
         "num_predict": 128,
-        "question": _prompt('gemma.scalar.net_amount'),
+        "question": _prompt("gemma.scalar.net_amount"),
     },
     "vat_amount": {
         "schema": named_money_schema("vat_amount"),
         "num_predict": 128,
-        "question": _prompt('gemma.scalar.vat_amount'),
+        "question": _prompt("gemma.scalar.vat_amount"),
     },
     "vat_lines": {
         "schema": VAT_LINES_SCHEMA,
         "num_predict": 768,
-        "question": _prompt('gemma.scalar.vat_lines'),
+        "question": _prompt("gemma.scalar.vat_lines"),
     },
 }
-
 
 
 @dataclass(frozen=True)
@@ -610,13 +603,9 @@ def clean_plain_lines(text: str) -> list[str]:
     return lines
 
 
-
 def serialize_receipt(lines: Sequence[str]) -> str:
     output = ["BEGIN_RECEIPT"]
-    output.extend(
-        f"R{index:04d} :: {line}"
-        for index, line in enumerate(lines, start=1)
-    )
+    output.extend(f"R{index:04d} :: {line}" for index, line in enumerate(lines, start=1))
     output.append("END_RECEIPT")
     return "\n".join(output)
 
@@ -666,8 +655,7 @@ def _coerce_polygon(value: Any) -> tuple[tuple[float, float], ...] | None:
         return None
 
     return tuple(
-        (float(_to_plain_python(point)[0]), float(_to_plain_python(point)[1]))
-        for point in value
+        (float(_to_plain_python(point)[0]), float(_to_plain_python(point)[1])) for point in value
     )
 
 
@@ -744,10 +732,7 @@ def _deduplicate_polygons(
     seen: set[tuple[tuple[int, int], ...]] = set()
 
     for polygon in polygons:
-        key = tuple(
-            (round(point[0]), round(point[1]))
-            for point in polygon
-        )
+        key = tuple((round(point[0]), round(point[1])) for point in polygon)
         if key in seen:
             continue
         seen.add(key)
@@ -773,9 +758,7 @@ def _extract_polygons_and_scores(
             "text_boxes",
         },
     )
-    polygons = _collect_polygons(
-        polygon_value if polygon_value is not None else raw_result
-    )
+    polygons = _collect_polygons(polygon_value if polygon_value is not None else raw_result)
     polygons = _deduplicate_polygons(polygons)
 
     score_value = _find_named_value(
@@ -798,29 +781,21 @@ def _extract_polygons_and_scores(
     if len(scores) < len(polygons):
         scores.extend([None] * (len(polygons) - len(scores)))
 
-    return polygons, scores[:len(polygons)]
+    return polygons, scores[: len(polygons)]
 
 
 def _filtered_kwargs(callable_object: Any, values: dict[str, Any]) -> dict[str, Any]:
     try:
         signature = inspect.signature(callable_object)
     except (TypeError, ValueError):
-        return {
-            key: value
-            for key, value in values.items()
-            if value is not None
-        }
+        return {key: value for key, value in values.items() if value is not None}
 
     has_var_kwargs = any(
         parameter.kind == inspect.Parameter.VAR_KEYWORD
         for parameter in signature.parameters.values()
     )
     if has_var_kwargs:
-        return {
-            key: value
-            for key, value in values.items()
-            if value is not None
-        }
+        return {key: value for key, value in values.items() if value is not None}
 
     return {
         key: value
@@ -833,11 +808,7 @@ def _initialize_paddle_detector(
     args: argparse.Namespace,
 ) -> tuple[str, Any]:
     backend = str(args.paddle_backend)
-    model_name = (
-        str(args.paddle_det_model)
-        if args.paddle_det_model
-        else None
-    )
+    model_name = str(args.paddle_det_model) if args.paddle_det_model else None
     cache_key = (
         backend,
         model_name,
@@ -866,10 +837,7 @@ def _initialize_paddle_detector(
             _PADDLE_DETECTOR_CACHE[cache_key] = result
             return result
         except Exception as exc:
-            errors.append(
-                f"TextDetection initialization failed: "
-                f"{type(exc).__name__}: {exc}"
-            )
+            errors.append(f"TextDetection initialization failed: {type(exc).__name__}: {exc}")
             if backend == "text_detection":
                 raise RuntimeError("; ".join(errors)) from exc
 
@@ -912,15 +880,9 @@ def _initialize_paddle_detector(
             if last_error is not None:
                 raise last_error
         except Exception as exc:
-            errors.append(
-                f"PaddleOCR initialization failed: "
-                f"{type(exc).__name__}: {exc}"
-            )
+            errors.append(f"PaddleOCR initialization failed: {type(exc).__name__}: {exc}")
 
-    raise RuntimeError(
-        "Could not initialize a PaddleOCR detector. "
-        + "; ".join(errors)
-    )
+    raise RuntimeError("Could not initialize a PaddleOCR detector. " + "; ".join(errors))
 
 
 def _predict_paddle(
@@ -946,10 +908,7 @@ def _predict_paddle(
                 result = predict(**_filtered_kwargs(predict, kwargs))
                 return list(result) if not isinstance(result, list) else result
             except Exception as exc:
-                errors.append(
-                    f"TextDetection.predict failed: "
-                    f"{type(exc).__name__}: {exc}"
-                )
+                errors.append(f"TextDetection.predict failed: {type(exc).__name__}: {exc}")
         raise RuntimeError("; ".join(errors))
 
     legacy_ocr = getattr(engine, "ocr", None)
@@ -964,10 +923,7 @@ def _predict_paddle(
                 cls=False,
             )
         except Exception as exc:
-            errors.append(
-                f"PaddleOCR.ocr(det=True, rec=False) failed: "
-                f"{type(exc).__name__}: {exc}"
-            )
+            errors.append(f"PaddleOCR.ocr(det=True, rec=False) failed: {type(exc).__name__}: {exc}")
 
     predict = getattr(engine, "predict", None)
     if callable(predict):
@@ -980,14 +936,9 @@ def _predict_paddle(
                 result = predict(**_filtered_kwargs(predict, kwargs))
                 return list(result) if not isinstance(result, list) else result
             except Exception as exc:
-                errors.append(
-                    f"PaddleOCR.predict failed: "
-                    f"{type(exc).__name__}: {exc}"
-                )
+                errors.append(f"PaddleOCR.predict failed: {type(exc).__name__}: {exc}")
 
-    raise RuntimeError(
-        "PaddleOCR detector call failed. " + "; ".join(errors)
-    )
+    raise RuntimeError("PaddleOCR detector call failed. " + "; ".join(errors))
 
 
 def detect_paddle_boxes(
@@ -1008,9 +959,7 @@ def detect_paddle_boxes(
 
     polygons, scores = _extract_polygons_and_scores(raw_result)
     if not polygons:
-        raise RuntimeError(
-            "PaddleOCR returned no parseable detection polygons"
-        )
+        raise RuntimeError("PaddleOCR returned no parseable detection polygons")
 
     image_width, image_height = image.size
     boxes: list[DetectionBox] = []
@@ -1034,10 +983,7 @@ def detect_paddle_boxes(
         if score is not None and score < args.paddle_min_score:
             filtered_low_score += 1
             continue
-        if (
-            width < args.paddle_min_box_width
-            or height < args.paddle_min_box_height
-        ):
+        if width < args.paddle_min_box_width or height < args.paddle_min_box_height:
             filtered_small += 1
             continue
 
@@ -1054,9 +1000,7 @@ def detect_paddle_boxes(
         )
 
     if not boxes:
-        raise RuntimeError(
-            "All PaddleOCR detections were filtered out"
-        )
+        raise RuntimeError("All PaddleOCR detections were filtered out")
 
     metadata = {
         "backend": backend,
@@ -1080,8 +1024,7 @@ def _vertical_overlap_ratio(
 ) -> float:
     overlap = max(
         0.0,
-        min(first_y_max, second_y_max)
-        - max(first_y_min, second_y_min),
+        min(first_y_max, second_y_max) - max(first_y_min, second_y_min),
     )
     denominator = max(
         1.0,
@@ -1119,25 +1062,17 @@ def cluster_boxes_into_lines(
                 line["y_min"],
                 line["y_max"],
             )
-            center_delta = abs(
-                box.center_y
-                - ((line["y_min"] + line["y_max"]) / 2.0)
-            )
+            center_delta = abs(box.center_y - ((line["y_min"] + line["y_max"]) / 2.0))
             center_limit = center_factor * min(
                 max(1.0, box.height),
                 line_height,
             )
 
-            compatible = (
-                overlap_ratio >= overlap_threshold
-                or center_delta <= center_limit
-            )
+            compatible = overlap_ratio >= overlap_threshold or center_delta <= center_limit
             if not compatible:
                 continue
 
-            score = overlap_ratio - (
-                center_delta / max(1.0, center_limit)
-            ) * 0.05
+            score = overlap_ratio - (center_delta / max(1.0, center_limit)) * 0.05
             if score > best_score:
                 best_index = index
                 best_score = score
@@ -1181,14 +1116,8 @@ def cluster_boxes_into_lines(
         detected_lines.append(
             DetectedLine(
                 index=len(detected_lines),
-                box_indices=tuple(
-                    member.index
-                    for member in member_boxes
-                ),
-                polygons=tuple(
-                    member.polygon
-                    for member in member_boxes
-                ),
+                box_indices=tuple(member.index for member in member_boxes),
+                polygons=tuple(member.polygon for member in member_boxes),
                 x_min=float(line["x_min"]),
                 y_min=float(line["y_min"]),
                 x_max=float(line["x_max"]),
@@ -1213,24 +1142,16 @@ def build_line_groups(
     if lines_per_group < 1:
         raise ValueError("lines_per_group must be at least 1")
     if overlap_lines < 0 or overlap_lines >= lines_per_group:
-        raise ValueError(
-            "line group overlap must be >= 0 and smaller than lines_per_group"
-        )
+        raise ValueError("line group overlap must be >= 0 and smaller than lines_per_group")
 
     image_width, image_height = image.size
     overall_left = max(
         0,
-        math.floor(
-            min(line.x_min for line in lines)
-            - horizontal_padding
-        ),
+        math.floor(min(line.x_min for line in lines) - horizontal_padding),
     )
     overall_right = min(
         image_width,
-        math.ceil(
-            max(line.x_max for line in lines)
-            + horizontal_padding
-        ),
+        math.ceil(max(line.x_max for line in lines) + horizontal_padding),
     )
     if overall_right <= overall_left:
         overall_left = 0
@@ -1247,24 +1168,12 @@ def build_line_groups(
         if start == 0:
             top = 0
         else:
-            top = math.floor(
-                (
-                    lines[start - 1].y_max
-                    + lines[start].y_min
-                )
-                / 2.0
-            )
+            top = math.floor((lines[start - 1].y_max + lines[start].y_min) / 2.0)
 
         if end == len(lines):
             bottom = image_height
         else:
-            bottom = math.ceil(
-                (
-                    lines[end - 1].y_max
-                    + lines[end].y_min
-                )
-                / 2.0
-            )
+            bottom = math.ceil((lines[end - 1].y_max + lines[end].y_min) / 2.0)
 
         top = max(0, min(image_height - 1, top))
         bottom = max(top + 1, min(image_height, bottom))
@@ -1272,10 +1181,7 @@ def build_line_groups(
         specs.append(
             LineGroupSpec(
                 group_id=f"G{len(specs) + 1:03d}",
-                line_indices=tuple(
-                    line.index
-                    for line in selected
-                ),
+                line_indices=tuple(line.index for line in selected),
                 top=top,
                 bottom=bottom,
                 left=overall_left,
@@ -1316,39 +1222,21 @@ def build_subgroup(
     if first_index == 0:
         top = 0
     else:
-        top = math.floor(
-            (
-                lines[first_index - 1].y_max
-                + lines[first_index].y_min
-            )
-            / 2.0
-        )
+        top = math.floor((lines[first_index - 1].y_max + lines[first_index].y_min) / 2.0)
 
     if last_index == len(lines) - 1:
         bottom = image_height
     else:
-        bottom = math.ceil(
-            (
-                lines[last_index].y_max
-                + lines[last_index + 1].y_min
-            )
-            / 2.0
-        )
+        bottom = math.ceil((lines[last_index].y_max + lines[last_index + 1].y_min) / 2.0)
 
     selected = [lines[index] for index in line_indices]
     left = max(
         0,
-        math.floor(
-            min(line.x_min for line in lines)
-            - horizontal_padding
-        ),
+        math.floor(min(line.x_min for line in lines) - horizontal_padding),
     )
     right = min(
         image_width,
-        math.ceil(
-            max(line.x_max for line in lines)
-            + horizontal_padding
-        ),
+        math.ceil(max(line.x_max for line in lines) + horizontal_padding),
     )
     if right <= left:
         left = 0
@@ -1366,7 +1254,6 @@ def build_subgroup(
         right=right,
         image=image.crop((left, top, right, bottom)),
     )
-
 
 
 def safe_gap_pixels(
@@ -1491,9 +1378,7 @@ def find_verified_cut_boundary(
             half_height=strip_half_height,
             dark_threshold=dark_threshold,
         )
-        candidates.append(
-            (density, abs(float(y) - midpoint), y, strip_top, strip_bottom)
-        )
+        candidates.append((density, abs(float(y) - midpoint), y, strip_top, strip_bottom))
 
     if not candidates:
         return None
@@ -1562,9 +1447,7 @@ def choose_verified_cut_index(
 ) -> int | None:
     minimum = start_index + max(1, minimum_group_lines)
     candidates = [
-        boundary
-        for cut_index, boundary in boundaries.items()
-        if minimum <= cut_index < end_index
+        boundary for cut_index, boundary in boundaries.items() if minimum <= cut_index < end_index
     ]
     if not candidates:
         return None
@@ -1642,11 +1525,7 @@ def determine_effective_crop_count(
 
     if requested_crops == 1 or (small_by_rows and small_by_aspect_ratio):
         effective = 1
-        reason = (
-            "requested_single_crop"
-            if requested_crops == 1
-            else "small_receipt"
-        )
+        reason = "requested_single_crop" if requested_crops == 1 else "small_receipt"
     else:
         row_based = max(
             1,
@@ -1690,10 +1569,7 @@ def _select_boundary_near_nominal_y(
     maximum_radius: float,
 ) -> tuple[VerifiedCutBoundary | None, str]:
     minimum_cut_index = previous_cut_index + minimum_lines_per_crop
-    maximum_cut_index = (
-        detected_line_count
-        - remaining_crops_after_cut * minimum_lines_per_crop
-    )
+    maximum_cut_index = detected_line_count - remaining_crops_after_cut * minimum_lines_per_crop
     if minimum_cut_index > maximum_cut_index:
         return None, "insufficient_detected_lines_for_remaining_crops"
 
@@ -1709,9 +1585,7 @@ def _select_boundary_near_nominal_y(
         return None, "no_verified_boundary_in_allowed_line_range"
 
     normal = [
-        boundary
-        for boundary in candidates
-        if abs(float(boundary.y) - nominal_y) <= normal_radius
+        boundary for boundary in candidates if abs(float(boundary.y) - nominal_y) <= normal_radius
     ]
     if normal:
         pool = normal
@@ -1771,12 +1645,18 @@ def _try_build_snapped_crop_plan(
             full_width=full_width,
             horizontal_padding=horizontal_padding,
         )
-        return [spec], [{
-            "boundary_number": 0,
-            "selection": "single_full_image_crop",
-            "top": 0,
-            "bottom": image.height,
-        }], None
+        return (
+            [spec],
+            [
+                {
+                    "boundary_number": 0,
+                    "selection": "single_full_image_crop",
+                    "top": 0,
+                    "bottom": image.height,
+                }
+            ],
+            None,
+        )
 
     if len(lines) < crop_count * minimum_lines_per_crop:
         return (
@@ -1826,21 +1706,23 @@ def _try_build_snapped_crop_plan(
                 f"boundary_{boundary_number}_not_monotonic",
             )
 
-        decisions.append({
-            "boundary_number": boundary_number,
-            "nominal_y": round(nominal_y, 3),
-            "selected_y": selected.y,
-            "distance_from_nominal_pixels": round(
-                abs(float(selected.y) - nominal_y),
-                3,
-            ),
-            "search_stage": stage,
-            "cut_index": selected.cut_index,
-            "ink_density": selected.ink_density,
-            "geometric_gap_pixels": selected.geometric_gap_pixels,
-            "strip_top": selected.strip_top,
-            "strip_bottom": selected.strip_bottom,
-        })
+        decisions.append(
+            {
+                "boundary_number": boundary_number,
+                "nominal_y": round(nominal_y, 3),
+                "selected_y": selected.y,
+                "distance_from_nominal_pixels": round(
+                    abs(float(selected.y) - nominal_y),
+                    3,
+                ),
+                "search_stage": stage,
+                "cut_index": selected.cut_index,
+                "ink_density": selected.ink_density,
+                "geometric_gap_pixels": selected.geometric_gap_pixels,
+                "strip_top": selected.strip_top,
+                "strip_bottom": selected.strip_bottom,
+            }
+        )
         selected_boundaries.append(selected)
         previous_cut_index = selected.cut_index
 
@@ -1902,16 +1784,18 @@ def build_nominal_snapped_safe_cut_groups(
     count, the planner reduces the count until a complete plan is available.
     """
     if not lines:
-        return [], {}, [], {
-            "requested_crops": requested_crops,
-            "effective_crops": 0,
-            "status": "no_detected_lines",
-        }
-    if not 0.0 <= safe_cut_search_ratio <= max_safe_cut_search_ratio <= 1.0:
-        raise ValueError(
-            "safe-cut search ratios must satisfy "
-            "0 <= normal <= maximum <= 1"
+        return (
+            [],
+            {},
+            [],
+            {
+                "requested_crops": requested_crops,
+                "effective_crops": 0,
+                "status": "no_detected_lines",
+            },
         )
+    if not 0.0 <= safe_cut_search_ratio <= max_safe_cut_search_ratio <= 1.0:
+        raise ValueError("safe-cut search ratios must satisfy 0 <= normal <= maximum <= 1")
 
     boundaries = precompute_verified_boundaries(
         image,
@@ -1950,11 +1834,13 @@ def build_nominal_snapped_safe_cut_groups(
             full_width=full_width,
             horizontal_padding=horizontal_padding,
         )
-        attempts.append({
-            "crop_count": crop_count,
-            "status": "planned" if specs is not None else "rejected",
-            "failure": failure,
-        })
+        attempts.append(
+            {
+                "crop_count": crop_count,
+                "status": "planned" if specs is not None else "rejected",
+                "failure": failure,
+            }
+        )
         if specs is not None:
             plan = {
                 **count_metadata,
@@ -1969,10 +1855,7 @@ def build_nominal_snapped_safe_cut_groups(
             }
             return specs, boundaries, decisions, plan
 
-    raise RuntimeError(
-        "Could not create even a single complete Qwen crop plan"
-    )
-
+    raise RuntimeError("Could not create even a single complete Qwen crop plan")
 
 
 def _transcribe_qwen_group_with_retries(
@@ -1997,28 +1880,30 @@ def _transcribe_qwen_group_with_retries(
                 attempt=attempt,
             )
         except Exception as exc:
-            diagnostics.append({
-                "group_id": spec.group_id,
-                "attempt": attempt,
-                "status": "qwen_call_error",
-                "error_type": type(exc).__name__,
-                "error": str(exc),
-                "bbox": [spec.left, spec.top, spec.right, spec.bottom],
-            })
+            diagnostics.append(
+                {
+                    "group_id": spec.group_id,
+                    "attempt": attempt,
+                    "status": "qwen_call_error",
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                    "bbox": [spec.left, spec.top, spec.right, spec.bottom],
+                }
+            )
             continue
 
         call_results.append(result)
-        diagnostics.append({
-            "group_id": spec.group_id,
-            "attempt": attempt,
-            "status": "accepted_without_post_transcription_validation",
-            "paddle_detected_line_estimate": len(spec.line_indices),
-            "qwen_returned_line_count": len(result.lines),
-            "transcription_text_source": result.metrics.get(
-                "transcription_text_source"
-            ),
-            "bbox": [spec.left, spec.top, spec.right, spec.bottom],
-        })
+        diagnostics.append(
+            {
+                "group_id": spec.group_id,
+                "attempt": attempt,
+                "status": "accepted_without_post_transcription_validation",
+                "paddle_detected_line_estimate": len(spec.line_indices),
+                "qwen_returned_line_count": len(result.lines),
+                "transcription_text_source": result.metrics.get("transcription_text_source"),
+                "bbox": [spec.left, spec.top, spec.right, spec.bottom],
+            }
+        )
         return [result], call_results, diagnostics
 
     return [], call_results, diagnostics
@@ -2066,10 +1951,7 @@ def detection_report(
             {
                 "box_index": box.index,
                 "score": box.score,
-                "polygon": [
-                    [round(x, 3), round(y, 3)]
-                    for x, y in box.polygon
-                ],
+                "polygon": [[round(x, 3), round(y, 3)] for x, y in box.polygon],
                 "bbox": [
                     round(box.x_min, 3),
                     round(box.y_min, 3),
@@ -2110,15 +1992,10 @@ def aggregate_group_metrics(
         return sum(values) if values else None
 
     return {
-        "detector_wall_duration_seconds": detector_metadata.get(
-            "wall_duration_seconds"
-        ),
+        "detector_wall_duration_seconds": detector_metadata.get("wall_duration_seconds"),
         "qwen_call_count": len(results),
         "qwen_wall_duration_seconds_sum": round(
-            sum(
-                float(result.metrics.get("wall_duration_seconds") or 0.0)
-                for result in results
-            ),
+            sum(float(result.metrics.get("wall_duration_seconds") or 0.0) for result in results),
             3,
         ),
         "prompt_eval_count": numeric_sum("prompt_eval_count"),
@@ -2127,10 +2004,7 @@ def aggregate_group_metrics(
         "load_duration_ms": numeric_sum("load_duration_ms"),
         "prompt_eval_duration_ms": numeric_sum("prompt_eval_duration_ms"),
         "eval_duration_ms": numeric_sum("eval_duration_ms"),
-        "done_reason": [
-            result.metrics.get("done_reason")
-            for result in results
-        ],
+        "done_reason": [result.metrics.get("done_reason") for result in results],
     }
 
 
@@ -2141,10 +2015,7 @@ def parse_args() -> argparse.Namespace:
         "--input",
         type=Path,
         default=DEFAULT_BATCH_INPUT,
-        help=(
-            "Receipt image or folder containing receipt images "
-            "(default: /app/var/batch_input)."
-        ),
+        help=("Receipt image or folder containing receipt images (default: /app/var/batch_input)."),
     )
     parser.add_argument("--recursive", action="store_true")
     parser.add_argument("--overwrite", action="store_true")
@@ -2175,10 +2046,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--archive-path",
         type=Path,
-        help=(
-            "Optional explicit output path for the archive ZIP. "
-            "Default: <run-output-dir>.zip."
-        ),
+        help=("Optional explicit output path for the archive ZIP. Default: <run-output-dir>.zip."),
     )
 
     parser.add_argument("--ollama-url", default="http://localhost:11434")
@@ -2191,7 +2059,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--vlm-keep-alive", default="5m")
     parser.add_argument("--vlm-temperature", type=float, default=0.0)
     parser.add_argument("--vlm-seed", type=int, default=42)
-
 
     parser.add_argument(
         "--paddle-backend",
@@ -2390,10 +2257,7 @@ def parse_args() -> argparse.Namespace:
         "--max-cut-ink-density",
         type=float,
         default=0.01,
-        help=(
-            "Maximum dark-pixel fraction allowed in a verified cut strip "
-            "(default: 0.01 = 1%%)."
-        ),
+        help=("Maximum dark-pixel fraction allowed in a verified cut strip (default: 0.01 = 1%%)."),
     )
     parser.add_argument("--gemma-num-ctx", type=int, default=16384)
     parser.add_argument("--gemma-timeout", type=float, default=300.0)
@@ -2509,11 +2373,11 @@ def parse_args() -> argparse.Namespace:
 
 
 def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def timestamp_name() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 
 
 def unique_ordered(values: Iterable[str]) -> list[str]:
@@ -2548,9 +2412,7 @@ def discover_images(input_path: Path, recursive: bool) -> list[Path]:
 
     iterator = path.rglob("*") if recursive else path.glob("*")
     images = [
-        item
-        for item in iterator
-        if item.is_file() and item.suffix.lower() in IMAGE_EXTENSIONS
+        item for item in iterator if item.is_file() and item.suffix.lower() in IMAGE_EXTENSIONS
     ]
     return sorted(images, key=lambda item: item.as_posix().casefold())
 
@@ -2581,22 +2443,16 @@ def post_json(url: str, payload: dict[str, Any], timeout: float) -> dict[str, An
             body = response.read().decode("utf-8", errors="replace")
     except urllib.error.HTTPError as exc:
         details = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(
-            f"Ollama HTTP {exc.code} at {url}: {details or exc.reason}"
-        ) from exc
+        raise RuntimeError(f"Ollama HTTP {exc.code} at {url}: {details or exc.reason}") from exc
     except urllib.error.URLError as exc:
         raise RuntimeError(f"Cannot connect to Ollama at {url}: {exc}") from exc
     except TimeoutError as exc:
-        raise RuntimeError(
-            f"Ollama request timed out after {timeout:.1f} seconds"
-        ) from exc
+        raise RuntimeError(f"Ollama request timed out after {timeout:.1f} seconds") from exc
 
     try:
         result = json.loads(body)
     except json.JSONDecodeError as exc:
-        raise RuntimeError(
-            f"Ollama returned invalid API JSON: {body[:1000]}"
-        ) from exc
+        raise RuntimeError(f"Ollama returned invalid API JSON: {body[:1000]}") from exc
 
     if not isinstance(result, dict):
         raise RuntimeError("Ollama returned a non-object response")
@@ -2621,9 +2477,7 @@ def response_metrics(
         "total_duration_ms": ns_to_ms(response.get("total_duration")),
         "load_duration_ms": ns_to_ms(response.get("load_duration")),
         "prompt_eval_count": response.get("prompt_eval_count"),
-        "prompt_eval_duration_ms": ns_to_ms(
-            response.get("prompt_eval_duration")
-        ),
+        "prompt_eval_duration_ms": ns_to_ms(response.get("prompt_eval_duration")),
         "eval_count": response.get("eval_count"),
         "eval_duration_ms": ns_to_ms(response.get("eval_duration")),
         "done_reason": response.get("done_reason"),
@@ -2676,13 +2530,9 @@ def parse_transcription_rows(
         )
 
     if not rows:
-        raise RuntimeError(
-            "Qwen transcription contains no parseable R#### :: rows"
-        )
+        raise RuntimeError("Qwen transcription contains no parseable R#### :: rows")
 
     return rows, warnings
-
-
 
 
 # def _qwen_group_prompt(estimated_count: int) -> str:
@@ -2690,17 +2540,16 @@ def parse_transcription_rows(
 #         estimated_count=estimated_count
 #     )
 
+
 def _qwen_group_prompt(estimated_count: int) -> str:
     return QWEN_TRANSCRIPTION_PROMPT_TEMPLATE
+
 
 def _write_group_artifacts(
     work_dir: Path,
     result: GroupCallResult,
 ) -> None:
-    prefix = (
-        work_dir
-        / f"group_{result.spec.group_id}_attempt_{result.attempt:02d}"
-    )
+    prefix = work_dir / f"group_{result.spec.group_id}_attempt_{result.attempt:02d}"
     write_json(
         prefix.with_name(prefix.name + "_response.json"),
         result.response,
@@ -2726,9 +2575,7 @@ def _extract_qwen_transcription_text(
     """
     message = response.get("message")
     if not isinstance(message, dict):
-        raise RuntimeError(
-            f"Qwen group {group_id} response has no message object"
-        )
+        raise RuntimeError(f"Qwen group {group_id} response has no message object")
 
     for field_name in ("content", "thinking"):
         value = message.get(field_name)
@@ -2805,21 +2652,14 @@ def _invoke_qwen_group_once(
     )
     wall_seconds = time.perf_counter() - started
 
-    raw_response_path = (
-        work_dir
-        / f"group_{spec.group_id}_attempt_{attempt:02d}_raw_response.json"
-    )
+    raw_response_path = work_dir / f"group_{spec.group_id}_attempt_{attempt:02d}_raw_response.json"
     write_json(raw_response_path, response)
 
-    transcription_text, transcription_text_source = (
-        _extract_qwen_transcription_text(
-            response,
-            group_id=spec.group_id,
-        )
+    transcription_text, transcription_text_source = _extract_qwen_transcription_text(
+        response,
+        group_id=spec.group_id,
     )
-    lines = tuple(
-        clean_plain_lines(strip_code_fences(transcription_text))
-    )
+    lines = tuple(clean_plain_lines(strip_code_fences(transcription_text)))
     metrics = response_metrics(response, wall_seconds)
     metrics["transcription_text_source"] = transcription_text_source
     result = GroupCallResult(
@@ -2831,7 +2671,6 @@ def _invoke_qwen_group_once(
     )
     _write_group_artifacts(work_dir, result)
     return result
-
 
 
 def _full_image_group_spec(
@@ -2916,9 +2755,7 @@ def invoke_paddle_qwen_transcription(
                     requested_crops=args.crops,
                     target_rows_per_crop=args.target_rows_per_crop,
                     single_crop_max_rows=args.single_crop_max_rows,
-                    single_crop_max_aspect_ratio=(
-                        args.single_crop_max_aspect_ratio
-                    ),
+                    single_crop_max_aspect_ratio=(args.single_crop_max_aspect_ratio),
                     minimum_lines_per_crop=args.min_lines_per_crop,
                     safe_cut_search_ratio=args.safe_cut_search_ratio,
                     max_safe_cut_search_ratio=args.max_safe_cut_search_ratio,
@@ -2934,9 +2771,7 @@ def invoke_paddle_qwen_transcription(
             if not specs:
                 planning_fallback_reason = "no_safe_crop_plan"
         except Exception as exc:
-            planning_fallback_reason = (
-                f"safe_crop_planning_failed:{type(exc).__name__}:{exc}"
-            )
+            planning_fallback_reason = f"safe_crop_planning_failed:{type(exc).__name__}:{exc}"
 
     if planning_fallback_reason is not None:
         specs = [
@@ -2956,9 +2791,7 @@ def invoke_paddle_qwen_transcription(
             "image_width": image.width,
             "image_height": image.height,
             "image_aspect_ratio_h_over_w": round(aspect_ratio, 6),
-            "single_crop_max_aspect_ratio": (
-                args.single_crop_max_aspect_ratio
-            ),
+            "single_crop_max_aspect_ratio": (args.single_crop_max_aspect_ratio),
         }
 
     group_plan = {
@@ -3002,29 +2835,25 @@ def invoke_paddle_qwen_transcription(
         return _transcribe_qwen_group_with_retries(args, spec, work_dir)
 
     max_workers = min(len(specs), max(1, args.qwen_group_parallelism))
-    completed_results: list[tuple[
-        list[GroupCallResult],
-        list[GroupCallResult],
-        list[dict[str, Any]],
-    ]] = []
+    completed_results: list[
+        tuple[
+            list[GroupCallResult],
+            list[GroupCallResult],
+            list[dict[str, Any]],
+        ]
+    ] = []
     if max_workers == 1:
         completed_results = [run_spec(spec) for spec in specs]
     else:
-        with concurrent.futures.ThreadPoolExecutor(
-            max_workers=max_workers
-        ) as executor:
-            future_to_spec = {
-                executor.submit(run_spec, spec): spec
-                for spec in specs
-            }
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_spec = {executor.submit(run_spec, spec): spec for spec in specs}
             for future in concurrent.futures.as_completed(future_to_spec):
                 spec = future_to_spec[future]
                 completed = future.result()
                 completed_results.append(completed)
                 accepted, _, _ = completed
                 print(
-                    f"      crop {spec.group_id} "
-                    f"{'accepted' if accepted else 'returned no text'}",
+                    f"      crop {spec.group_id} {'accepted' if accepted else 'returned no text'}",
                     flush=True,
                 )
 
@@ -3040,15 +2869,14 @@ def invoke_paddle_qwen_transcription(
         group_diagnostics.extend(diagnostics)
 
     runtime_full_image_fallback = False
-    if (
-        not all_planned_calls_succeeded
-        and not specs[0].group_id.startswith("GFULL")
-    ):
+    if not all_planned_calls_succeeded and not specs[0].group_id.startswith("GFULL"):
         runtime_full_image_fallback = True
-        group_diagnostics.append({
-            "status": "discarded_partial_crop_transcription",
-            "reason": "one_or_more_crop_calls_failed",
-        })
+        group_diagnostics.append(
+            {
+                "status": "discarded_partial_crop_transcription",
+                "reason": "one_or_more_crop_calls_failed",
+            }
+        )
         fallback_spec = _full_image_group_spec(
             image,
             detected_lines,
@@ -3076,9 +2904,7 @@ def invoke_paddle_qwen_transcription(
             "group_id": chunk.spec.group_id,
             "paddle_detected_line_estimate": len(chunk.spec.line_indices),
             "qwen_returned_line_count": len(chunk.lines),
-            "transcription_text_source": chunk.metrics.get(
-                "transcription_text_source"
-            ),
+            "transcription_text_source": chunk.metrics.get("transcription_text_source"),
             "bbox": [
                 chunk.spec.left,
                 chunk.spec.top,
@@ -3107,9 +2933,7 @@ def invoke_paddle_qwen_transcription(
         "initial_group_count": len(specs),
         "accepted_chunk_count": len(accepted_chunks),
         "qwen_call_count": len(all_call_results),
-        "planning_full_image_fallback": (
-            crop_plan.get("status") == "fallback_full_image"
-        ),
+        "planning_full_image_fallback": (crop_plan.get("status") == "fallback_full_image"),
         "runtime_full_image_fallback": runtime_full_image_fallback,
         "accepted_chunks": accepted_report,
         "group_diagnostics": group_diagnostics,
@@ -3127,10 +2951,7 @@ def invoke_paddle_qwen_transcription(
 
     transcription = serialize_receipt(concatenated_lines)
     rows, protocol_warnings = parse_transcription_rows(transcription)
-    used_full_image = any(
-        chunk.spec.group_id.startswith("GFULL")
-        for chunk in accepted_chunks
-    )
+    used_full_image = any(chunk.spec.group_id.startswith("GFULL") for chunk in accepted_chunks)
     merge_report = {
         "method": (
             "single_whole_image_qwen_transcription"
@@ -3175,9 +2996,7 @@ def invoke_paddle_qwen_transcription(
             "effective_crops": crop_plan.get("effective_crops"),
             "target_rows_per_crop": args.target_rows_per_crop,
             "single_crop_max_rows": args.single_crop_max_rows,
-            "single_crop_max_aspect_ratio": (
-                args.single_crop_max_aspect_ratio
-            ),
+            "single_crop_max_aspect_ratio": (args.single_crop_max_aspect_ratio),
             "minimum_lines_per_crop": args.min_lines_per_crop,
             "safe_cut_search_ratio": args.safe_cut_search_ratio,
             "max_safe_cut_search_ratio": args.max_safe_cut_search_ratio,
@@ -3209,6 +3028,7 @@ def invoke_qwen_transcription_adaptive(
         receipt_dir,
     )
 
+
 def invoke_gemma_task(
     args: argparse.Namespace,
     *,
@@ -3224,9 +3044,7 @@ def invoke_gemma_task(
     prompt = _render_prompt(
         "gemma.template.task_envelope",
         question=question,
-        schema_json=json.dumps(
-            schema, ensure_ascii=False, separators=(",", ":")
-        ),
+        schema_json=json.dumps(schema, ensure_ascii=False, separators=(",", ":")),
         evidence=evidence,
     )
 
@@ -3264,9 +3082,7 @@ def invoke_gemma_task(
 
     message = response.get("message")
     if not isinstance(message, dict):
-        raise RuntimeError(
-            f"Gemma task {task_name!r} response has no message object"
-        )
+        raise RuntimeError(f"Gemma task {task_name!r} response has no message object")
 
     content = message.get("content")
     if not isinstance(content, str) or not content.strip():
@@ -3280,12 +3096,8 @@ def invoke_gemma_task(
                 "thinking": message.get("thinking"),
                 "request": {
                     "prompt": _prompt_reference(prompt_id),
-                    "system_prompt": _prompt_reference(
-                        "gemma.system.receipt_interpreter"
-                    ),
-                    "envelope_prompt": _prompt_reference(
-                        "gemma.template.task_envelope"
-                    ),
+                    "system_prompt": _prompt_reference("gemma.system.receipt_interpreter"),
+                    "envelope_prompt": _prompt_reference("gemma.template.task_envelope"),
                     "question": question,
                     "schema": schema,
                     "think": think,
@@ -3297,16 +3109,13 @@ def invoke_gemma_task(
                 "metrics": response_metrics(response, wall_seconds),
                 "raw_api_response": response,
             }
-        raise RuntimeError(
-            f"Gemma task {task_name!r} returned empty content"
-        )
+        raise RuntimeError(f"Gemma task {task_name!r} returned empty content")
 
     try:
         answer = json.loads(content)
     except json.JSONDecodeError as exc:
         raise RuntimeError(
-            f"Gemma task {task_name!r} returned invalid JSON: "
-            f"{content[:1000]}"
+            f"Gemma task {task_name!r} returned invalid JSON: {content[:1000]}"
         ) from exc
 
     return {
@@ -3318,12 +3127,8 @@ def invoke_gemma_task(
         "thinking": message.get("thinking"),
         "request": {
             "prompt": _prompt_reference(prompt_id),
-            "system_prompt": _prompt_reference(
-                "gemma.system.receipt_interpreter"
-            ),
-            "envelope_prompt": _prompt_reference(
-                "gemma.template.task_envelope"
-            ),
+            "system_prompt": _prompt_reference("gemma.system.receipt_interpreter"),
+            "envelope_prompt": _prompt_reference("gemma.template.task_envelope"),
             "question": question,
             "schema": schema,
             "think": think,
@@ -3335,7 +3140,6 @@ def invoke_gemma_task(
         "metrics": response_metrics(response, wall_seconds),
         "raw_api_response": response,
     }
-
 
 
 def invoke_gemma_json_repair(
@@ -3383,8 +3187,7 @@ def invoke_gemma_json_repair(
         answer = json.loads(cleaned_content)
     except json.JSONDecodeError as exc:
         raise RuntimeError(
-            "Gemma JSON repair still returned invalid JSON: "
-            f"{cleaned_content[:1000]}"
+            f"Gemma JSON repair still returned invalid JSON: {cleaned_content[:1000]}"
         ) from exc
     return {
         "status": "completed",
@@ -3410,6 +3213,7 @@ def invoke_gemma_json_repair(
         "metrics": response_metrics(response, wall_seconds),
         "raw_api_response": response,
     }
+
 
 def invoke_gemma_correction_source_evidence_task(
     args: argparse.Namespace,
@@ -3484,9 +3288,7 @@ def invoke_gemma_correction_source_evidence_task(
                     "prompt": PROMPT_REGISTRY.record(
                         strategy.prompt_id, strategy.prompt_version
                     ).as_dict(),
-                    "system_prompt": _prompt_reference(
-                        "gemma.system.receipt_interpreter"
-                    ),
+                    "system_prompt": _prompt_reference("gemma.system.receipt_interpreter"),
                     "schema": schema,
                     "schema_delivery": "embedded_once_in_prompt",
                     "ollama_format_field": False,
@@ -3533,9 +3335,7 @@ def invoke_gemma_correction_source_evidence_task(
                     "prompt": PROMPT_REGISTRY.record(
                         strategy.prompt_id, strategy.prompt_version
                     ).as_dict(),
-                    "system_prompt": _prompt_reference(
-                        "gemma.system.receipt_interpreter"
-                    ),
+                    "system_prompt": _prompt_reference("gemma.system.receipt_interpreter"),
                     "schema": schema,
                     "schema_delivery": "embedded_once_in_prompt",
                     "ollama_format_field": False,
@@ -3566,11 +3366,7 @@ def invoke_gemma_correction_source_evidence_task(
             "triggered": True,
             "status": "completed",
             "original_json_error": str(original_error),
-            **{
-                key: value
-                for key, value in repair_result.items()
-                if key not in {"answer"}
-            },
+            **{key: value for key, value in repair_result.items() if key not in {"answer"}},
         }
     return {
         "status": "completed",
@@ -3582,12 +3378,8 @@ def invoke_gemma_correction_source_evidence_task(
         "thinking": message.get("thinking"),
         "json_repair": json_repair,
         "request": {
-            "prompt": PROMPT_REGISTRY.record(
-                strategy.prompt_id, strategy.prompt_version
-            ).as_dict(),
-            "system_prompt": _prompt_reference(
-                "gemma.system.receipt_interpreter"
-            ),
+            "prompt": PROMPT_REGISTRY.record(strategy.prompt_id, strategy.prompt_version).as_dict(),
+            "system_prompt": _prompt_reference("gemma.system.receipt_interpreter"),
             "schema": schema,
             "schema_delivery": "embedded_once_in_prompt",
             "ollama_format_field": False,
@@ -3601,6 +3393,7 @@ def invoke_gemma_correction_source_evidence_task(
         "metrics": response_metrics(response, wall_seconds),
         "raw_api_response": response,
     }
+
 
 def unload_model(
     args: argparse.Namespace,
@@ -3620,10 +3413,7 @@ def unload_model(
 
 
 def format_rows(rows: Sequence[dict[str, str]]) -> str:
-    return "\n".join(
-        f"{row['row_id']} :: {row['text']}"
-        for row in rows
-    )
+    return "\n".join(f"{row['row_id']} :: {row['text']}" for row in rows)
 
 
 def completed_answer(result: Any) -> dict[str, Any] | None:
@@ -3643,11 +3433,7 @@ def run_scalar_specialists(
     receipt_dir: Path,
     transcription: str,
 ) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]]]:
-    selected_tasks = (
-        []
-        if args.skip_scalars
-        else unique_ordered(args.scalar_tasks)
-    )
+    selected_tasks = [] if args.skip_scalars else unique_ordered(args.scalar_tasks)
     results: dict[str, dict[str, Any]] = {}
     failures: list[dict[str, Any]] = []
 
@@ -3656,14 +3442,8 @@ def run_scalar_specialists(
         task_name: str,
     ) -> tuple[str, dict[str, Any], dict[str, Any] | None, str]:
         task = SCALAR_TASKS[task_name]
-        result_path = (
-            receipt_dir
-            / f"{20 + task_index:02d}_gemma_scalar_{task_name}.json"
-        )
-        error_path = (
-            receipt_dir
-            / f"{20 + task_index:02d}_gemma_scalar_{task_name}_error.json"
-        )
+        result_path = receipt_dir / f"{20 + task_index:02d}_gemma_scalar_{task_name}.json"
+        error_path = receipt_dir / f"{20 + task_index:02d}_gemma_scalar_{task_name}_error.json"
 
         try:
             if result_path.exists() and not args.overwrite:
@@ -3729,9 +3509,7 @@ def run_scalar_specialists(
             )
         }
 
-        for future in concurrent.futures.as_completed(
-            future_to_task
-        ):
+        for future in concurrent.futures.as_completed(future_to_task):
             task_name = future_to_task[future]
 
             try:
@@ -3767,9 +3545,7 @@ def run_scalar_specialists(
                     file=sys.stderr,
                 )
             elif outcome == "cached":
-                print(
-                    f"    done scalar: {completed_task} | cached"
-                )
+                print(f"    done scalar: {completed_task} | cached")
             else:
                 metrics = result.get("metrics", {})
                 print(
@@ -3797,10 +3573,12 @@ def validate_direct_items(answer: Any) -> dict[str, Any]:
     }
 
     if not isinstance(answer, dict):
-        errors.append({
-            "code": "ANSWER_NOT_OBJECT",
-            "message": "The direct item answer is not a JSON object.",
-        })
+        errors.append(
+            {
+                "code": "ANSWER_NOT_OBJECT",
+                "message": "The direct item answer is not a JSON object.",
+            }
+        )
         return {
             "status": "invalid",
             "errors": errors,
@@ -3811,10 +3589,12 @@ def validate_direct_items(answer: Any) -> dict[str, Any]:
 
     items = answer.get("items")
     if not isinstance(items, list):
-        errors.append({
-            "code": "ITEMS_NOT_ARRAY",
-            "message": "The items field is not an array.",
-        })
+        errors.append(
+            {
+                "code": "ITEMS_NOT_ARRAY",
+                "message": "The items field is not an array.",
+            }
+        )
         return {
             "status": "invalid",
             "errors": errors,
@@ -3824,18 +3604,18 @@ def validate_direct_items(answer: Any) -> dict[str, Any]:
         }
 
     price_sum = 0.0
-    seen: set[
-        tuple[str, float | None, float | None, str | None]
-    ] = set()
+    seen: set[tuple[str, float | None, float | None, str | None]] = set()
 
     for index, item in enumerate(items):
         location = f"items[{index}]"
         if not isinstance(item, dict):
-            errors.append({
-                "code": "ITEM_NOT_OBJECT",
-                "location": location,
-                "message": "Item is not an object.",
-            })
+            errors.append(
+                {
+                    "code": "ITEM_NOT_OBJECT",
+                    "location": location,
+                    "message": "Item is not an object.",
+                }
+            )
             continue
 
         name = item.get("name")
@@ -3846,68 +3626,78 @@ def validate_direct_items(answer: Any) -> dict[str, Any]:
         original_price = item.get("original_price")
 
         if not isinstance(name, str) or not name.strip():
-            errors.append({
-                "code": "INVALID_ITEM_NAME",
-                "location": f"{location}.name",
-                "message": "Item name must be a non-empty string.",
-            })
+            errors.append(
+                {
+                    "code": "INVALID_ITEM_NAME",
+                    "location": f"{location}.name",
+                    "message": "Item name must be a non-empty string.",
+                }
+            )
             normalized_name = ""
         else:
             normalized_name = " ".join(name.casefold().split())
 
         if final_price is not None and (
-            isinstance(final_price, bool)
-            or not isinstance(final_price, (int, float))
+            isinstance(final_price, bool) or not isinstance(final_price, (int, float))
         ):
-            errors.append({
-                "code": "INVALID_FINAL_PRICE_TYPE",
-                "location": f"{location}.final_price",
-                "message": "final_price must be a number or null.",
-            })
+            errors.append(
+                {
+                    "code": "INVALID_FINAL_PRICE_TYPE",
+                    "location": f"{location}.final_price",
+                    "message": "final_price must be a number or null.",
+                }
+            )
         elif isinstance(final_price, (int, float)):
             if final_price < 0:
-                errors.append({
-                    "code": "NEGATIVE_FINAL_PRICE",
-                    "location": f"{location}.final_price",
-                    "message": "final_price cannot be negative.",
-                })
+                errors.append(
+                    {
+                        "code": "NEGATIVE_FINAL_PRICE",
+                        "location": f"{location}.final_price",
+                        "message": "final_price cannot be negative.",
+                    }
+                )
             else:
                 metrics["items_with_price"] += 1
                 price_sum += float(final_price)
         else:
-            warnings.append({
-                "code": "MISSING_FINAL_PRICE",
-                "location": f"{location}.final_price",
-                "message": "The model returned no final price for this item.",
-            })
+            warnings.append(
+                {
+                    "code": "MISSING_FINAL_PRICE",
+                    "location": f"{location}.final_price",
+                    "message": "The model returned no final price for this item.",
+                }
+            )
 
         if quantity is not None and (
-            isinstance(quantity, bool)
-            or not isinstance(quantity, (int, float))
+            isinstance(quantity, bool) or not isinstance(quantity, (int, float))
         ):
-            errors.append({
-                "code": "INVALID_QUANTITY_TYPE",
-                "location": f"{location}.quantity",
-                "message": "quantity must be a number or null.",
-            })
+            errors.append(
+                {
+                    "code": "INVALID_QUANTITY_TYPE",
+                    "location": f"{location}.quantity",
+                    "message": "quantity must be a number or null.",
+                }
+            )
         elif isinstance(quantity, (int, float)):
             if quantity < 0:
-                errors.append({
-                    "code": "NEGATIVE_QUANTITY",
-                    "location": f"{location}.quantity",
-                    "message": "quantity cannot be negative.",
-                })
+                errors.append(
+                    {
+                        "code": "NEGATIVE_QUANTITY",
+                        "location": f"{location}.quantity",
+                        "message": "quantity cannot be negative.",
+                    }
+                )
             else:
                 metrics["items_with_quantity"] += 1
 
-        if unit is not None and (
-            not isinstance(unit, str) or not unit.strip()
-        ):
-            errors.append({
-                "code": "INVALID_UNIT",
-                "location": f"{location}.unit",
-                "message": "unit must be a non-empty string or null.",
-            })
+        if unit is not None and (not isinstance(unit, str) or not unit.strip()):
+            errors.append(
+                {
+                    "code": "INVALID_UNIT",
+                    "location": f"{location}.unit",
+                    "message": "unit must be a non-empty string or null.",
+                }
+            )
         elif isinstance(unit, str):
             metrics["items_with_unit"] += 1
 
@@ -3924,65 +3714,68 @@ def validate_direct_items(answer: Any) -> dict[str, Any]:
             ),
         ):
             if value is not None and (
-                isinstance(value, bool)
-                or not isinstance(value, (int, float))
+                isinstance(value, bool) or not isinstance(value, (int, float))
             ):
-                errors.append({
-                    "code": f"INVALID_{field_name.upper()}_TYPE",
-                    "location": f"{location}.{field_name}",
-                    "message": f"{field_name} must be a number or null.",
-                })
+                errors.append(
+                    {
+                        "code": f"INVALID_{field_name.upper()}_TYPE",
+                        "location": f"{location}.{field_name}",
+                        "message": f"{field_name} must be a number or null.",
+                    }
+                )
             elif isinstance(value, (int, float)):
                 if value < 0:
-                    errors.append({
-                        "code": f"NEGATIVE_{field_name.upper()}",
-                        "location": f"{location}.{field_name}",
-                        "message": f"{field_name} cannot be negative.",
-                    })
+                    errors.append(
+                        {
+                            "code": f"NEGATIVE_{field_name.upper()}",
+                            "location": f"{location}.{field_name}",
+                            "message": f"{field_name} cannot be negative.",
+                        }
+                    )
                 else:
                     metrics[metric_name] += 1
 
         if quantity is None and unit is not None:
-            warnings.append({
-                "code": "UNIT_WITHOUT_QUANTITY",
-                "location": location,
-                "message": "A unit was returned while quantity is null.",
-            })
+            warnings.append(
+                {
+                    "code": "UNIT_WITHOUT_QUANTITY",
+                    "location": location,
+                    "message": "A unit was returned while quantity is null.",
+                }
+            )
 
         key = (
             normalized_name,
             (
                 float(final_price)
-                if isinstance(final_price, (int, float))
-                and not isinstance(final_price, bool)
+                if isinstance(final_price, (int, float)) and not isinstance(final_price, bool)
                 else None
             ),
             (
                 float(quantity)
-                if isinstance(quantity, (int, float))
-                and not isinstance(quantity, bool)
+                if isinstance(quantity, (int, float)) and not isinstance(quantity, bool)
                 else None
             ),
             unit.casefold().strip() if isinstance(unit, str) else None,
         )
         if normalized_name and key in seen:
-            observations.append({
-                "code": "EXACT_DUPLICATE_ITEM_OBJECT",
-                "location": location,
-                "message": (
-                    "An identical item object appears more than once. This is "
-                    "recorded but is not considered an error because a receipt "
-                    "may contain repeated purchases."
-                ),
-            })
+            observations.append(
+                {
+                    "code": "EXACT_DUPLICATE_ITEM_OBJECT",
+                    "location": location,
+                    "message": (
+                        "An identical item object appears more than once. This is "
+                        "recorded but is not considered an error because a receipt "
+                        "may contain repeated purchases."
+                    ),
+                }
+            )
         seen.add(key)
 
     metrics["item_count"] = len(items)
     metrics["extracted_price_sum"] = round(price_sum, 2)
 
-    status = "invalid" if errors else (
-        "valid_with_warnings" if warnings else "valid"
-    )
+    status = "invalid" if errors else ("valid_with_warnings" if warnings else "valid")
     return {
         "status": status,
         "errors": errors,
@@ -3990,6 +3783,7 @@ def validate_direct_items(answer: Any) -> dict[str, Any]:
         "observations": observations,
         "metrics": metrics,
     }
+
 
 def run_item_pipeline(
     *,
@@ -4010,9 +3804,7 @@ def run_item_pipeline(
             _render_prompt(
                 "gemma.template.task_envelope",
                 question=DIRECT_ITEMS_QUESTION,
-                schema_json=json.dumps(
-                    DIRECT_ITEMS_SCHEMA, ensure_ascii=False, indent=2
-                ),
+                schema_json=json.dumps(DIRECT_ITEMS_SCHEMA, ensure_ascii=False, indent=2),
                 evidence=transcription,
             )
             + "\n",
@@ -4051,20 +3843,18 @@ def run_item_pipeline(
             raise RuntimeError("Direct Gemma item result has no completed answer")
 
         if validation.get("status") == "invalid":
-            failures.append({
-                "image": str(image_path),
-                "stage": "direct_item_validation",
-                "error_type": "ValidationError",
-                "error": "Direct Gemma item output failed contract validation",
-                "validation": validation,
-            })
+            failures.append(
+                {
+                    "image": str(image_path),
+                    "stage": "direct_item_validation",
+                    "error_type": "ValidationError",
+                    "error": "Direct Gemma item output failed contract validation",
+                    "validation": validation,
+                }
+            )
 
         result = {
-            "status": (
-                "completed"
-                if not failures
-                else "completed_with_errors"
-            ),
+            "status": ("completed" if not failures else "completed_with_errors"),
             "strategy": "complete_receipt_direct_item_extraction",
             "items": answer.get("items"),
             "direct_result": direct_result,
@@ -4099,9 +3889,7 @@ def scalar_answer(
     scalar_results: dict[str, dict[str, Any]],
     task_name: str,
 ) -> dict[str, Any] | None:
-    return completed_answer(
-        scalar_results.get(task_name)
-    )
+    return completed_answer(scalar_results.get(task_name))
 
 
 def scalar_field(
@@ -4114,8 +3902,6 @@ def scalar_field(
         task_name,
     )
     return answer.get(field_name) if answer else None
-
-
 
 
 MONEY_QUANTUM = Decimal("0.01")
@@ -4226,9 +4012,7 @@ def validate_receipt_deterministically(
     totals = receipt.get("totals")
     totals = totals if isinstance(totals, dict) else {}
     discount_section = receipt.get("discount")
-    discount_section = (
-        discount_section if isinstance(discount_section, dict) else {}
-    )
+    discount_section = discount_section if isinstance(discount_section, dict) else {}
     payment = receipt.get("payment")
     payment = payment if isinstance(payment, dict) else {}
     tax = receipt.get("tax")
@@ -4297,9 +4081,7 @@ def validate_receipt_deterministically(
         )
 
     item_contract = (
-        item_pipeline_result.get("validation")
-        if isinstance(item_pipeline_result, dict)
-        else None
+        item_pipeline_result.get("validation") if isinstance(item_pipeline_result, dict) else None
     )
     item_contract = item_contract if isinstance(item_contract, dict) else {}
     contract_status = item_contract.get("status")
@@ -4393,52 +4175,52 @@ def validate_receipt_deterministically(
         else:
             numeric_item_prices.append(final_price)
 
-        if (
-            original_price is not None
-            and final_price is not None
-            and item_discount is not None
-        ):
+        if original_price is not None and final_price is not None and item_discount is not None:
             expected = original_price - item_discount
             if not _money_close(expected, final_price):
-                item_discount_failures.append({
-                    "item_index": index,
-                    "name": name,
-                    "original_price": _money_float(original_price),
-                    "discount_amount": _money_float(item_discount),
-                    "expected_final_price": _money_float(expected),
-                    "final_price": _money_float(final_price),
-                    "difference": _money_float(final_price - expected),
-                    "reason": "original_minus_discount_does_not_equal_final",
-                })
+                item_discount_failures.append(
+                    {
+                        "item_index": index,
+                        "name": name,
+                        "original_price": _money_float(original_price),
+                        "discount_amount": _money_float(item_discount),
+                        "expected_final_price": _money_float(expected),
+                        "final_price": _money_float(final_price),
+                        "difference": _money_float(final_price - expected),
+                        "reason": "original_minus_discount_does_not_equal_final",
+                    }
+                )
         elif (
             original_price is not None
             and final_price is not None
             and item_discount is None
             and not _money_close(original_price, final_price)
         ):
-            item_discount_failures.append({
-                "item_index": index,
-                "name": name,
-                "original_price": _money_float(original_price),
-                "discount_amount": None,
-                "final_price": _money_float(final_price),
-                "difference": _money_float(original_price - final_price),
-                "reason": "price_changed_without_discount_amount",
-            })
+            item_discount_failures.append(
+                {
+                    "item_index": index,
+                    "name": name,
+                    "original_price": _money_float(original_price),
+                    "discount_amount": None,
+                    "final_price": _money_float(final_price),
+                    "difference": _money_float(original_price - final_price),
+                    "reason": "price_changed_without_discount_amount",
+                }
+            )
         elif item_discount is not None and original_price is None:
-            item_discount_failures.append({
-                "item_index": index,
-                "name": name,
-                "original_price": None,
-                "discount_amount": _money_float(item_discount),
-                "final_price": _money_float(final_price),
-                "reason": "discount_amount_without_original_price",
-            })
+            item_discount_failures.append(
+                {
+                    "item_index": index,
+                    "name": name,
+                    "original_price": None,
+                    "discount_amount": _money_float(item_discount),
+                    "final_price": _money_float(final_price),
+                    "reason": "discount_amount_without_original_price",
+                }
+            )
 
         normalized_name = (
-            " ".join(name.casefold().split())
-            if isinstance(name, str) and name.strip()
-            else ""
+            " ".join(name.casefold().split()) if isinstance(name, str) and name.strip() else ""
         )
         duplicate_key = (
             normalized_name,
@@ -4497,11 +4279,7 @@ def validate_receipt_deterministically(
             "No item-level discount relationship was available to validate.",
         )
 
-    duplicate_groups = [
-        indices
-        for indices in duplicate_keys.values()
-        if len(indices) > 1
-    ]
+    duplicate_groups = [indices for indices in duplicate_keys.values() if len(indices) > 1]
     if duplicate_groups:
         add_check(
             "REPEATED_IDENTICAL_ITEM_OBJECTS",
@@ -4515,9 +4293,7 @@ def validate_receipt_deterministically(
         if numeric_item_prices
         else None
     )
-    all_item_prices_available = bool(items) and (
-        len(numeric_item_prices) == len(items)
-    )
+    all_item_prices_available = bool(items) and (len(numeric_item_prices) == len(items))
 
     if not item_pipeline_enabled:
         add_check(
@@ -4547,9 +4323,7 @@ def validate_receipt_deterministically(
         assert item_sum is not None
         direct_difference = item_sum - final_total
         discounted_difference = (
-            item_sum - discount_total - final_total
-            if discount_total is not None
-            else None
+            item_sum - discount_total - final_total if discount_total is not None else None
         )
         if _money_close(item_sum, final_total):
             add_check(
@@ -4563,10 +4337,7 @@ def validate_receipt_deterministically(
                     "difference": _money_float(direct_difference),
                 },
             )
-        elif (
-            discount_total is not None
-            and _money_close(item_sum - discount_total, final_total)
-        ):
+        elif discount_total is not None and _money_close(item_sum - discount_total, final_total):
             add_check(
                 "ITEM_SUM_RECONCILIATION",
                 "passed",
@@ -4580,9 +4351,8 @@ def validate_receipt_deterministically(
                 },
             )
         else:
-            item_total_difference_equals_vat = (
-                    vat_amount is not None
-                    and _money_close(abs(direct_difference), vat_amount)
+            item_total_difference_equals_vat = vat_amount is not None and _money_close(
+                abs(direct_difference), vat_amount
             )
 
             add_check(
@@ -4592,8 +4362,7 @@ def validate_receipt_deterministically(
                     "The item sum does not reconcile with the selected final purchase total. "
                     "The absolute difference equals the extracted VAT amount."
                     if item_total_difference_equals_vat
-                    else
-                    "The item sum cannot be reconciled with the final purchase total, "
+                    else "The item sum cannot be reconciled with the final purchase total, "
                     "with or without the explicit receipt-level discount."
                 ),
                 severity="review",
@@ -4603,23 +4372,13 @@ def validate_receipt_deterministically(
                     "discount_total": _money_float(discount_total),
                     "vat_amount": _money_float(vat_amount),
                     "direct_difference": _money_float(direct_difference),
-                    "absolute_direct_difference": _money_float(
-                        abs(direct_difference)
-                    ),
-                    "difference_after_discount": _money_float(
-                        discounted_difference
-                    ),
-                    "item_total_difference_equals_vat": (
-                        item_total_difference_equals_vat
-                    ),
+                    "absolute_direct_difference": _money_float(abs(direct_difference)),
+                    "difference_after_discount": _money_float(discounted_difference),
+                    "item_total_difference_equals_vat": (item_total_difference_equals_vat),
                 },
             )
 
-    if (
-        pre_discount_total is not None
-        and discount_total is not None
-        and final_total is not None
-    ):
+    if pre_discount_total is not None and discount_total is not None and final_total is not None:
         expected_final = pre_discount_total - discount_total
         if _money_close(expected_final, final_total):
             add_check(
@@ -4654,11 +4413,7 @@ def validate_receipt_deterministically(
             "Pre-discount total, discount total, and final total were not all available.",
         )
 
-    if (
-        net_amount is not None
-        and vat_amount is not None
-        and final_total is not None
-    ):
+    if net_amount is not None and vat_amount is not None and final_total is not None:
         calculated_gross = net_amount + vat_amount
         if _money_close(calculated_gross, final_total):
             add_check(
@@ -4713,27 +4468,25 @@ def validate_receipt_deterministically(
             line_net_values.append(line_net)
         if line_net is None or line_vat is None:
             incomplete_vat_line_indices.append(index)
-        if (
-            line_rate is not None
-            and line_net is not None
-            and line_vat is not None
-        ):
-            expected_vat = (
-                line_net * line_rate / Decimal("100")
-            ).quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
+        if line_rate is not None and line_net is not None and line_vat is not None:
+            expected_vat = (line_net * line_rate / Decimal("100")).quantize(
+                MONEY_QUANTUM, rounding=ROUND_HALF_UP
+            )
             if not _money_close(
                 expected_vat,
                 line_vat,
                 tolerance=VAT_RATE_TOLERANCE,
             ):
-                vat_rate_failures.append({
-                    "vat_line_index": index,
-                    "rate_percent": float(line_rate),
-                    "net_amount": _money_float(line_net),
-                    "expected_vat_amount": _money_float(expected_vat),
-                    "vat_amount": _money_float(line_vat),
-                    "difference": _money_float(line_vat - expected_vat),
-                })
+                vat_rate_failures.append(
+                    {
+                        "vat_line_index": index,
+                        "rate_percent": float(line_rate),
+                        "net_amount": _money_float(line_net),
+                        "expected_vat_amount": _money_float(expected_vat),
+                        "vat_amount": _money_float(line_vat),
+                        "difference": _money_float(line_vat - expected_vat),
+                    }
+                )
 
     if not vat_lines:
         add_check(
@@ -4757,9 +4510,7 @@ def validate_receipt_deterministically(
         )
 
     if vat_lines and len(line_vat_values) == len(vat_lines) and vat_amount is not None:
-        vat_line_sum = sum(line_vat_values, Decimal("0.00")).quantize(
-            MONEY_QUANTUM
-        )
+        vat_line_sum = sum(line_vat_values, Decimal("0.00")).quantize(MONEY_QUANTUM)
         if _money_close(vat_line_sum, vat_amount):
             add_check(
                 "VAT_LINE_SUM_RECONCILIATION",
@@ -4801,12 +4552,8 @@ def validate_receipt_deterministically(
         and len(line_vat_values) == len(vat_lines)
         and final_total is not None
     ):
-        vat_net_sum = sum(line_net_values, Decimal("0.00")).quantize(
-            MONEY_QUANTUM
-        )
-        vat_line_sum = sum(line_vat_values, Decimal("0.00")).quantize(
-            MONEY_QUANTUM
-        )
+        vat_net_sum = sum(line_net_values, Decimal("0.00")).quantize(MONEY_QUANTUM)
+        vat_line_sum = sum(line_vat_values, Decimal("0.00")).quantize(MONEY_QUANTUM)
         calculated_gross = vat_net_sum + vat_line_sum
         if _money_close(calculated_gross, final_total):
             add_check(
@@ -4842,11 +4589,7 @@ def validate_receipt_deterministically(
             "Complete VAT-line net and VAT amounts plus a final total were not available.",
         )
 
-    if (
-        payment_received is not None
-        and change_returned is not None
-        and final_total is not None
-    ):
+    if payment_received is not None and change_returned is not None and final_total is not None:
         calculated_total = payment_received - change_returned
         if _money_close(calculated_total, final_total):
             add_check(
@@ -4892,10 +4635,12 @@ def validate_receipt_deterministically(
 
     metadata_currency = _normalize_currency(metadata.get("currency"))
     if metadata_currency is not None:
-        currency_sources.append({
-            "path": "receipt_metadata.currency",
-            "currency": metadata_currency,
-        })
+        currency_sources.append(
+            {
+                "path": "receipt_metadata.currency",
+                "currency": metadata_currency,
+            }
+        )
     collect_currency("totals.final_purchase_total", final_total_payload)
     collect_currency("totals.pre_discount_total", pre_discount_payload)
     collect_currency("totals.net_amount", net_amount_payload)
@@ -4904,9 +4649,7 @@ def validate_receipt_deterministically(
     collect_currency("payment.change_returned", change_payload)
     collect_currency("tax.vat_amount", vat_amount_payload)
 
-    distinct_currencies = sorted({
-        source["currency"] for source in currency_sources
-    })
+    distinct_currencies = sorted({source["currency"] for source in currency_sources})
     if len(distinct_currencies) > 1:
         add_check(
             "CURRENCY_CONSISTENCY",
@@ -4931,15 +4674,9 @@ def validate_receipt_deterministically(
             "No usable currency value was available.",
         )
 
-    failed_checks = [
-        check for check in checks if check.get("status") == "failed"
-    ]
-    error_count = sum(
-        1 for check in failed_checks if check.get("severity") == "error"
-    )
-    review_count = sum(
-        1 for check in failed_checks if check.get("severity") == "review"
-    )
+    failed_checks = [check for check in checks if check.get("status") == "failed"]
+    error_count = sum(1 for check in failed_checks if check.get("severity") == "error")
+    review_count = sum(1 for check in failed_checks if check.get("severity") == "review")
     if error_count:
         status = "invalid"
     elif review_count:
@@ -4948,9 +4685,7 @@ def validate_receipt_deterministically(
         status = "valid"
 
     status_counts = {
-        status_name: sum(
-            1 for check in checks if check.get("status") == status_name
-        )
+        status_name: sum(1 for check in checks if check.get("status") == status_name)
         for status_name in ("passed", "failed", "skipped", "observed")
     }
 
@@ -4997,19 +4732,18 @@ def _effective_item_pipeline_result(
     items = receipt.get("items")
     answer = {"items": items if isinstance(items, list) else []}
     validation = validate_direct_items(answer)
-    result.update({
-        "status": (
-            "completed"
-            if validation.get("status") != "invalid"
-            else "completed_with_errors"
-        ),
-        "strategy": "complete_receipt_direct_item_extraction_with_correction_overlay",
-        "items": answer["items"],
-        "validation": validation,
-        "correction_overlay": True,
-    })
+    result.update(
+        {
+            "status": (
+                "completed" if validation.get("status") != "invalid" else "completed_with_errors"
+            ),
+            "strategy": "complete_receipt_direct_item_extraction_with_correction_overlay",
+            "items": answer["items"],
+            "validation": validation,
+            "correction_overlay": True,
+        }
+    )
     return result
-
 
 
 def _runtime_correction_profile(args: argparse.Namespace) -> CorrectionProfile:
@@ -5075,9 +4809,7 @@ def run_gemma_correction_loop(
             args,
             strategy=strategy,
             transcription=source,
-            num_predict=_source_strategy_num_predict(
-                args, strategy.strategy_id
-            ),
+            num_predict=_source_strategy_num_predict(args, strategy.strategy_id),
         )
 
     def validate_candidate(
@@ -5128,6 +4860,7 @@ def run_gemma_correction_loop(
     )
     return corrected_receipt, corrected_validation, corrected_items, report
 
+
 def derive_semantic_status(
     *,
     qwen_result: dict[str, Any],
@@ -5147,59 +4880,66 @@ def derive_semantic_status(
         or not isinstance(transcription_text, str)
         or not transcription_text.strip()
     ):
-        reasons.append({
-            "code": "TRANSCRIPTION_MISSING",
-            "message": "Qwen did not provide a nonempty completed transcription.",
-            "details": {
-                "status": qwen_result.get("status"),
-                "transcription_status": transcription_status,
-            },
-        })
+        reasons.append(
+            {
+                "code": "TRANSCRIPTION_MISSING",
+                "message": "Qwen did not provide a nonempty completed transcription.",
+                "details": {
+                    "status": qwen_result.get("status"),
+                    "transcription_status": transcription_status,
+                },
+            }
+        )
 
     if missing_scalar_tasks:
-        reasons.append({
-            "code": "SCALAR_TASK_FAILURE",
-            "message": "One or more scalar specialist tasks failed or are missing.",
-            "tasks": missing_scalar_tasks,
-        })
+        reasons.append(
+            {
+                "code": "SCALAR_TASK_FAILURE",
+                "message": "One or more scalar specialist tasks failed or are missing.",
+                "tasks": missing_scalar_tasks,
+            }
+        )
 
     if item_pipeline_enabled:
         if not isinstance(item_pipeline_result, dict):
-            reasons.append({
-                "code": "ITEM_PIPELINE_MISSING",
-                "message": "Item pipeline did not produce a result object.",
-            })
+            reasons.append(
+                {
+                    "code": "ITEM_PIPELINE_MISSING",
+                    "message": "Item pipeline did not produce a result object.",
+                }
+            )
         else:
             pipeline_status = item_pipeline_result.get("status")
             if pipeline_status != "completed":
-                reasons.append({
-                    "code": "ITEM_PIPELINE_NOT_CLEAN",
-                    "message": "Item pipeline did not complete cleanly.",
-                    "status": pipeline_status,
-                })
+                reasons.append(
+                    {
+                        "code": "ITEM_PIPELINE_NOT_CLEAN",
+                        "message": "Item pipeline did not complete cleanly.",
+                        "status": pipeline_status,
+                    }
+                )
 
     validation_checks = deterministic_validation.get("checks")
-    validation_checks = (
-        validation_checks if isinstance(validation_checks, list) else []
-    )
+    validation_checks = validation_checks if isinstance(validation_checks, list) else []
     for check in validation_checks:
         if not isinstance(check, dict) or check.get("status") != "failed":
             continue
-        reasons.append({
-            "code": check.get("code") or "DETERMINISTIC_VALIDATION_FAILURE",
-            "message": check.get("message"),
-            "severity": check.get("severity"),
-            "values": check.get("values"),
-            "details": check.get("details"),
-        })
+        reasons.append(
+            {
+                "code": check.get("code") or "DETERMINISTIC_VALIDATION_FAILURE",
+                "message": check.get("message"),
+                "severity": check.get("severity"),
+                "values": check.get("values"),
+                "details": check.get("details"),
+            }
+        )
 
     return {
         "status": "accepted" if not reasons else "review_required",
         "reasons": reasons,
-        "deterministic_validation_status": deterministic_validation.get(
-            "status"
-        ),
+        "deterministic_validation_status": deterministic_validation.get("status"),
     }
+
 
 def assemble_final_receipt(
     *,
@@ -5211,11 +4951,7 @@ def assemble_final_receipt(
     scalar_results: dict[str, dict[str, Any]],
     item_pipeline_result: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    selected_scalar_tasks = (
-        []
-        if args.skip_scalars
-        else unique_ordered(args.scalar_tasks)
-    )
+    selected_scalar_tasks = [] if args.skip_scalars else unique_ordered(args.scalar_tasks)
 
     missing_scalar_tasks = [
         task_name
@@ -5321,27 +5057,20 @@ def assemble_final_receipt(
                 scalar_results,
                 "vat_amount",
             ),
-            "vat_lines": (
-                vat_lines_answer.get("vat_lines")
-                if vat_lines_answer
-                else None
-            ),
+            "vat_lines": (vat_lines_answer.get("vat_lines") if vat_lines_answer else None),
         },
     }
 
-    item_pipeline_complete = (
-        args.skip_item_pipeline
-        or (
-            isinstance(
-                item_pipeline_result,
-                dict,
-            )
-            and item_pipeline_result.get("status")
-            in {
-                "completed",
-                "completed_with_errors",
-            }
+    item_pipeline_complete = args.skip_item_pipeline or (
+        isinstance(
+            item_pipeline_result,
+            dict,
         )
+        and item_pipeline_result.get("status")
+        in {
+            "completed",
+            "completed_with_errors",
+        }
     )
 
     initial_deterministic_validation = validate_receipt_deterministically(
@@ -5384,9 +5113,7 @@ def assemble_final_receipt(
         },
         "models": {
             "text_detection": (
-                qwen_result.get("detector", {})
-                .get("metadata", {})
-                .get("backend")
+                qwen_result.get("detector", {}).get("metadata", {}).get("backend")
                 if isinstance(qwen_result.get("detector"), dict)
                 else None
             ),
@@ -5394,9 +5121,7 @@ def assemble_final_receipt(
             "semantic_specialists": args.gemma_model,
         },
         "experiment": {
-            "visual_source": (
-                "paddle_geometry_when_available_plus_qwen_transcription"
-            ),
+            "visual_source": ("paddle_geometry_when_available_plus_qwen_transcription"),
             "transcription_strategy": "aspect_ratio_adaptive_crops_or_whole_image_without_qwen_validation_with_thinking_field_compatibility",
             "scalar_strategy": "semantically_named_micro_specialists",
             "item_strategy": "complete_receipt_direct_item_extraction",
@@ -5406,9 +5131,7 @@ def assemble_final_receipt(
             "deterministic_semantic_correction": True,
             "correction_strategy": "configured_validator_gated_strategy_chain",
             "correction_profile": CORRECTION_PROFILE.as_dict(),
-            "enabled_correction_strategies": list(
-                CORRECTION_PROFILE.strategies
-            ),
+            "enabled_correction_strategies": list(CORRECTION_PROFILE.strategies),
             "arithmetic_validation": True,
             "arithmetic_reconciliation": False,
             "cross_specialist_conflict_resolution": True,
@@ -5417,9 +5140,7 @@ def assemble_final_receipt(
             "text": transcription,
             "characters": len(transcription),
             "qwen_metrics": qwen_result.get("metrics"),
-            "protocol_warnings": qwen_result.get(
-                "protocol_warnings"
-            ),
+            "protocol_warnings": qwen_result.get("protocol_warnings"),
             "transcription_status": qwen_result.get("transcription_status"),
             "detector": qwen_result.get("detector"),
             "alignment_report": qwen_result.get("alignment_report"),
@@ -5433,37 +5154,23 @@ def assemble_final_receipt(
         "scalar_results": {
             task_name: (
                 result.get("answer")
-                if isinstance(result, dict)
-                and result.get("status") == "completed"
+                if isinstance(result, dict) and result.get("status") == "completed"
                 else result
             )
             for task_name, result in scalar_results.items()
         },
         "scalar_metrics": {
-            task_name: (
-                result.get("metrics")
-                if isinstance(result, dict)
-                else None
-            )
+            task_name: (result.get("metrics") if isinstance(result, dict) else None)
             for task_name, result in scalar_results.items()
         },
         "item_pipeline": item_pipeline_result,
         "effective_item_pipeline": (
-            effective_item_pipeline_result
-            if gemma_correction.get("applied")
-            else None
+            effective_item_pipeline_result if gemma_correction.get("applied") else None
         ),
         "assembly": {
-            "complete": (
-                not missing_scalar_tasks
-                and item_pipeline_complete
-            ),
-            "missing_or_failed_scalar_tasks": (
-                missing_scalar_tasks
-            ),
-            "item_pipeline_enabled": (
-                not args.skip_item_pipeline
-            ),
+            "complete": (not missing_scalar_tasks and item_pipeline_complete),
+            "missing_or_failed_scalar_tasks": (missing_scalar_tasks),
+            "item_pipeline_enabled": (not args.skip_item_pipeline),
             "note": (
                 "Model outputs are assembled first, then validated. When validation "
                 "fails, Gemma may return only a bounded patch. Python applies the "
@@ -5483,9 +5190,7 @@ def run_qwen_phase(
     list[tuple[Path, Path, str, dict[str, Any]]],
     list[dict[str, Any]],
 ]:
-    completed: list[
-        tuple[Path, Path, str, dict[str, Any]]
-    ] = []
+    completed: list[tuple[Path, Path, str, dict[str, Any]]] = []
     failures: list[dict[str, Any]] = []
 
     print("\nPhase 1/2: aspect-ratio crops or whole-image fallback + Qwen3.5")
@@ -5508,34 +5213,22 @@ def run_qwen_phase(
             source_file,
             {
                 "image": str(image_path),
-                "relative_path": str(
-                    image_path.resolve().relative_to(
-                        input_root.resolve()
-                    )
-                ),
+                "relative_path": str(image_path.resolve().relative_to(input_root.resolve())),
                 "size_bytes": image_path.stat().st_size,
                 "modified_at_utc": datetime.fromtimestamp(
                     image_path.stat().st_mtime,
-                    tz=timezone.utc,
+                    tz=UTC,
                 ).isoformat(),
             },
         )
 
         try:
-            if (
-                qwen_file.exists()
-                and transcription_file.exists()
-                and not args.overwrite
-            ):
+            if qwen_file.exists() and transcription_file.exists() and not args.overwrite:
                 qwen_result = read_json(qwen_file)
-                transcription = transcription_file.read_text(
-                    encoding="utf-8"
-                ).strip()
+                transcription = transcription_file.read_text(encoding="utf-8").strip()
 
                 if not transcription:
-                    raise RuntimeError(
-                        "Cached Qwen transcription is empty"
-                    )
+                    raise RuntimeError("Cached Qwen transcription is empty")
 
                 if qwen_result.get("status") != "completed":
                     raise RuntimeError(
@@ -5616,39 +5309,23 @@ def summarize_final(
     totals = totals if isinstance(totals, dict) else {}
 
     final_total = totals.get("final_purchase_total")
-    final_total = (
-        final_total
-        if isinstance(final_total, dict)
-        else {}
-    )
+    final_total = final_total if isinstance(final_total, dict) else {}
 
     metadata = receipt.get("receipt_metadata")
     metadata = metadata if isinstance(metadata, dict) else {}
 
     item_pipeline = final_receipt.get("item_pipeline")
-    item_pipeline = (
-        item_pipeline
-        if isinstance(item_pipeline, dict)
-        else {}
-    )
+    item_pipeline = item_pipeline if isinstance(item_pipeline, dict) else {}
 
     semantic = final_receipt.get("semantic_status")
     semantic = semantic if isinstance(semantic, dict) else {}
 
-    deterministic_validation = final_receipt.get(
-        "deterministic_validation"
-    )
+    deterministic_validation = final_receipt.get("deterministic_validation")
     deterministic_validation = (
-        deterministic_validation
-        if isinstance(deterministic_validation, dict)
-        else {}
+        deterministic_validation if isinstance(deterministic_validation, dict) else {}
     )
     deterministic_summary = deterministic_validation.get("summary")
-    deterministic_summary = (
-        deterministic_summary
-        if isinstance(deterministic_summary, dict)
-        else {}
-    )
+    deterministic_summary = deterministic_summary if isinstance(deterministic_summary, dict) else {}
 
     transcription = final_receipt.get("transcription")
     transcription = transcription if isinstance(transcription, dict) else {}
@@ -5656,9 +5333,7 @@ def summarize_final(
     return {
         "image": str(image_path),
         "receipt_dir": str(receipt_dir),
-        "final_json": str(
-            receipt_dir / "92_receipt_combined_final.json"
-        ),
+        "final_json": str(receipt_dir / "92_receipt_combined_final.json"),
         "assembly_complete": (
             final_receipt.get("assembly", {}).get("complete")
             if isinstance(
@@ -5670,30 +5345,16 @@ def summarize_final(
         "merchant_name": merchant.get("name"),
         "item_count": item_count,
         "item_pipeline_status": item_pipeline.get("status"),
-        "item_pipeline_failure_count": item_pipeline.get(
-            "failure_count"
-        ),
-        "final_purchase_total": final_total.get(
-            "final_purchase_total"
-        ),
-        "currency": (
-            final_total.get("currency")
-            or metadata.get("currency")
-        ),
+        "item_pipeline_failure_count": item_pipeline.get("failure_count"),
+        "final_purchase_total": final_total.get("final_purchase_total"),
+        "currency": (final_total.get("currency") or metadata.get("currency")),
         "transcription_status": transcription.get("transcription_status"),
         "semantic_status": semantic.get("status"),
         "semantic_reason_count": len(semantic.get("reasons") or []),
-        "deterministic_validation_status": (
-            deterministic_validation.get("status")
-        ),
-        "deterministic_failed_check_count": (
-            deterministic_summary.get("failed")
-        ),
-        "transaction_status": receipt.get(
-            "transaction_status"
-        ),
+        "deterministic_validation_status": (deterministic_validation.get("status")),
+        "deterministic_failed_check_count": (deterministic_summary.get("failed")),
+        "transaction_status": receipt.get("transaction_status"),
     }
-
 
 
 def should_exclude_from_archive(path: Path) -> bool:
@@ -5824,15 +5485,9 @@ def main() -> int:
             file=sys.stderr,
         )
         return 2
-    if not (
-        0.0
-        <= args.safe_cut_search_ratio
-        <= args.max_safe_cut_search_ratio
-        <= 1.0
-    ):
+    if not (0.0 <= args.safe_cut_search_ratio <= args.max_safe_cut_search_ratio <= 1.0):
         print(
-            "Input error: safe-cut search ratios must satisfy "
-            "0 <= normal <= maximum <= 1",
+            "Input error: safe-cut search ratios must satisfy 0 <= normal <= maximum <= 1",
             file=sys.stderr,
         )
         return 2
@@ -5952,23 +5607,17 @@ def main() -> int:
         return 2
 
     input_path = args.input.expanduser().resolve()
-    input_root = (
-        input_path
-        if input_path.is_dir()
-        else input_path.parent
-    )
+    input_root = input_path if input_path.is_dir() else input_path.parent
 
     run_name = args.run_name or timestamp_name()
-    output_dir = (
-        args.output_dir.expanduser().resolve()
-        / sanitize_name(run_name)
-    )
+    output_dir = args.output_dir.expanduser().resolve() / sanitize_name(run_name)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     entries = [
         (
             image_path,
-            output_dir / receipt_key(
+            output_dir
+            / receipt_key(
                 image_path,
                 input_root,
             ),
@@ -5976,11 +5625,7 @@ def main() -> int:
         for image_path in images
     ]
 
-    selected_scalar_tasks = (
-        []
-        if args.skip_scalars
-        else unique_ordered(args.scalar_tasks)
-    )
+    selected_scalar_tasks = [] if args.skip_scalars else unique_ordered(args.scalar_tasks)
 
     run_config = {
         "schema_version": SCHEMA_VERSION,
@@ -5997,17 +5642,13 @@ def main() -> int:
         "gemma_seed": args.gemma_seed,
         "gemma_parallelism": args.gemma_parallelism,
         "row_context_radius": args.row_context_radius,
-        "transcription_strategy": (
-            "aspect_ratio_adaptive_safe_crops_with_whole_image_fallback"
-        ),
+        "transcription_strategy": ("aspect_ratio_adaptive_safe_crops_with_whole_image_fallback"),
         "paddle_backend": args.paddle_backend,
         "paddle_det_model": args.paddle_det_model,
         "paddle_device": args.paddle_device,
         "paddle_lang": args.paddle_lang,
         "paddle_min_score": args.paddle_min_score,
-        "paddle_line_overlap_threshold": (
-            args.paddle_line_overlap_threshold
-        ),
+        "paddle_line_overlap_threshold": (args.paddle_line_overlap_threshold),
         "paddle_line_center_factor": args.paddle_line_center_factor,
         "paddle_min_lines": args.paddle_min_lines,
         "paddle_max_lines": args.paddle_max_lines,
@@ -6026,9 +5667,7 @@ def main() -> int:
         "cut_strip_half_height": args.cut_strip_half_height,
         "cut_ink_threshold": args.cut_ink_threshold,
         "max_cut_ink_density": args.max_cut_ink_density,
-        "line_group_horizontal_padding": (
-            args.line_group_horizontal_padding
-        ),
+        "line_group_horizontal_padding": (args.line_group_horizontal_padding),
         "crop_scale": args.crop_scale,
         "crop_contrast": args.crop_contrast,
         "crop_sharpen": args.crop_sharpen,
@@ -6042,21 +5681,15 @@ def main() -> int:
         "gemma_correction_num_predict": args.gemma_correction_num_predict,
         "gemma_correction_retries": args.gemma_correction_retries,
         "gemma_correction_max_rounds": args.gemma_correction_max_rounds,
-        "item_sum_recovery_num_predict": (
-            args.item_sum_recovery_num_predict
-        ),
+        "item_sum_recovery_num_predict": (args.item_sum_recovery_num_predict),
         "vat_recovery_num_predict": args.vat_recovery_num_predict,
-        "final_total_recovery_num_predict": (
-            args.final_total_recovery_num_predict
-        ),
+        "final_total_recovery_num_predict": (args.final_total_recovery_num_predict),
         "correction_profile": _runtime_correction_profile(args).as_dict(),
         "scalar_tasks": selected_scalar_tasks,
         "default_batch_input": str(DEFAULT_BATCH_INPUT),
         "default_batch_scalar_tasks": list(DEFAULT_BATCH_SCALAR_TASKS),
         "scalar_specialists_enabled": not args.skip_scalars,
-        "item_pipeline_enabled": (
-            not args.skip_item_pipeline
-        ),
+        "item_pipeline_enabled": (not args.skip_item_pipeline),
         "item_pipeline_stages": [
             "complete_receipt_direct_item_extraction",
             "contract_validation",
@@ -6071,9 +5704,7 @@ def main() -> int:
         ],
         "deterministic_validation": True,
         "deterministic_semantic_correction": True,
-        "correction_strategy": (
-            "configured_validator_gated_strategy_chain"
-        ),
+        "correction_strategy": ("configured_validator_gated_strategy_chain"),
         "arithmetic_validation": True,
         "arithmetic_reconciliation": False,
         "cross_specialist_conflict_resolution": True,
@@ -6086,11 +5717,7 @@ def main() -> int:
 
     print(f"Images:               {len(entries)}")
     print(f"Qwen model:           {args.vlm_model}")
-    print(
-        f"Qwen decoding:        "
-        f"temperature={args.vlm_temperature}, "
-        f"seed={args.vlm_seed}"
-    )
+    print(f"Qwen decoding:        temperature={args.vlm_temperature}, seed={args.vlm_seed}")
     print(
         f"Paddle detector:      backend={args.paddle_backend}, "
         f"device={args.paddle_device}, lang={args.paddle_lang}"
@@ -6107,22 +5734,12 @@ def main() -> int:
         "non-overlapping, no text matching"
     )
     print(
-        f"Crop width:           "
-        f"{'full image' if args.full_width_crops else 'detected text bounds'}"
+        f"Crop width:           {'full image' if args.full_width_crops else 'detected text bounds'}"
     )
-    print(
-        f"Qwen group parallelism:{args.qwen_group_parallelism}"
-    )
+    print(f"Qwen group parallelism:{args.qwen_group_parallelism}")
     print(f"Gemma model:          {args.gemma_model}")
-    print(
-        f"Gemma decoding:       "
-        f"temperature={args.temperature}, "
-        f"seed={args.gemma_seed}"
-    )
-    print(
-        f"Gemma parallelism:    "
-        f"{args.gemma_parallelism}"
-    )
+    print(f"Gemma decoding:       temperature={args.temperature}, seed={args.gemma_seed}")
+    print(f"Gemma parallelism:    {args.gemma_parallelism}")
     print(
         f"Gemma correction:     "
         f"{'enabled' if args.gemma_correction else 'disabled'} "
@@ -6130,14 +5747,8 @@ def main() -> int:
         f"rounds={args.gemma_correction_max_rounds}, "
         f"retries={args.gemma_correction_retries})"
     )
-    print(
-        f"Scalar specialists:   "
-        f"{'disabled' if args.skip_scalars else 'enabled'}"
-    )
-    print(
-        f"Item pipeline:        "
-        f"{'disabled' if args.skip_item_pipeline else 'enabled'}"
-    )
+    print(f"Scalar specialists:   {'disabled' if args.skip_scalars else 'enabled'}")
+    print(f"Item pipeline:        {'disabled' if args.skip_item_pipeline else 'enabled'}")
     print(f"Input:                {input_path}")
     print(f"Output:               {output_dir}")
 
@@ -6147,14 +5758,8 @@ def main() -> int:
         input_root=input_root,
     )
 
-    if (
-        transcription_entries
-        and not args.keep_vlm_loaded
-        and args.vlm_model != args.gemma_model
-    ):
-        print(
-            f"\nUnloading visual model: {args.vlm_model}"
-        )
+    if transcription_entries and not args.keep_vlm_loaded and args.vlm_model != args.gemma_model:
+        print(f"\nUnloading visual model: {args.vlm_model}")
 
         try:
             unload_model(
@@ -6163,15 +5768,11 @@ def main() -> int:
             )
         except Exception as exc:
             print(
-                f"Warning: could not unload "
-                f"{args.vlm_model}: {exc}",
+                f"Warning: could not unload {args.vlm_model}: {exc}",
                 file=sys.stderr,
             )
 
-    print(
-        "\nPhase 2/2: Gemma scalar specialists "
-        "and direct complete-receipt item extraction"
-    )
+    print("\nPhase 2/2: Gemma scalar specialists and direct complete-receipt item extraction")
 
     receipt_summaries: list[dict[str, Any]] = []
 
@@ -6185,18 +5786,15 @@ def main() -> int:
         start=1,
     ):
         print(
-            f"[{index}/{len(transcription_entries)}] "
-            f"{image_path.name}",
+            f"[{index}/{len(transcription_entries)}] {image_path.name}",
             flush=True,
         )
 
-        scalar_results, scalar_failures = (
-            run_scalar_specialists(
-                args=args,
-                image_path=image_path,
-                receipt_dir=receipt_dir,
-                transcription=transcription,
-            )
+        scalar_results, scalar_failures = run_scalar_specialists(
+            args=args,
+            image_path=image_path,
+            receipt_dir=receipt_dir,
+            transcription=transcription,
         )
         failures.extend(scalar_failures)
 
@@ -6204,13 +5802,11 @@ def main() -> int:
         item_failures: list[dict[str, Any]] = []
 
         if not args.skip_item_pipeline:
-            item_pipeline_result, item_failures = (
-                run_item_pipeline(
-                    args=args,
-                    image_path=image_path,
-                    receipt_dir=receipt_dir,
-                    transcription=transcription,
-                )
+            item_pipeline_result, item_failures = run_item_pipeline(
+                args=args,
+                image_path=image_path,
+                receipt_dir=receipt_dir,
+                transcription=transcription,
             )
             failures.extend(item_failures)
 
@@ -6243,15 +5839,9 @@ def main() -> int:
             )
         )
 
-        receipt_failures = (
-            scalar_failures
-            + item_failures
-        )
+        receipt_failures = scalar_failures + item_failures
 
-        if (
-            receipt_failures
-            and not args.continue_on_error
-        ):
+        if receipt_failures and not args.continue_on_error:
             break
 
     archive_path = (
@@ -6266,21 +5856,13 @@ def main() -> int:
         "configuration": run_config,
         "summary": {
             "image_count": len(entries),
-            "qwen_transcription_completed": len(
-                transcription_entries
-            ),
-            "final_receipts_created": len(
-                receipt_summaries
-            ),
+            "qwen_transcription_completed": len(transcription_entries),
+            "final_receipts_created": len(receipt_summaries),
             "assembly_complete_count": sum(
-                1
-                for result in receipt_summaries
-                if result.get("assembly_complete")
+                1 for result in receipt_summaries if result.get("assembly_complete")
             ),
             "semantic_accepted_count": sum(
-                1
-                for result in receipt_summaries
-                if result.get("semantic_status") == "accepted"
+                1 for result in receipt_summaries if result.get("semantic_status") == "accepted"
             ),
             "semantic_review_required_count": sum(
                 1
@@ -6288,9 +5870,7 @@ def main() -> int:
                 if result.get("semantic_status") == "review_required"
             ),
             "qwen_transcription_failed_or_unsafe_count": sum(
-                1
-                for failure in failures
-                if failure.get("stage") == "qwen_transcription"
+                1 for failure in failures if failure.get("stage") == "qwen_transcription"
             ),
             "failure_count": len(failures),
             "archive_enabled": bool(args.archive),
@@ -6326,9 +5906,7 @@ def main() -> int:
             indent=2,
         )
     )
-    print(
-        f"Summary: {output_dir / 'summary.json'}"
-    )
+    print(f"Summary: {output_dir / 'summary.json'}")
     if args.archive:
         print(f"Archive: {archive_path}")
 

@@ -21,8 +21,7 @@ def validate_vat_evidence(answer: Any, transcription: str) -> dict[str, Any]:
             "metrics": {"block_count": 0, "unresolved_group_count": 0},
         }
     warnings.extend(
-        {"code": "TRANSCRIPTION_WARNING", "message": value}
-        for value in source_warnings
+        {"code": "TRANSCRIPTION_WARNING", "message": value} for value in source_warnings
     )
 
     if not isinstance(answer, dict):
@@ -63,16 +62,34 @@ def validate_vat_evidence(answer: Any, transcription: str) -> dict[str, Any]:
             errors.append({"code": "DUPLICATE_CONTEXT_ROW", "location": f"{location}.context_rows"})
         for row_id in context_rows:
             if not isinstance(row_id, str) or row_id not in source:
-                errors.append({"code": "UNKNOWN_CONTEXT_ROW", "location": f"{location}.context_rows", "value": row_id})
+                errors.append(
+                    {
+                        "code": "UNKNOWN_CONTEXT_ROW",
+                        "location": f"{location}.context_rows",
+                        "value": row_id,
+                    }
+                )
 
         source_row = block.get("source_row")
         if not isinstance(source_row, str) or source_row not in source:
-            errors.append({"code": "UNKNOWN_SOURCE_ROW", "location": f"{location}.source_row", "value": source_row})
+            errors.append(
+                {
+                    "code": "UNKNOWN_SOURCE_ROW",
+                    "location": f"{location}.source_row",
+                    "value": source_row,
+                }
+            )
             row_text = ""
         else:
             row_text = source[source_row]
             if source_row in used_value_rows:
-                errors.append({"code": "SOURCE_ROW_REUSED", "location": f"{location}.source_row", "value": source_row})
+                errors.append(
+                    {
+                        "code": "SOURCE_ROW_REUSED",
+                        "location": f"{location}.source_row",
+                        "value": source_row,
+                    }
+                )
             used_value_rows.add(source_row)
 
         row_label = block.get("row_label")
@@ -80,7 +97,13 @@ def validate_vat_evidence(answer: Any, transcription: str) -> dict[str, Any]:
             if not isinstance(row_label, str) or not row_label.strip():
                 errors.append({"code": "INVALID_ROW_LABEL", "location": f"{location}.row_label"})
             elif row_label not in row_text:
-                errors.append({"code": "ROW_LABEL_NOT_LITERAL", "location": f"{location}.row_label", "value": row_label})
+                errors.append(
+                    {
+                        "code": "ROW_LABEL_NOT_LITERAL",
+                        "location": f"{location}.row_label",
+                        "value": row_label,
+                    }
+                )
 
         fields = block.get("fields")
         if not isinstance(fields, list) or not 1 <= len(fields) <= 4:
@@ -95,17 +118,41 @@ def validate_vat_evidence(answer: Any, transcription: str) -> dict[str, Any]:
             role = field.get("role")
             value = field.get("value")
             if role not in _ROLES:
-                errors.append({"code": "VAT_ROLE_INVALID", "location": f"{field_location}.role", "value": role})
+                errors.append(
+                    {
+                        "code": "VAT_ROLE_INVALID",
+                        "location": f"{field_location}.role",
+                        "value": role,
+                    }
+                )
             elif role in roles:
-                errors.append({"code": "VAT_ROLE_REPEATED", "location": f"{field_location}.role", "value": role})
+                errors.append(
+                    {
+                        "code": "VAT_ROLE_REPEATED",
+                        "location": f"{field_location}.role",
+                        "value": role,
+                    }
+                )
             else:
                 roles.add(role)
             if not isinstance(value, str) or not value.strip():
                 errors.append({"code": "VAT_VALUE_INVALID", "location": f"{field_location}.value"})
             elif value not in row_text:
-                errors.append({"code": "VAT_VALUE_NOT_LITERAL", "location": f"{field_location}.value", "value": value})
+                errors.append(
+                    {
+                        "code": "VAT_VALUE_NOT_LITERAL",
+                        "location": f"{field_location}.value",
+                        "value": value,
+                    }
+                )
             elif parse_decimal_literal(value, percent=(role == "rate_percent")) is None:
-                errors.append({"code": "VAT_VALUE_NOT_PARSEABLE", "location": f"{field_location}.value", "value": value})
+                errors.append(
+                    {
+                        "code": "VAT_VALUE_NOT_PARSEABLE",
+                        "location": f"{field_location}.value",
+                        "value": value,
+                    }
+                )
 
     for index, group in enumerate(unresolved):
         location = f"unresolved_candidate_rows[{index}]"
@@ -114,14 +161,26 @@ def validate_vat_evidence(answer: Any, transcription: str) -> dict[str, Any]:
             continue
         for key, maximum in (("context_rows", 8), ("source_rows", 8)):
             values = group.get(key)
-            if not isinstance(values, list) or (key == "source_rows" and not values) or len(values) > maximum:
+            if (
+                not isinstance(values, list)
+                or (key == "source_rows" and not values)
+                or len(values) > maximum
+            ):
                 errors.append({"code": "UNRESOLVED_ROWS_INVALID", "location": f"{location}.{key}"})
                 continue
             if len(values) != len(set(values)):
-                errors.append({"code": "UNRESOLVED_ROWS_DUPLICATE", "location": f"{location}.{key}"})
+                errors.append(
+                    {"code": "UNRESOLVED_ROWS_DUPLICATE", "location": f"{location}.{key}"}
+                )
             for row_id in values:
                 if not isinstance(row_id, str) or row_id not in source:
-                    errors.append({"code": "UNKNOWN_UNRESOLVED_ROW", "location": f"{location}.{key}", "value": row_id})
+                    errors.append(
+                        {
+                            "code": "UNKNOWN_UNRESOLVED_ROW",
+                            "location": f"{location}.{key}",
+                            "value": row_id,
+                        }
+                    )
 
     return {
         "status": "invalid" if errors else "valid",
@@ -193,9 +252,7 @@ def build_vat_patch(
                 {
                     "source_rows": source_rows,
                     "rate_percent": (
-                        float(values["rate_percent"])
-                        if "rate_percent" in values
-                        else None
+                        float(values["rate_percent"]) if "rate_percent" in values else None
                     ),
                     "net_amount": money_float(values["net_amount"]),
                     "vat_amount": money_float(values["vat_amount"]),

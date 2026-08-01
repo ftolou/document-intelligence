@@ -17,7 +17,6 @@ from correction.strategies.item_sum import (
 )
 from correction.strategies.vat import build_vat_patch, validate_vat_evidence
 
-
 SOURCE = """BEGIN_RECEIPT
 R0001 :: APPLE 1,20
 R0002 :: BREAD
@@ -124,10 +123,7 @@ class CorrectionStrategyTests(unittest.TestCase):
         patch, diagnostics = build_vat_patch(answer, receipt)
         self.assertEqual("patch_built", diagnostics["status"])
         paths = {entry["path"] for entry in patch["patches"]}
-        self.assertEqual(
-            {"/tax/vat_lines", "/tax/vat_amount/vat_amount"}, paths
-        )
-
+        self.assertEqual({"/tax/vat_lines", "/tax/vat_amount/vat_amount"}, paths)
 
     def test_final_total_evidence_builds_one_patch(self) -> None:
         answer = {
