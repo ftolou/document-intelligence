@@ -1,0 +1,15 @@
+{
+  "id": "gemma.scalar.pre_discount_total",
+  "version": "1.0.0",
+  "status": "baseline",
+  "model_family": "gemma4",
+  "role": "user",
+  "kind": "instruction",
+  "description": "Scalar specialist prompt for pre_discount_total.",
+  "source_file": "experiment_batch_paddle_snapped_crops_qwen35_gemma_items_scalars_v7_5.py",
+  "source_symbol": "SCALAR_TASKS['pre_discount_total'][\"question\"]",
+  "content_file": "prompt.md",
+  "sha256": "5c8c4fcbd484054251504314322ff4e945d6007a920d55ca90b36c5368bdd8e2",
+  "variables": [],
+  "change_summary": "Exact prompt text extracted from pipeline v7.5."
+}

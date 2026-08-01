@@ -1,0 +1,15 @@
+{
+  "id": "gemma.correction.generic",
+  "version": "1.0.0",
+  "status": "baseline",
+  "model_family": "gemma4",
+  "role": "user",
+  "kind": "instruction",
+  "description": "Generic deterministic-validation correction instruction from v7.5.",
+  "source_file": "experiment_batch_paddle_snapped_crops_qwen35_gemma_items_scalars_v7_5.py",
+  "source_symbol": "GEMMA_CORRECTION_QUESTION",
+  "content_file": "prompt.md",
+  "sha256": "25c28493a835450aea6c52d8d340dec38fb54bed73aac01cbcf8fb50711a014b",
+  "variables": [],
+  "change_summary": "Exact prompt text extracted from pipeline v7.5."
+}

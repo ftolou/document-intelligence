@@ -17,8 +17,14 @@ Primary path
    the whole image path (subject to the configured transport retries).
 7. Concatenate successful crop transcriptions in geometric order, assign global
    R0001... row IDs, and pass the result directly to Gemma.
-8. Run direct item extraction and parallel scalar specialists, including discount,
-   then derive accepted/review_required semantic status.
+8. Run direct item extraction and parallel scalar specialists, including discount.
+9. Apply deterministic Python contract, arithmetic, currency, tax, discount, and payment
+   validation without changing any model-produced value.
+10. When deterministic validation fails, route the selected failure through a
+    configured correction strategy chain: V3 item-source evidence, VAT source evidence,
+    final-total source evidence, and bounded generic auto-patching as applicable. Apply
+    every candidate from the last accepted state and keep it only when the selected target
+    resolves without validation regressions.
 
 Python performs detector-box clustering, pixel-level boundary selection, crop planning,
 ordered concatenation, artifact storage, and JSON contract validation for Gemma output.
@@ -30,6 +36,8 @@ from __future__ import annotations
 import argparse
 import base64
 import concurrent.futures
+import copy
+import difflib
 import hashlib
 import inspect
 import json
@@ -39,17 +47,87 @@ import sys
 import time
 import urllib.error
 import urllib.request
+import unicodedata
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from io import BytesIO
 from pathlib import Path
+
+from prompt_registry import PromptRegistry
+from correction.coordinator import (
+    CorrectionCallbacks,
+    run_correction_coordinator,
+)
+from correction.profile import (
+    CorrectionProfile,
+    StrategyConfig,
+    load_correction_profile,
+)
 from typing import Any, Iterable, Sequence
 
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageOps
 
 
-SCHEMA_VERSION = "paddle_snapped_crops_qwen35_gemma_items_scalars_batch.v7.1"
+PROMPT_REGISTRY_ROOT = Path(__file__).resolve().parent / "prompts"
+PROMPT_REGISTRY = PromptRegistry(PROMPT_REGISTRY_ROOT)
+CORRECTION_PROFILE_PATH = (
+    Path(__file__).resolve().parent
+    / "correction"
+    / "config"
+    / "production.json"
+)
+CORRECTION_PROFILE = load_correction_profile(CORRECTION_PROFILE_PATH)
+PROMPT_VERSIONS: dict[str, str] = {
+    "gemma.correction.json_repair": "1.0.0",
+    "gemma.items.direct": "1.0.0",
+    "gemma.scalar.change_returned": "1.0.0",
+    "gemma.scalar.currency": "1.0.0",
+    "gemma.scalar.discount_total": "1.0.0",
+    "gemma.scalar.final_purchase_total": "1.0.0",
+    "gemma.scalar.merchant_address": "1.0.0",
+    "gemma.scalar.merchant_name": "1.0.0",
+    "gemma.scalar.net_amount": "1.0.0",
+    "gemma.scalar.payment_method": "1.0.0",
+    "gemma.scalar.payment_received": "1.0.0",
+    "gemma.scalar.pre_discount_total": "1.0.0",
+    "gemma.scalar.receipt_date": "1.0.0",
+    "gemma.scalar.receipt_number": "1.0.0",
+    "gemma.scalar.receipt_time": "1.0.0",
+    "gemma.scalar.transaction_status": "1.0.0",
+    "gemma.scalar.vat_amount": "1.0.0",
+    "gemma.scalar.vat_lines": "1.0.0",
+    "gemma.system.receipt_interpreter": "1.0.0",
+    "gemma.template.correction_evidence": "1.0.0",
+    "gemma.template.correction_retry_suffix": "1.0.0",
+    "gemma.template.task_envelope": "1.0.0",
+    "qwen.transcription": "1.0.0"
+}
+for _strategy_config in CORRECTION_PROFILE.strategies.values():
+    PROMPT_VERSIONS[_strategy_config.prompt_id] = _strategy_config.prompt_version
+
+
+def _prompt(prompt_id: str) -> str:
+    return PROMPT_REGISTRY.load(prompt_id, PROMPT_VERSIONS[prompt_id])
+
+
+def _render_prompt(prompt_id: str, **values: Any) -> str:
+    return PROMPT_REGISTRY.render(
+        prompt_id,
+        PROMPT_VERSIONS[prompt_id],
+        **values,
+    )
+
+
+def _prompt_reference(prompt_id: str) -> dict[str, Any]:
+    return PROMPT_REGISTRY.record(
+        prompt_id,
+        PROMPT_VERSIONS[prompt_id],
+    ).as_dict()
+
+
+SCHEMA_VERSION = "paddle_snapped_crops_qwen35_gemma_correction_coordinator.v7.7"
 
 DEFAULT_BATCH_INPUT = Path("/app/var/batch_input")
 
@@ -65,43 +143,10 @@ IMAGE_EXTENSIONS = {
 }
 
 
-QWEN_TRANSCRIPTION_PROMPT_TEMPLATE = """
-Transcribe every visible physical receipt row in this image.
-
-PaddleOCR estimated approximately {estimated_count} row band(s) in this image region.
-That number is diagnostic context only. Do not force your output to match it.
-
-Rules:
-
-1. Preserve visible text, numbers, punctuation, decimal separators, currency symbols,
-   article numbers, identifiers, prices, quantities, and truncated text.
-2. Output one physical receipt row per output line in strict top-to-bottom order.
-3. Do not omit a visible row.
-4. Do not combine text from different vertical positions.
-5. Do not split one physical row into multiple output lines.
-6. Keep horizontally aligned cells from the same physical row on the same line.
-7. Do not add row numbers, JSON, Markdown, bullets, labels, code fences, or explanations.
-8. Do not calculate, interpret, normalize, translate, correct, or complete text.
-9. Use [unclear] only for unreadable text.
-10. Do not output blank lines.
-11. Return only the transcription lines.
-""".strip()
+QWEN_TRANSCRIPTION_PROMPT_TEMPLATE = _prompt('qwen.transcription')
 
 
-GEMMA_SYSTEM_PROMPT = """
-You are a receipt interpreter answering one narrowly defined semantic question.
-
-Rules:
-- Answer only the requested field or structure.
-- Use only the supplied receipt evidence.
-- Do not silently repair OCR text.
-- Do not invent missing values.
-- Do not choose a value merely because it makes the receipt balance.
-- Keep item price, receipt total, payment, change, discount, net amount, and VAT
-  semantically distinct.
-- Return null when the requested value is not supported.
-- Return only JSON matching the supplied schema.
-""".strip()
+GEMMA_SYSTEM_PROMPT = _prompt('gemma.system.receipt_interpreter')
 
 
 ROW_ROLES = (
@@ -311,63 +356,7 @@ DIRECT_ITEMS_SCHEMA: dict[str, Any] = {
 }
 
 
-DIRECT_ITEMS_QUESTION = """
-Extract every top-level separately purchased or separately charged item from the
-complete receipt transcription.
-
-For each item return:
-- name
-- final_price
-- quantity
-- unit
-- discount_amount
-- original_price
-
-
-Rules:
-
-1. A named product or service row identifies a candidate purchased item.
-2. A monetary amount on a named product row is only a price candidate. 
-Do not assign final_price until all contiguous rows belonging to that item have been examined.
-3. Letters such as A, B, E, F, O, or V following an amount may be VAT category
-   signs and are not part of the price or currency.
-4. When the named row has no clear final amount and an immediately following
-   quantity, weight, or calculation row belongs to it, use the final amount from
-   that continuation row as final_price.
-5. A quantity, weight, or "N x unit-price" row immediately following a named
-   product and before the next named product MUST be attached to that preceding
-   product.
-6. Do not create a separate item from a quantity, weight, unit-price, article-ID,
-   discount, or other continuation row.
-7. For a row shaped as "N x unit-price final" or "N * unit-price final":
-   - quantity = N;
-   - final_price = final.
-8. For "weight unit x price/unit final", set quantity to the printed weight,
-   unit to the printed unit, and final_price to final.
-9. When quantity multiplied by unit price equals the item's final line price
-   within normal currency rounding, this confirms the relationship.
-10. Never use the unit price as final_price when a separate final amount exists.
-11. Included menu or bundle components without a separate charge are not
-    separate items.
-12. Separately charged deposits, bags, and services are items.
-13. Do not create items from totals, VAT, payment, change, headers, metadata,
-    receipt-wide discounts, or footer rows.
-14. When no explicit quantity is printed, return null. Never assume quantity 1.
-15. Return null for a missing unit. Never return an empty string.
-16. Preserve the printed OCR product text. Do not silently correct or translate
-    product names.
-17. Return numeric JSON values using a decimal point.
-18. Return only JSON matching the supplied schema.
-19. An item block starts with a named product or service and continues through related quantity, 
-identifier, variant, size, unit-price, price-adjustment, discount and explanatory rows. 
-Intervening non-product detail rows do not end the block. 
-The block ends at the next named purchased item or at an unambiguous receipt-level total, 
-payment, tax or footer section.
-20. When an item block contains multiple amounts, classify all of them before producing the item. 
-Use signs, percentages, row order, semantic labels and arithmetic relationships to distinguish original price, 
-discount or surcharge, unit price and final charged price. 
-A later supported effective amount may supersede an earlier price candidate.
-""".strip()
+DIRECT_ITEMS_QUESTION = _prompt('gemma.items.direct')
 
 
 SCALAR_TASK_ORDER = (
@@ -405,214 +394,82 @@ SCALAR_TASKS: dict[str, dict[str, Any]] = {
     "merchant_name": {
         "schema": named_text_schema("merchant_name"),
         "num_predict": 96,
-        "question": """
-What is the name of the business that sold the purchased items?
-
-Do not return a shopping centre, slogan, customer name, payment provider, or
-legal footer company when a clear store brand is printed.
-
-Return only merchant_name.
-""".strip(),
+        "question": _prompt('gemma.scalar.merchant_name'),
     },
     "merchant_address": {
         "schema": MERCHANT_ADDRESS_SCHEMA,
         "num_predict": 192,
-        "question": """
-What is the postal address of the selling business?
-
-Return only street, postal_code, city, and country.
-Do not return a customer address or payment-provider address.
-Use null for fields that are not printed.
-""".strip(),
+        "question": _prompt('gemma.scalar.merchant_address'),
     },
     "receipt_date": {
         "schema": named_text_schema("receipt_date"),
         "num_predict": 64,
-        "question": """
-What is the printed receipt transaction date?
-
-Do not infer or normalize a missing date.
-Return only receipt_date.
-""".strip(),
+        "question": _prompt('gemma.scalar.receipt_date'),
     },
     "receipt_time": {
         "schema": named_text_schema("receipt_time"),
         "num_predict": 64,
-        "question": """
-What is the printed receipt transaction time?
-
-Do not infer a missing time.
-Return only receipt_time.
-""".strip(),
+        "question": _prompt('gemma.scalar.receipt_time'),
     },
     "receipt_number": {
         "schema": named_text_schema("receipt_number"),
         "num_predict": 96,
-        "question": """
-What is the receipt, transaction, order, or document number?
-
-Do not return a customer-card number, tax ID, telephone number, article number,
-or register number unless it is explicitly the receipt or order number.
-
-Return only receipt_number.
-""".strip(),
+        "question": _prompt('gemma.scalar.receipt_number'),
     },
     "currency": {
         "schema": named_text_schema("currency"),
         "num_predict": 48,
-        "question": """
-What currency is used for the purchase amounts?
-
-Return a short currency code such as EUR when clearly supported.
-Return only currency.
-""".strip(),
+        "question": _prompt('gemma.scalar.currency'),
     },
     "final_purchase_total": {
         "schema": named_money_schema("final_purchase_total"),
         "num_predict": 128,
-        "question": """
-What was the final gross amount charged for the purchased items after all
-discounts and including VAT?
-
-Do not return:
-- gross item value before discounts;
-- an intermediate total after only some discounts;
-- net amount before VAT;
-- VAT amount;
-- amount tendered or payment received;
-- or change.
-
-A higher amount may be cash tendered or payment received.
-A lower amount labelled Rückgeld, change, Wechselgeld, or similar is change.
-Do not assume the largest amount is the answer.
-Prefer an explicitly labelled final purchase total.
-
-Return only final_purchase_total and currency.
-""".strip(),
+        "question": _prompt('gemma.scalar.final_purchase_total'),
     },
     "pre_discount_total": {
         "schema": named_money_schema("pre_discount_total"),
         "num_predict": 128,
-        "question": """
-What explicit gross purchase total was printed before all discounts?
-
-This amount includes VAT and precedes all price discounts.
-Do not return the final payable amount, net amount, VAT amount, payment
-received, or change.
-Return null when no explicit pre-discount gross total is printed.
-
-Return only pre_discount_total and currency.
-""".strip(),
+        "question": _prompt('gemma.scalar.pre_discount_total'),
     },
     "discount_total": {
         "schema": named_money_schema("discount_total"),
         "num_predict": 128,
-        "question": """
-What explicit total price discount was applied to this purchase?
-
-Prefer a printed aggregate such as Rabatt Gesamt.
-Do not return a subtotal, final payable amount, payment voucher, payment
-received, change, net amount, or VAT.
-Do not calculate an unprinted discount total.
-
-Return the positive discount magnitude.
-Return only discount_total and currency.
-""".strip(),
+        "question": _prompt('gemma.scalar.discount_total'),
     },
     "payment_method": {
         "schema": named_text_schema("payment_method"),
         "num_predict": 64,
-        "question": """
-What payment method was used?
-
-Examples include cash, credit card, debit card, EC card, voucher, or mixed.
-Return null when it is not printed.
-Return only payment_method.
-""".strip(),
+        "question": _prompt('gemma.scalar.payment_method'),
     },
     "payment_received": {
         "schema": named_money_schema("payment_received"),
         "num_predict": 128,
-        "question": """
-How much money did the customer provide or tender as payment?
-
-This may be higher than the purchase total when cash was provided and change
-was returned. For card payment it is often equal to the purchase total.
-
-Do not return change, discount, net amount, or VAT.
-Return only payment_received and currency.
-""".strip(),
+        "question": _prompt('gemma.scalar.payment_received'),
     },
     "change_returned": {
         "schema": named_money_schema("change_returned"),
         "num_predict": 128,
-        "question": """
-How much change was returned to the customer?
-
-Look for Rückgeld, Rueckgeld, Wechselgeld, change, rendu, or an equivalent
-label. Return the positive amount returned even when the receipt prints a
-bookkeeping minus sign.
-
-Do not return payment received, purchase total, discount, net amount, or VAT.
-Return only change_returned and currency.
-""".strip(),
+        "question": _prompt('gemma.scalar.change_returned'),
     },
     "transaction_status": {
         "schema": TRANSACTION_STATUS_SCHEMA,
         "num_predict": 48,
-        "question": """
-Was the transaction completed, cancelled, or refunded?
-
-Use explicit text such as storniert, cancelled, void, annulé, refund, retour,
-or equivalent. Do not infer cancellation only from unusual arithmetic.
-
-Return only transaction_status.
-""".strip(),
+        "question": _prompt('gemma.scalar.transaction_status'),
     },
     "net_amount": {
         "schema": named_money_schema("net_amount"),
         "num_predict": 128,
-        "question": """
-What is the final net amount before VAT after all discounts?
-
-Do not return gross purchase total, pre-discount total, VAT amount, payment
-received, or change.
-Prefer a value explicitly labelled Netto when the VAT-table relationship
-supports that role.
-
-Return only net_amount and currency.
-""".strip(),
+        "question": _prompt('gemma.scalar.net_amount'),
     },
     "vat_amount": {
         "schema": named_money_schema("vat_amount"),
         "num_predict": 128,
-        "question": """
-What is the total VAT amount included in the final purchase total?
-
-Do not return net amount, gross purchase total, tax rate, discount, payment, or
-change. When several VAT rows are printed, return the total VAT amount only when
-it is explicitly printed or clearly represented as the VAT total; otherwise
-return null.
-
-Return only vat_amount and currency.
-""".strip(),
+        "question": _prompt('gemma.scalar.vat_amount'),
     },
     "vat_lines": {
         "schema": VAT_LINES_SCHEMA,
         "num_predict": 768,
-        "question": """
-Extract only the printed VAT rows.
-
-For each VAT row return:
-- source_rows: row IDs supporting the VAT row;
-- rate_percent;
-- net_amount;
-- vat_amount.
-
-Do not include the gross receipt total as VAT.
-Do not reverse net and VAT columns.
-Use null when the column relationship is unclear.
-""".strip(),
+        "question": _prompt('gemma.scalar.vat_lines'),
     },
 }
 
@@ -2449,12 +2306,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=20,
     )
-    parser.add_argument("--crop-scale", type=float, default=1.5)
+    parser.add_argument("--crop-scale", type=float, default=1.0)
     parser.add_argument("--crop-contrast", type=float, default=1.15)
     parser.add_argument(
         "--crop-sharpen",
         action=argparse.BooleanOptionalAction,
-        default=True,
+        default=False,
     )
     parser.add_argument(
         "--qwen-group-parallelism",
@@ -2544,6 +2401,61 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--gemma-seed", type=int, default=42)
     parser.add_argument("--item-num-predict", type=int, default=4096)
+    parser.add_argument(
+        "--gemma-correction",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Run the configured correction strategy chain after failed "
+            "deterministic validation. Each candidate is kept only when its "
+            "selected failure resolves without validation regressions."
+        ),
+    )
+    parser.add_argument(
+        "--gemma-correction-num-predict",
+        type=int,
+        default=4096,
+        help="Maximum generated tokens for a generic constraint-correction patch.",
+    )
+    parser.add_argument(
+        "--item-sum-recovery-num-predict",
+        type=int,
+        default=6144,
+        help=(
+            "Maximum generated tokens for the source-only ITEM_SUM_RECONCILIATION "
+            "item-block recovery call."
+        ),
+    )
+    parser.add_argument(
+        "--vat-recovery-num-predict",
+        type=int,
+        default=6144,
+        help="Maximum generated tokens for VAT source-evidence recovery.",
+    )
+    parser.add_argument(
+        "--final-total-recovery-num-predict",
+        type=int,
+        default=2048,
+        help="Maximum generated tokens for final-purchase-total source recovery.",
+    )
+    parser.add_argument(
+        "--gemma-correction-retries",
+        type=int,
+        default=1,
+        help=(
+            "Retry count for malformed, invalid, failed, or target-unresolved "
+            "correction responses within one correction round."
+        ),
+    )
+    parser.add_argument(
+        "--gemma-correction-max-rounds",
+        type=int,
+        default=6,
+        help=(
+            "Maximum sequential correction-coordinator rounds per document. "
+            "Validation is rerun after every accepted patch."
+        ),
+    )
     parser.add_argument(
         "--item-think",
         action=argparse.BooleanOptionalAction,
@@ -3252,6 +3164,7 @@ def invoke_paddle_qwen_transcription(
         "safe_cut_report": report,
         "merge_report": merge_report,
         "request": {
+            "prompt": _prompt_reference("qwen.transcription"),
             "prompt_template": QWEN_TRANSCRIPTION_PROMPT_TEMPLATE,
             "think": False,
             "temperature": args.vlm_temperature,
@@ -3300,20 +3213,21 @@ def invoke_gemma_task(
     args: argparse.Namespace,
     *,
     task_name: str,
+    prompt_id: str,
     question: str,
     schema: dict[str, Any],
     evidence: str,
     num_predict: int,
     think: bool = False,
+    allow_empty_content: bool = False,
 ) -> dict[str, Any]:
-    prompt = (
-        f"{question}\n\n"
-        "Required JSON schema:\n"
-        f"{json.dumps(schema, ensure_ascii=False, separators=(',', ':'))}"
-        "\n\n"
-        "----- BEGIN RECEIPT EVIDENCE -----\n"
-        f"{evidence}\n"
-        "----- END RECEIPT EVIDENCE -----"
+    prompt = _render_prompt(
+        "gemma.template.task_envelope",
+        question=question,
+        schema_json=json.dumps(
+            schema, ensure_ascii=False, separators=(",", ":")
+        ),
+        evidence=evidence,
     )
 
     payload = {
@@ -3356,6 +3270,33 @@ def invoke_gemma_task(
 
     content = message.get("content")
     if not isinstance(content, str) or not content.strip():
+        if allow_empty_content:
+            return {
+                "status": "empty",
+                "task": task_name,
+                "model": str(response.get("model") or args.gemma_model),
+                "answer": None,
+                "raw_model_content": content if isinstance(content, str) else None,
+                "thinking": message.get("thinking"),
+                "request": {
+                    "prompt": _prompt_reference(prompt_id),
+                    "system_prompt": _prompt_reference(
+                        "gemma.system.receipt_interpreter"
+                    ),
+                    "envelope_prompt": _prompt_reference(
+                        "gemma.template.task_envelope"
+                    ),
+                    "question": question,
+                    "schema": schema,
+                    "think": think,
+                    "temperature": args.temperature,
+                    "seed": args.gemma_seed,
+                    "num_ctx": args.gemma_num_ctx,
+                    "num_predict": num_predict,
+                },
+                "metrics": response_metrics(response, wall_seconds),
+                "raw_api_response": response,
+            }
         raise RuntimeError(
             f"Gemma task {task_name!r} returned empty content"
         )
@@ -3376,6 +3317,13 @@ def invoke_gemma_task(
         "raw_model_content": content,
         "thinking": message.get("thinking"),
         "request": {
+            "prompt": _prompt_reference(prompt_id),
+            "system_prompt": _prompt_reference(
+                "gemma.system.receipt_interpreter"
+            ),
+            "envelope_prompt": _prompt_reference(
+                "gemma.template.task_envelope"
+            ),
             "question": question,
             "schema": schema,
             "think": think,
@@ -3388,6 +3336,271 @@ def invoke_gemma_task(
         "raw_api_response": response,
     }
 
+
+
+def invoke_gemma_json_repair(
+    args: argparse.Namespace,
+    *,
+    strategy: StrategyConfig,
+    invalid_json: str,
+    schema: dict[str, Any],
+    num_predict: int,
+) -> dict[str, Any]:
+    """Reserialize invalid specialist JSON with the existing strategy schema."""
+    prompt_id = "gemma.correction.json_repair"
+    prompt = _render_prompt(prompt_id, invalid_json=invalid_json)
+    payload = {
+        "model": args.gemma_model,
+        "messages": [
+            {"role": "user", "content": prompt},
+        ],
+        "stream": False,
+        "think": False,
+        "format": schema,
+        "keep_alive": args.gemma_keep_alive,
+        "options": {
+            "temperature": 0.0,
+            "seed": args.gemma_seed,
+            "num_ctx": args.gemma_num_ctx,
+            "num_predict": num_predict,
+        },
+    }
+    started = time.perf_counter()
+    response = post_json(
+        f"{args.ollama_url.rstrip('/')}/api/chat",
+        payload,
+        args.gemma_timeout,
+    )
+    wall_seconds = time.perf_counter() - started
+    message = response.get("message")
+    if not isinstance(message, dict):
+        raise RuntimeError("Gemma JSON repair response has no message object")
+    content = message.get("content")
+    if not isinstance(content, str) or not content.strip():
+        raise RuntimeError("Gemma JSON repair returned empty content")
+    cleaned_content = strip_code_fences(content)
+    try:
+        answer = json.loads(cleaned_content)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(
+            "Gemma JSON repair still returned invalid JSON: "
+            f"{cleaned_content[:1000]}"
+        ) from exc
+    return {
+        "status": "completed",
+        "task": "json_repair",
+        "strategy_id": strategy.strategy_id,
+        "model": str(response.get("model") or args.gemma_model),
+        "answer": answer,
+        "raw_model_content": content,
+        "thinking": message.get("thinking"),
+        "request": {
+            "prompt": _prompt_reference(prompt_id),
+            "schema_source": PROMPT_REGISTRY.record(
+                strategy.prompt_id, strategy.prompt_version
+            ).as_dict(),
+            "schema_delivery": "ollama_format_field",
+            "ollama_format_field": True,
+            "think": False,
+            "temperature": 0.0,
+            "seed": args.gemma_seed,
+            "num_ctx": args.gemma_num_ctx,
+            "num_predict": num_predict,
+        },
+        "metrics": response_metrics(response, wall_seconds),
+        "raw_api_response": response,
+    }
+
+def invoke_gemma_correction_source_evidence_task(
+    args: argparse.Namespace,
+    *,
+    strategy: StrategyConfig,
+    transcription: str,
+    num_predict: int,
+) -> dict[str, Any]:
+    """Invoke a registry-bound source-evidence correction prompt."""
+    schema = PROMPT_REGISTRY.load_schema(
+        strategy.prompt_id,
+        strategy.prompt_version,
+    )
+    prompt = PROMPT_REGISTRY.render(
+        strategy.prompt_id,
+        strategy.prompt_version,
+        source_evidence=transcription,
+        output_schema=json.dumps(schema, ensure_ascii=False, indent=2),
+    )
+    payload = {
+        "model": args.gemma_model,
+        "messages": [
+            {"role": "system", "content": GEMMA_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+        "stream": False,
+        "think": True,
+        "keep_alive": args.gemma_keep_alive,
+        "options": {
+            "temperature": args.temperature,
+            "seed": args.gemma_seed,
+            "num_ctx": args.gemma_num_ctx,
+            "num_predict": num_predict,
+        },
+    }
+    started = time.perf_counter()
+    response = post_json(
+        f"{args.ollama_url.rstrip('/')}/api/chat",
+        payload,
+        args.gemma_timeout,
+    )
+    wall_seconds = time.perf_counter() - started
+    message = response.get("message")
+    if not isinstance(message, dict):
+        raise RuntimeError(
+            f"Gemma correction strategy {strategy.strategy_id!r} has no message object"
+        )
+    content = message.get("content")
+    if not isinstance(content, str) or not content.strip():
+        raise RuntimeError(
+            f"Gemma correction strategy {strategy.strategy_id!r} returned empty content"
+        )
+    cleaned_content = strip_code_fences(content)
+    json_repair: dict[str, Any] = {
+        "triggered": False,
+        "status": "not_needed",
+    }
+    repaired_model_content: str | None = None
+    try:
+        answer = json.loads(cleaned_content)
+    except json.JSONDecodeError as original_error:
+        done_reason = response.get("done_reason")
+        if done_reason != "stop":
+            return {
+                "status": "invalid_json",
+                "task": strategy.strategy_id,
+                "model": str(response.get("model") or args.gemma_model),
+                "answer": None,
+                "raw_model_content": content,
+                "thinking": message.get("thinking"),
+                "request": {
+                    "prompt": PROMPT_REGISTRY.record(
+                        strategy.prompt_id, strategy.prompt_version
+                    ).as_dict(),
+                    "system_prompt": _prompt_reference(
+                        "gemma.system.receipt_interpreter"
+                    ),
+                    "schema": schema,
+                    "schema_delivery": "embedded_once_in_prompt",
+                    "ollama_format_field": False,
+                    "current_structured_result_supplied_to_model": False,
+                    "think": True,
+                    "temperature": args.temperature,
+                    "seed": args.gemma_seed,
+                    "num_ctx": args.gemma_num_ctx,
+                    "num_predict": num_predict,
+                },
+                "metrics": response_metrics(response, wall_seconds),
+                "raw_api_response": response,
+                "error": {
+                    "code": "INVALID_JSON_REPAIR_SKIPPED",
+                    "message": (
+                        "Invalid JSON was not sent to the repair pass because "
+                        f"done_reason={done_reason!r}."
+                    ),
+                    "json_error": str(original_error),
+                },
+                "json_repair": {
+                    "triggered": False,
+                    "status": "skipped_non_stop_done_reason",
+                    "done_reason": done_reason,
+                },
+            }
+        try:
+            repair_result = invoke_gemma_json_repair(
+                args,
+                strategy=strategy,
+                invalid_json=cleaned_content,
+                schema=schema,
+                num_predict=num_predict,
+            )
+        except Exception as repair_error:
+            return {
+                "status": "invalid_json",
+                "task": strategy.strategy_id,
+                "model": str(response.get("model") or args.gemma_model),
+                "answer": None,
+                "raw_model_content": content,
+                "thinking": message.get("thinking"),
+                "request": {
+                    "prompt": PROMPT_REGISTRY.record(
+                        strategy.prompt_id, strategy.prompt_version
+                    ).as_dict(),
+                    "system_prompt": _prompt_reference(
+                        "gemma.system.receipt_interpreter"
+                    ),
+                    "schema": schema,
+                    "schema_delivery": "embedded_once_in_prompt",
+                    "ollama_format_field": False,
+                    "current_structured_result_supplied_to_model": False,
+                    "think": True,
+                    "temperature": args.temperature,
+                    "seed": args.gemma_seed,
+                    "num_ctx": args.gemma_num_ctx,
+                    "num_predict": num_predict,
+                },
+                "metrics": response_metrics(response, wall_seconds),
+                "raw_api_response": response,
+                "error": {
+                    "code": "INVALID_JSON_REPAIR_FAILED",
+                    "message": str(repair_error),
+                    "json_error": str(original_error),
+                },
+                "json_repair": {
+                    "triggered": True,
+                    "status": "failed",
+                    "error_type": type(repair_error).__name__,
+                    "error": str(repair_error),
+                },
+            }
+        answer = repair_result["answer"]
+        repaired_model_content = repair_result.get("raw_model_content")
+        json_repair = {
+            "triggered": True,
+            "status": "completed",
+            "original_json_error": str(original_error),
+            **{
+                key: value
+                for key, value in repair_result.items()
+                if key not in {"answer"}
+            },
+        }
+    return {
+        "status": "completed",
+        "task": strategy.strategy_id,
+        "model": str(response.get("model") or args.gemma_model),
+        "answer": answer,
+        "raw_model_content": content,
+        "repaired_model_content": repaired_model_content,
+        "thinking": message.get("thinking"),
+        "json_repair": json_repair,
+        "request": {
+            "prompt": PROMPT_REGISTRY.record(
+                strategy.prompt_id, strategy.prompt_version
+            ).as_dict(),
+            "system_prompt": _prompt_reference(
+                "gemma.system.receipt_interpreter"
+            ),
+            "schema": schema,
+            "schema_delivery": "embedded_once_in_prompt",
+            "ollama_format_field": False,
+            "current_structured_result_supplied_to_model": False,
+            "think": True,
+            "temperature": args.temperature,
+            "seed": args.gemma_seed,
+            "num_ctx": args.gemma_num_ctx,
+            "num_predict": num_predict,
+        },
+        "metrics": response_metrics(response, wall_seconds),
+        "raw_api_response": response,
+    }
 
 def unload_model(
     args: argparse.Namespace,
@@ -3464,6 +3677,7 @@ def run_scalar_specialists(
             result = invoke_gemma_task(
                 args,
                 task_name=f"scalar_{task_name}",
+                prompt_id=f"gemma.scalar.{task_name}",
                 question=task["question"],
                 schema=task["schema"],
                 evidence=transcription,
@@ -3571,11 +3785,14 @@ def run_scalar_specialists(
 def validate_direct_items(answer: Any) -> dict[str, Any]:
     errors: list[dict[str, Any]] = []
     warnings: list[dict[str, Any]] = []
+    observations: list[dict[str, Any]] = []
     metrics: dict[str, Any] = {
         "item_count": 0,
         "items_with_price": 0,
         "items_with_quantity": 0,
         "items_with_unit": 0,
+        "items_with_discount_amount": 0,
+        "items_with_original_price": 0,
         "extracted_price_sum": None,
     }
 
@@ -3588,6 +3805,7 @@ def validate_direct_items(answer: Any) -> dict[str, Any]:
             "status": "invalid",
             "errors": errors,
             "warnings": warnings,
+            "observations": observations,
             "metrics": metrics,
         }
 
@@ -3601,11 +3819,14 @@ def validate_direct_items(answer: Any) -> dict[str, Any]:
             "status": "invalid",
             "errors": errors,
             "warnings": warnings,
+            "observations": observations,
             "metrics": metrics,
         }
 
     price_sum = 0.0
-    seen: set[tuple[str, float | None, float | None, str | None]] = set()
+    seen: set[
+        tuple[str, float | None, float | None, str | None]
+    ] = set()
 
     for index, item in enumerate(items):
         location = f"items[{index}]"
@@ -3621,6 +3842,8 @@ def validate_direct_items(answer: Any) -> dict[str, Any]:
         final_price = item.get("final_price")
         quantity = item.get("quantity")
         unit = item.get("unit")
+        discount_amount = item.get("discount_amount")
+        original_price = item.get("original_price")
 
         if not isinstance(name, str) or not name.strip():
             errors.append({
@@ -3688,6 +3911,37 @@ def validate_direct_items(answer: Any) -> dict[str, Any]:
         elif isinstance(unit, str):
             metrics["items_with_unit"] += 1
 
+        for field_name, value, metric_name in (
+            (
+                "discount_amount",
+                discount_amount,
+                "items_with_discount_amount",
+            ),
+            (
+                "original_price",
+                original_price,
+                "items_with_original_price",
+            ),
+        ):
+            if value is not None and (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+            ):
+                errors.append({
+                    "code": f"INVALID_{field_name.upper()}_TYPE",
+                    "location": f"{location}.{field_name}",
+                    "message": f"{field_name} must be a number or null.",
+                })
+            elif isinstance(value, (int, float)):
+                if value < 0:
+                    errors.append({
+                        "code": f"NEGATIVE_{field_name.upper()}",
+                        "location": f"{location}.{field_name}",
+                        "message": f"{field_name} cannot be negative.",
+                    })
+                else:
+                    metrics[metric_name] += 1
+
         if quantity is None and unit is not None:
             warnings.append({
                 "code": "UNIT_WITHOUT_QUANTITY",
@@ -3697,15 +3951,29 @@ def validate_direct_items(answer: Any) -> dict[str, Any]:
 
         key = (
             normalized_name,
-            float(final_price) if isinstance(final_price, (int, float)) else None,
-            float(quantity) if isinstance(quantity, (int, float)) else None,
+            (
+                float(final_price)
+                if isinstance(final_price, (int, float))
+                and not isinstance(final_price, bool)
+                else None
+            ),
+            (
+                float(quantity)
+                if isinstance(quantity, (int, float))
+                and not isinstance(quantity, bool)
+                else None
+            ),
             unit.casefold().strip() if isinstance(unit, str) else None,
         )
         if normalized_name and key in seen:
-            warnings.append({
-                "code": "EXACT_DUPLICATE_ITEM",
+            observations.append({
+                "code": "EXACT_DUPLICATE_ITEM_OBJECT",
                 "location": location,
-                "message": "An identical item object appears more than once.",
+                "message": (
+                    "An identical item object appears more than once. This is "
+                    "recorded but is not considered an error because a receipt "
+                    "may contain repeated purchases."
+                ),
             })
         seen.add(key)
 
@@ -3719,9 +3987,9 @@ def validate_direct_items(answer: Any) -> dict[str, Any]:
         "status": status,
         "errors": errors,
         "warnings": warnings,
+        "observations": observations,
         "metrics": metrics,
     }
-
 
 def run_item_pipeline(
     *,
@@ -3739,12 +4007,15 @@ def run_item_pipeline(
     try:
         prompt_path = receipt_dir / "59_gemma_direct_items_prompt.txt"
         prompt_path.write_text(
-            DIRECT_ITEMS_QUESTION
-            + "\n\nRequired JSON schema:\n"
-            + json.dumps(DIRECT_ITEMS_SCHEMA, ensure_ascii=False, indent=2)
-            + "\n\n----- BEGIN RECEIPT EVIDENCE -----\n"
-            + transcription
-            + "\n----- END RECEIPT EVIDENCE -----\n",
+            _render_prompt(
+                "gemma.template.task_envelope",
+                question=DIRECT_ITEMS_QUESTION,
+                schema_json=json.dumps(
+                    DIRECT_ITEMS_SCHEMA, ensure_ascii=False, indent=2
+                ),
+                evidence=transcription,
+            )
+            + "\n",
             encoding="utf-8",
         )
 
@@ -3754,6 +4025,7 @@ def run_item_pipeline(
             direct_result = invoke_gemma_task(
                 args,
                 task_name="direct_receipt_items",
+                prompt_id="gemma.items.direct",
                 question=DIRECT_ITEMS_QUESTION,
                 schema=DIRECT_ITEMS_SCHEMA,
                 evidence=transcription,
@@ -3845,6 +4117,1017 @@ def scalar_field(
 
 
 
+
+MONEY_QUANTUM = Decimal("0.01")
+MONEY_TOLERANCE = Decimal("0.02")
+VAT_RATE_TOLERANCE = Decimal("0.02")
+
+
+def _decimal_number(value: Any) -> Decimal | None:
+    if value is None or isinstance(value, bool):
+        return None
+    if not isinstance(value, (int, float, Decimal)):
+        return None
+    try:
+        result = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None
+    return result if result.is_finite() else None
+
+
+def _money(value: Any) -> Decimal | None:
+    number = _decimal_number(value)
+    if number is None:
+        return None
+    return number.quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
+
+
+def _money_float(value: Decimal | None) -> float | None:
+    return float(value) if value is not None else None
+
+
+def _money_close(
+    first: Decimal,
+    second: Decimal,
+    *,
+    tolerance: Decimal = MONEY_TOLERANCE,
+) -> bool:
+    return abs(first - second) <= tolerance
+
+
+def _normalize_currency(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().upper()
+    if not normalized or normalized in {
+        "N/A",
+        "NA",
+        "NONE",
+        "NULL",
+        "UNKNOWN",
+        "UNK",
+        "-",
+    }:
+        return None
+    aliases = {
+        "€": "EUR",
+        "EURO": "EUR",
+        "$": "USD",
+        "US$": "USD",
+        "£": "GBP",
+        "¥": "JPY",
+    }
+    return aliases.get(normalized, normalized)
+
+
+def _named_money_value(
+    payload: Any,
+    field_name: str,
+) -> Decimal | None:
+    if not isinstance(payload, dict):
+        return None
+    return _money(payload.get(field_name))
+
+
+def validate_receipt_deterministically(
+    *,
+    receipt: dict[str, Any],
+    item_pipeline_result: dict[str, Any] | None,
+    item_pipeline_enabled: bool,
+    selected_scalar_tasks: Sequence[str],
+) -> dict[str, Any]:
+    """Validate model outputs without correcting or replacing any value."""
+    checks: list[dict[str, Any]] = []
+
+    def add_check(
+        code: str,
+        status: str,
+        message: str,
+        *,
+        severity: str = "info",
+        values: dict[str, Any] | None = None,
+        details: Any = None,
+    ) -> None:
+        check: dict[str, Any] = {
+            "code": code,
+            "status": status,
+            "severity": severity,
+            "message": message,
+        }
+        if values is not None:
+            check["values"] = values
+        if details is not None:
+            check["details"] = details
+        checks.append(check)
+
+    items_value = receipt.get("items")
+    items = items_value if isinstance(items_value, list) else []
+
+    totals = receipt.get("totals")
+    totals = totals if isinstance(totals, dict) else {}
+    discount_section = receipt.get("discount")
+    discount_section = (
+        discount_section if isinstance(discount_section, dict) else {}
+    )
+    payment = receipt.get("payment")
+    payment = payment if isinstance(payment, dict) else {}
+    tax = receipt.get("tax")
+    tax = tax if isinstance(tax, dict) else {}
+    metadata = receipt.get("receipt_metadata")
+    metadata = metadata if isinstance(metadata, dict) else {}
+
+    final_total_payload = totals.get("final_purchase_total")
+    pre_discount_payload = totals.get("pre_discount_total")
+    net_amount_payload = totals.get("net_amount")
+    discount_payload = discount_section.get("discount_total")
+    payment_received_payload = payment.get("payment_received")
+    change_payload = payment.get("change_returned")
+    vat_amount_payload = tax.get("vat_amount")
+
+    final_total = _named_money_value(
+        final_total_payload,
+        "final_purchase_total",
+    )
+    pre_discount_total = _named_money_value(
+        pre_discount_payload,
+        "pre_discount_total",
+    )
+    net_amount = _named_money_value(net_amount_payload, "net_amount")
+    discount_total = _named_money_value(
+        discount_payload,
+        "discount_total",
+    )
+    payment_received = _named_money_value(
+        payment_received_payload,
+        "payment_received",
+    )
+    change_returned = _named_money_value(
+        change_payload,
+        "change_returned",
+    )
+    vat_amount = _named_money_value(vat_amount_payload, "vat_amount")
+
+    money_values = {
+        "final_purchase_total": final_total,
+        "pre_discount_total": pre_discount_total,
+        "net_amount": net_amount,
+        "discount_total": discount_total,
+        "payment_received": payment_received,
+        "change_returned": change_returned,
+        "vat_amount": vat_amount,
+    }
+    negative_values = {
+        name: _money_float(value)
+        for name, value in money_values.items()
+        if value is not None and value < 0
+    }
+    if negative_values:
+        add_check(
+            "NONNEGATIVE_RECEIPT_AMOUNTS",
+            "failed",
+            "One or more receipt-level monetary values are negative.",
+            severity="error",
+            values=negative_values,
+        )
+    else:
+        add_check(
+            "NONNEGATIVE_RECEIPT_AMOUNTS",
+            "passed",
+            "All available receipt-level monetary values are nonnegative.",
+        )
+
+    item_contract = (
+        item_pipeline_result.get("validation")
+        if isinstance(item_pipeline_result, dict)
+        else None
+    )
+    item_contract = item_contract if isinstance(item_contract, dict) else {}
+    contract_status = item_contract.get("status")
+    if not item_pipeline_enabled:
+        add_check(
+            "ITEM_CONTRACT",
+            "skipped",
+            "Item extraction was disabled.",
+        )
+    elif contract_status == "invalid":
+        add_check(
+            "ITEM_CONTRACT",
+            "failed",
+            "The direct item output failed structural contract validation.",
+            severity="error",
+            details=item_contract.get("errors") or [],
+        )
+    elif contract_status in {"valid", "valid_with_warnings"}:
+        warnings = item_contract.get("warnings") or []
+        if warnings:
+            add_check(
+                "ITEM_CONTRACT",
+                "failed",
+                "The direct item output is structurally valid but incomplete or ambiguous.",
+                severity="review",
+                details=warnings,
+            )
+        else:
+            add_check(
+                "ITEM_CONTRACT",
+                "passed",
+                "The direct item output satisfies the structural contract.",
+            )
+    else:
+        add_check(
+            "ITEM_CONTRACT",
+            "failed",
+            "No usable direct-item contract-validation result is available.",
+            severity="error",
+        )
+
+    if not item_pipeline_enabled:
+        add_check(
+            "ITEMS_PRESENT",
+            "skipped",
+            "Item extraction was disabled.",
+        )
+    elif not isinstance(items_value, list):
+        add_check(
+            "ITEMS_PRESENT",
+            "failed",
+            "The assembled receipt does not contain an item array.",
+            severity="error",
+        )
+    elif not items:
+        add_check(
+            "ITEMS_PRESENT",
+            "failed",
+            "No purchased items were extracted.",
+            severity="review",
+            values={"item_count": 0},
+        )
+    else:
+        add_check(
+            "ITEMS_PRESENT",
+            "passed",
+            "At least one purchased item was extracted.",
+            values={"item_count": len(items)},
+        )
+
+    numeric_item_prices: list[Decimal] = []
+    missing_price_indices: list[int] = []
+    item_discount_failures: list[dict[str, Any]] = []
+    duplicate_keys: dict[
+        tuple[str, Decimal | None, Decimal | None, str | None],
+        list[int],
+    ] = {}
+
+    for index, item in enumerate(items):
+        if not isinstance(item, dict):
+            continue
+        final_price = _money(item.get("final_price"))
+        original_price = _money(item.get("original_price"))
+        item_discount = _money(item.get("discount_amount"))
+        quantity = _decimal_number(item.get("quantity"))
+        unit = item.get("unit")
+        name = item.get("name")
+
+        if final_price is None:
+            missing_price_indices.append(index)
+        else:
+            numeric_item_prices.append(final_price)
+
+        if (
+            original_price is not None
+            and final_price is not None
+            and item_discount is not None
+        ):
+            expected = original_price - item_discount
+            if not _money_close(expected, final_price):
+                item_discount_failures.append({
+                    "item_index": index,
+                    "name": name,
+                    "original_price": _money_float(original_price),
+                    "discount_amount": _money_float(item_discount),
+                    "expected_final_price": _money_float(expected),
+                    "final_price": _money_float(final_price),
+                    "difference": _money_float(final_price - expected),
+                    "reason": "original_minus_discount_does_not_equal_final",
+                })
+        elif (
+            original_price is not None
+            and final_price is not None
+            and item_discount is None
+            and not _money_close(original_price, final_price)
+        ):
+            item_discount_failures.append({
+                "item_index": index,
+                "name": name,
+                "original_price": _money_float(original_price),
+                "discount_amount": None,
+                "final_price": _money_float(final_price),
+                "difference": _money_float(original_price - final_price),
+                "reason": "price_changed_without_discount_amount",
+            })
+        elif item_discount is not None and original_price is None:
+            item_discount_failures.append({
+                "item_index": index,
+                "name": name,
+                "original_price": None,
+                "discount_amount": _money_float(item_discount),
+                "final_price": _money_float(final_price),
+                "reason": "discount_amount_without_original_price",
+            })
+
+        normalized_name = (
+            " ".join(name.casefold().split())
+            if isinstance(name, str) and name.strip()
+            else ""
+        )
+        duplicate_key = (
+            normalized_name,
+            final_price,
+            quantity,
+            unit.casefold().strip() if isinstance(unit, str) else None,
+        )
+        if normalized_name:
+            duplicate_keys.setdefault(duplicate_key, []).append(index)
+
+    if not item_pipeline_enabled:
+        add_check(
+            "ITEM_PRICES_COMPLETE",
+            "skipped",
+            "Item extraction was disabled.",
+        )
+    elif missing_price_indices:
+        add_check(
+            "ITEM_PRICES_COMPLETE",
+            "failed",
+            "One or more extracted items have no final price.",
+            severity="review",
+            values={
+                "item_count": len(items),
+                "priced_item_count": len(numeric_item_prices),
+                "missing_price_count": len(missing_price_indices),
+            },
+            details={"missing_item_indices": missing_price_indices},
+        )
+    else:
+        add_check(
+            "ITEM_PRICES_COMPLETE",
+            "passed",
+            "Every extracted item has a numeric final price.",
+            values={"priced_item_count": len(numeric_item_prices)},
+        )
+
+    if item_discount_failures:
+        add_check(
+            "ITEM_DISCOUNT_ARITHMETIC",
+            "failed",
+            "One or more item-level original-price, discount, and final-price fields are inconsistent.",
+            severity="review",
+            details=item_discount_failures,
+        )
+    elif item_pipeline_enabled and items:
+        add_check(
+            "ITEM_DISCOUNT_ARITHMETIC",
+            "passed",
+            "All verifiable item-level discount relationships are arithmetically consistent.",
+        )
+    else:
+        add_check(
+            "ITEM_DISCOUNT_ARITHMETIC",
+            "skipped",
+            "No item-level discount relationship was available to validate.",
+        )
+
+    duplicate_groups = [
+        indices
+        for indices in duplicate_keys.values()
+        if len(indices) > 1
+    ]
+    if duplicate_groups:
+        add_check(
+            "REPEATED_IDENTICAL_ITEM_OBJECTS",
+            "observed",
+            "Identical item objects occur more than once. This is informational because repeated purchases are valid.",
+            details={"item_index_groups": duplicate_groups},
+        )
+
+    item_sum = (
+        sum(numeric_item_prices, Decimal("0.00")).quantize(MONEY_QUANTUM)
+        if numeric_item_prices
+        else None
+    )
+    all_item_prices_available = bool(items) and (
+        len(numeric_item_prices) == len(items)
+    )
+
+    if not item_pipeline_enabled:
+        add_check(
+            "ITEM_SUM_RECONCILIATION",
+            "skipped",
+            "Item extraction was disabled.",
+        )
+    elif not all_item_prices_available:
+        add_check(
+            "ITEM_SUM_RECONCILIATION",
+            "skipped",
+            "The item sum cannot be validated until every item has a final price.",
+            values={
+                "item_sum_partial": _money_float(item_sum),
+                "priced_item_count": len(numeric_item_prices),
+                "item_count": len(items),
+            },
+        )
+    elif final_total is None:
+        add_check(
+            "ITEM_SUM_RECONCILIATION",
+            "skipped",
+            "No final purchase total is available for item-sum validation.",
+            values={"item_sum": _money_float(item_sum)},
+        )
+    else:
+        assert item_sum is not None
+        direct_difference = item_sum - final_total
+        discounted_difference = (
+            item_sum - discount_total - final_total
+            if discount_total is not None
+            else None
+        )
+        if _money_close(item_sum, final_total):
+            add_check(
+                "ITEM_SUM_RECONCILIATION",
+                "passed",
+                "The sum of item final prices equals the final purchase total.",
+                values={
+                    "mode": "item_final_prices_include_all_discounts",
+                    "item_sum": _money_float(item_sum),
+                    "final_purchase_total": _money_float(final_total),
+                    "difference": _money_float(direct_difference),
+                },
+            )
+        elif (
+            discount_total is not None
+            and _money_close(item_sum - discount_total, final_total)
+        ):
+            add_check(
+                "ITEM_SUM_RECONCILIATION",
+                "passed",
+                "The item sum reconciles after applying the explicit receipt-level discount.",
+                values={
+                    "mode": "receipt_level_discount_not_allocated_to_items",
+                    "item_sum": _money_float(item_sum),
+                    "discount_total": _money_float(discount_total),
+                    "final_purchase_total": _money_float(final_total),
+                    "difference": _money_float(discounted_difference),
+                },
+            )
+        else:
+            item_total_difference_equals_vat = (
+                    vat_amount is not None
+                    and _money_close(abs(direct_difference), vat_amount)
+            )
+
+            add_check(
+                "ITEM_SUM_RECONCILIATION",
+                "failed",
+                (
+                    "The item sum does not reconcile with the selected final purchase total. "
+                    "The absolute difference equals the extracted VAT amount."
+                    if item_total_difference_equals_vat
+                    else
+                    "The item sum cannot be reconciled with the final purchase total, "
+                    "with or without the explicit receipt-level discount."
+                ),
+                severity="review",
+                values={
+                    "item_sum": _money_float(item_sum),
+                    "final_purchase_total": _money_float(final_total),
+                    "discount_total": _money_float(discount_total),
+                    "vat_amount": _money_float(vat_amount),
+                    "direct_difference": _money_float(direct_difference),
+                    "absolute_direct_difference": _money_float(
+                        abs(direct_difference)
+                    ),
+                    "difference_after_discount": _money_float(
+                        discounted_difference
+                    ),
+                    "item_total_difference_equals_vat": (
+                        item_total_difference_equals_vat
+                    ),
+                },
+            )
+
+    if (
+        pre_discount_total is not None
+        and discount_total is not None
+        and final_total is not None
+    ):
+        expected_final = pre_discount_total - discount_total
+        if _money_close(expected_final, final_total):
+            add_check(
+                "PRE_DISCOUNT_TOTAL_RECONCILIATION",
+                "passed",
+                "Pre-discount total minus discount total equals the final purchase total.",
+                values={
+                    "pre_discount_total": _money_float(pre_discount_total),
+                    "discount_total": _money_float(discount_total),
+                    "final_purchase_total": _money_float(final_total),
+                    "difference": _money_float(expected_final - final_total),
+                },
+            )
+        else:
+            add_check(
+                "PRE_DISCOUNT_TOTAL_RECONCILIATION",
+                "failed",
+                "Pre-discount total minus discount total does not equal the final purchase total.",
+                severity="review",
+                values={
+                    "pre_discount_total": _money_float(pre_discount_total),
+                    "discount_total": _money_float(discount_total),
+                    "expected_final_purchase_total": _money_float(expected_final),
+                    "final_purchase_total": _money_float(final_total),
+                    "difference": _money_float(expected_final - final_total),
+                },
+            )
+    else:
+        add_check(
+            "PRE_DISCOUNT_TOTAL_RECONCILIATION",
+            "skipped",
+            "Pre-discount total, discount total, and final total were not all available.",
+        )
+
+    if (
+        net_amount is not None
+        and vat_amount is not None
+        and final_total is not None
+    ):
+        calculated_gross = net_amount + vat_amount
+        if _money_close(calculated_gross, final_total):
+            add_check(
+                "NET_PLUS_VAT_RECONCILIATION",
+                "passed",
+                "Net amount plus VAT equals the final purchase total.",
+                values={
+                    "net_amount": _money_float(net_amount),
+                    "vat_amount": _money_float(vat_amount),
+                    "final_purchase_total": _money_float(final_total),
+                    "difference": _money_float(calculated_gross - final_total),
+                },
+            )
+        else:
+            add_check(
+                "NET_PLUS_VAT_RECONCILIATION",
+                "failed",
+                "Net amount plus VAT does not equal the final purchase total.",
+                severity="review",
+                values={
+                    "net_amount": _money_float(net_amount),
+                    "vat_amount": _money_float(vat_amount),
+                    "calculated_gross": _money_float(calculated_gross),
+                    "final_purchase_total": _money_float(final_total),
+                    "difference": _money_float(calculated_gross - final_total),
+                },
+            )
+    else:
+        add_check(
+            "NET_PLUS_VAT_RECONCILIATION",
+            "skipped",
+            "Net amount, VAT amount, and final total were not all available.",
+        )
+
+    vat_lines_value = tax.get("vat_lines")
+    vat_lines = vat_lines_value if isinstance(vat_lines_value, list) else []
+    line_vat_values: list[Decimal] = []
+    line_net_values: list[Decimal] = []
+    incomplete_vat_line_indices: list[int] = []
+    vat_rate_failures: list[dict[str, Any]] = []
+
+    for index, line in enumerate(vat_lines):
+        if not isinstance(line, dict):
+            incomplete_vat_line_indices.append(index)
+            continue
+        line_rate = _decimal_number(line.get("rate_percent"))
+        line_net = _money(line.get("net_amount"))
+        line_vat = _money(line.get("vat_amount"))
+        if line_vat is not None:
+            line_vat_values.append(line_vat)
+        if line_net is not None:
+            line_net_values.append(line_net)
+        if line_net is None or line_vat is None:
+            incomplete_vat_line_indices.append(index)
+        if (
+            line_rate is not None
+            and line_net is not None
+            and line_vat is not None
+        ):
+            expected_vat = (
+                line_net * line_rate / Decimal("100")
+            ).quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
+            if not _money_close(
+                expected_vat,
+                line_vat,
+                tolerance=VAT_RATE_TOLERANCE,
+            ):
+                vat_rate_failures.append({
+                    "vat_line_index": index,
+                    "rate_percent": float(line_rate),
+                    "net_amount": _money_float(line_net),
+                    "expected_vat_amount": _money_float(expected_vat),
+                    "vat_amount": _money_float(line_vat),
+                    "difference": _money_float(line_vat - expected_vat),
+                })
+
+    if not vat_lines:
+        add_check(
+            "VAT_LINE_RATE_ARITHMETIC",
+            "skipped",
+            "No VAT lines were extracted.",
+        )
+    elif vat_rate_failures:
+        add_check(
+            "VAT_LINE_RATE_ARITHMETIC",
+            "failed",
+            "One or more VAT-line rate calculations are inconsistent.",
+            severity="review",
+            details=vat_rate_failures,
+        )
+    else:
+        add_check(
+            "VAT_LINE_RATE_ARITHMETIC",
+            "passed",
+            "All complete VAT lines satisfy net amount multiplied by tax rate within currency rounding tolerance.",
+        )
+
+    if vat_lines and len(line_vat_values) == len(vat_lines) and vat_amount is not None:
+        vat_line_sum = sum(line_vat_values, Decimal("0.00")).quantize(
+            MONEY_QUANTUM
+        )
+        if _money_close(vat_line_sum, vat_amount):
+            add_check(
+                "VAT_LINE_SUM_RECONCILIATION",
+                "passed",
+                "The sum of VAT-line amounts equals the VAT total.",
+                values={
+                    "vat_line_sum": _money_float(vat_line_sum),
+                    "vat_amount": _money_float(vat_amount),
+                    "difference": _money_float(vat_line_sum - vat_amount),
+                },
+            )
+        else:
+            add_check(
+                "VAT_LINE_SUM_RECONCILIATION",
+                "failed",
+                "The sum of VAT-line amounts does not equal the VAT total.",
+                severity="review",
+                values={
+                    "vat_line_sum": _money_float(vat_line_sum),
+                    "vat_amount": _money_float(vat_amount),
+                    "difference": _money_float(vat_line_sum - vat_amount),
+                },
+            )
+    else:
+        add_check(
+            "VAT_LINE_SUM_RECONCILIATION",
+            "skipped",
+            "A complete set of VAT-line amounts and a VAT total were not available.",
+            details={
+                "vat_line_count": len(vat_lines),
+                "complete_vat_amount_count": len(line_vat_values),
+                "incomplete_vat_line_indices": incomplete_vat_line_indices,
+            },
+        )
+
+    if (
+        vat_lines
+        and len(line_net_values) == len(vat_lines)
+        and len(line_vat_values) == len(vat_lines)
+        and final_total is not None
+    ):
+        vat_net_sum = sum(line_net_values, Decimal("0.00")).quantize(
+            MONEY_QUANTUM
+        )
+        vat_line_sum = sum(line_vat_values, Decimal("0.00")).quantize(
+            MONEY_QUANTUM
+        )
+        calculated_gross = vat_net_sum + vat_line_sum
+        if _money_close(calculated_gross, final_total):
+            add_check(
+                "VAT_LINES_GROSS_RECONCILIATION",
+                "passed",
+                "VAT-line net and VAT sums equal the final purchase total.",
+                values={
+                    "vat_net_sum": _money_float(vat_net_sum),
+                    "vat_line_sum": _money_float(vat_line_sum),
+                    "calculated_gross": _money_float(calculated_gross),
+                    "final_purchase_total": _money_float(final_total),
+                    "difference": _money_float(calculated_gross - final_total),
+                },
+            )
+        else:
+            add_check(
+                "VAT_LINES_GROSS_RECONCILIATION",
+                "failed",
+                "VAT-line net and VAT sums do not equal the final purchase total.",
+                severity="review",
+                values={
+                    "vat_net_sum": _money_float(vat_net_sum),
+                    "vat_line_sum": _money_float(vat_line_sum),
+                    "calculated_gross": _money_float(calculated_gross),
+                    "final_purchase_total": _money_float(final_total),
+                    "difference": _money_float(calculated_gross - final_total),
+                },
+            )
+    else:
+        add_check(
+            "VAT_LINES_GROSS_RECONCILIATION",
+            "skipped",
+            "Complete VAT-line net and VAT amounts plus a final total were not available.",
+        )
+
+    if (
+        payment_received is not None
+        and change_returned is not None
+        and final_total is not None
+    ):
+        calculated_total = payment_received - change_returned
+        if _money_close(calculated_total, final_total):
+            add_check(
+                "PAYMENT_CHANGE_RECONCILIATION",
+                "passed",
+                "Payment received minus change returned equals the final purchase total.",
+                values={
+                    "payment_received": _money_float(payment_received),
+                    "change_returned": _money_float(change_returned),
+                    "final_purchase_total": _money_float(final_total),
+                    "difference": _money_float(calculated_total - final_total),
+                },
+            )
+        else:
+            add_check(
+                "PAYMENT_CHANGE_RECONCILIATION",
+                "failed",
+                "Payment received minus change returned does not equal the final purchase total.",
+                severity="review",
+                values={
+                    "payment_received": _money_float(payment_received),
+                    "change_returned": _money_float(change_returned),
+                    "calculated_purchase_total": _money_float(calculated_total),
+                    "final_purchase_total": _money_float(final_total),
+                    "difference": _money_float(calculated_total - final_total),
+                },
+            )
+    else:
+        add_check(
+            "PAYMENT_CHANGE_RECONCILIATION",
+            "skipped",
+            "Payment received, change returned, and final total were not all available.",
+        )
+
+    currency_sources: list[dict[str, str]] = []
+
+    def collect_currency(path: str, payload: Any) -> None:
+        if not isinstance(payload, dict):
+            return
+        currency = _normalize_currency(payload.get("currency"))
+        if currency is not None:
+            currency_sources.append({"path": path, "currency": currency})
+
+    metadata_currency = _normalize_currency(metadata.get("currency"))
+    if metadata_currency is not None:
+        currency_sources.append({
+            "path": "receipt_metadata.currency",
+            "currency": metadata_currency,
+        })
+    collect_currency("totals.final_purchase_total", final_total_payload)
+    collect_currency("totals.pre_discount_total", pre_discount_payload)
+    collect_currency("totals.net_amount", net_amount_payload)
+    collect_currency("discount.discount_total", discount_payload)
+    collect_currency("payment.payment_received", payment_received_payload)
+    collect_currency("payment.change_returned", change_payload)
+    collect_currency("tax.vat_amount", vat_amount_payload)
+
+    distinct_currencies = sorted({
+        source["currency"] for source in currency_sources
+    })
+    if len(distinct_currencies) > 1:
+        add_check(
+            "CURRENCY_CONSISTENCY",
+            "failed",
+            "Receipt-level specialists returned conflicting currencies.",
+            severity="review",
+            values={"currencies": distinct_currencies},
+            details=currency_sources,
+        )
+    elif distinct_currencies:
+        add_check(
+            "CURRENCY_CONSISTENCY",
+            "passed",
+            "All available receipt-level currencies are consistent.",
+            values={"currency": distinct_currencies[0]},
+            details=currency_sources,
+        )
+    else:
+        add_check(
+            "CURRENCY_CONSISTENCY",
+            "skipped",
+            "No usable currency value was available.",
+        )
+
+    failed_checks = [
+        check for check in checks if check.get("status") == "failed"
+    ]
+    error_count = sum(
+        1 for check in failed_checks if check.get("severity") == "error"
+    )
+    review_count = sum(
+        1 for check in failed_checks if check.get("severity") == "review"
+    )
+    if error_count:
+        status = "invalid"
+    elif review_count:
+        status = "review_required"
+    else:
+        status = "valid"
+
+    status_counts = {
+        status_name: sum(
+            1 for check in checks if check.get("status") == status_name
+        )
+        for status_name in ("passed", "failed", "skipped", "observed")
+    }
+
+    return {
+        "status": status,
+        "policy": {
+            "money_tolerance": float(MONEY_TOLERANCE),
+            "vat_rate_tolerance": float(VAT_RATE_TOLERANCE),
+            "uses_decimal_arithmetic": True,
+            "changes_model_values": False,
+            "correction_applied": False,
+            "selected_scalar_tasks": list(selected_scalar_tasks),
+        },
+        "summary": {
+            **status_counts,
+            "error_count": error_count,
+            "review_count": review_count,
+        },
+        "metrics": {
+            "item_count": len(items),
+            "priced_item_count": len(numeric_item_prices),
+            "item_sum": _money_float(item_sum),
+            "final_purchase_total": _money_float(final_total),
+            "discount_total": _money_float(discount_total),
+            "net_amount": _money_float(net_amount),
+            "vat_amount": _money_float(vat_amount),
+            "payment_received": _money_float(payment_received),
+            "change_returned": _money_float(change_returned),
+            "vat_line_count": len(vat_lines),
+        },
+        "checks": checks,
+    }
+
+
+def _effective_item_pipeline_result(
+    original: dict[str, Any] | None,
+    receipt: dict[str, Any],
+    *,
+    enabled: bool,
+) -> dict[str, Any] | None:
+    if not enabled:
+        return original
+    result = copy.deepcopy(original) if isinstance(original, dict) else {}
+    items = receipt.get("items")
+    answer = {"items": items if isinstance(items, list) else []}
+    validation = validate_direct_items(answer)
+    result.update({
+        "status": (
+            "completed"
+            if validation.get("status") != "invalid"
+            else "completed_with_errors"
+        ),
+        "strategy": "complete_receipt_direct_item_extraction_with_correction_overlay",
+        "items": answer["items"],
+        "validation": validation,
+        "correction_overlay": True,
+    })
+    return result
+
+
+
+def _runtime_correction_profile(args: argparse.Namespace) -> CorrectionProfile:
+    attempts = max(1, int(args.gemma_correction_retries) + 1)
+    strategies = {
+        strategy_id: replace(config, max_attempts=attempts)
+        for strategy_id, config in CORRECTION_PROFILE.strategies.items()
+    }
+    return replace(
+        CORRECTION_PROFILE,
+        max_rounds=int(args.gemma_correction_max_rounds),
+        strategies=strategies,
+    )
+
+
+def _source_strategy_num_predict(
+    args: argparse.Namespace,
+    strategy_id: str,
+) -> int:
+    if strategy_id == "item_sum_source_blocks_v3":
+        return int(args.item_sum_recovery_num_predict)
+    if strategy_id == "vat_source_evidence_v9":
+        return int(args.vat_recovery_num_predict)
+    if strategy_id == "final_total_source_evidence_v2_4":
+        return int(args.final_total_recovery_num_predict)
+    raise ValueError(f"Unknown source-evidence strategy: {strategy_id}")
+
+
+def run_gemma_correction_loop(
+    *,
+    args: argparse.Namespace,
+    receipt_dir: Path,
+    transcription: str,
+    receipt: dict[str, Any],
+    initial_validation: dict[str, Any],
+    item_pipeline_result: dict[str, Any] | None,
+    item_pipeline_enabled: bool,
+    selected_scalar_tasks: Sequence[str],
+) -> tuple[
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any] | None,
+    dict[str, Any],
+]:
+    write_json(
+        receipt_dir / "89_receipt_structured_initial.json",
+        receipt,
+    )
+    write_json(
+        receipt_dir / "89_deterministic_validation_initial.json",
+        initial_validation,
+    )
+    runtime_profile = _runtime_correction_profile(args)
+
+    def invoke_source(
+        strategy: StrategyConfig,
+        source: str,
+        round_index: int,
+        attempt: int,
+    ) -> dict[str, Any]:
+        del round_index, attempt
+        return invoke_gemma_correction_source_evidence_task(
+            args,
+            strategy=strategy,
+            transcription=source,
+            num_predict=_source_strategy_num_predict(
+                args, strategy.strategy_id
+            ),
+        )
+
+    def validate_candidate(
+        candidate_receipt: dict[str, Any],
+        candidate_item_pipeline: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        return validate_receipt_deterministically(
+            receipt=candidate_receipt,
+            item_pipeline_result=candidate_item_pipeline,
+            item_pipeline_enabled=item_pipeline_enabled,
+            selected_scalar_tasks=selected_scalar_tasks,
+        )
+
+    def effective_item_pipeline(
+        previous: dict[str, Any] | None,
+        candidate_receipt: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        return _effective_item_pipeline_result(
+            previous,
+            candidate_receipt,
+            enabled=item_pipeline_enabled,
+        )
+
+    def write_artifact(name: str, value: Any) -> None:
+        write_json(receipt_dir / name, value)
+
+    callbacks = CorrectionCallbacks(
+        invoke_source_evidence=invoke_source,
+        validate_receipt=validate_candidate,
+        effective_item_pipeline=effective_item_pipeline,
+        write_artifact=write_artifact,
+    )
+
+    result = run_correction_coordinator(
+        profile=runtime_profile,
+        callbacks=callbacks,
+        transcription=transcription,
+        receipt=receipt,
+        initial_validation=initial_validation,
+        item_pipeline_result=item_pipeline_result,
+        enabled=bool(args.gemma_correction),
+    )
+    corrected_receipt, corrected_validation, corrected_items, report = result
+    write_json(receipt_dir / "90_gemma_correction_report.json", report)
+    write_json(
+        receipt_dir / "91_deterministic_validation_final.json",
+        corrected_validation,
+    )
+    return corrected_receipt, corrected_validation, corrected_items, report
+
 def derive_semantic_status(
     *,
     qwen_result: dict[str, Any],
@@ -3852,6 +5135,7 @@ def derive_semantic_status(
     missing_scalar_tasks: list[str],
     item_pipeline_result: dict[str, Any] | None,
     item_pipeline_enabled: bool,
+    deterministic_validation: dict[str, Any],
 ) -> dict[str, Any]:
     reasons: list[dict[str, Any]] = []
 
@@ -3894,76 +5178,34 @@ def derive_semantic_status(
                     "status": pipeline_status,
                 })
 
-            validation = item_pipeline_result.get("validation")
-            validation = validation if isinstance(validation, dict) else {}
-            validation_status = validation.get("status")
-            if validation_status != "valid":
-                reasons.append({
-                    "code": "ITEM_VALIDATION_REVIEW",
-                    "message": "Direct item extraction produced warnings or errors.",
-                    "validation_status": validation_status,
-                    "warning_count": len(validation.get("warnings") or []),
-                    "error_count": len(validation.get("errors") or []),
-                })
-
-            metrics = validation.get("metrics")
-            metrics = metrics if isinstance(metrics, dict) else {}
-            if metrics.get("item_count") == 0:
-                reasons.append({
-                    "code": "ZERO_ITEMS",
-                    "message": "No purchased items were extracted.",
-                })
-
-            items = item_pipeline_result.get("items")
-            items = items if isinstance(items, list) else []
-            numeric_prices = [
-                item.get("final_price")
-                for item in items
-                if isinstance(item, dict)
-                and isinstance(item.get("final_price"), (int, float))
-                and not isinstance(item.get("final_price"), bool)
-            ]
-            final_total_answer = scalar_answer(
-                scalar_results,
-                "final_purchase_total",
-            )
-            final_total = (
-                final_total_answer.get("final_purchase_total")
-                if isinstance(final_total_answer, dict)
-                else None
-            )
-            if (
-                items
-                and len(numeric_prices) == len(items)
-                and isinstance(final_total, (int, float))
-                and not isinstance(final_total, bool)
-            ):
-                item_sum = round(sum(float(value) for value in numeric_prices), 2)
-                difference = round(item_sum - float(final_total), 2)
-                if abs(difference) > 0.02:
-                    reasons.append({
-                        "code": "ITEM_SUM_FINAL_TOTAL_MISMATCH",
-                        "message": (
-                            "The sum of model-extracted item final prices differs "
-                            "from the model-extracted final purchase total. Receipt-"
-                            "level discounts may explain this, so review is required "
-                            "rather than deterministic correction."
-                        ),
-                        "item_sum": item_sum,
-                        "final_purchase_total": final_total,
-                        "difference": difference,
-                    })
+    validation_checks = deterministic_validation.get("checks")
+    validation_checks = (
+        validation_checks if isinstance(validation_checks, list) else []
+    )
+    for check in validation_checks:
+        if not isinstance(check, dict) or check.get("status") != "failed":
+            continue
+        reasons.append({
+            "code": check.get("code") or "DETERMINISTIC_VALIDATION_FAILURE",
+            "message": check.get("message"),
+            "severity": check.get("severity"),
+            "values": check.get("values"),
+            "details": check.get("details"),
+        })
 
     return {
         "status": "accepted" if not reasons else "review_required",
         "reasons": reasons,
+        "deterministic_validation_status": deterministic_validation.get(
+            "status"
+        ),
     }
-
 
 def assemble_final_receipt(
     *,
     args: argparse.Namespace,
     image_path: Path,
+    receipt_dir: Path,
     transcription: str,
     qwen_result: dict[str, Any],
     scalar_results: dict[str, dict[str, Any]],
@@ -4102,12 +5344,35 @@ def assemble_final_receipt(
         )
     )
 
+    initial_deterministic_validation = validate_receipt_deterministically(
+        receipt=receipt,
+        item_pipeline_result=item_pipeline_result,
+        item_pipeline_enabled=not args.skip_item_pipeline,
+        selected_scalar_tasks=selected_scalar_tasks,
+    )
+
+    (
+        receipt,
+        deterministic_validation,
+        effective_item_pipeline_result,
+        gemma_correction,
+    ) = run_gemma_correction_loop(
+        args=args,
+        receipt_dir=receipt_dir,
+        transcription=transcription,
+        receipt=receipt,
+        initial_validation=initial_deterministic_validation,
+        item_pipeline_result=item_pipeline_result,
+        item_pipeline_enabled=not args.skip_item_pipeline,
+        selected_scalar_tasks=selected_scalar_tasks,
+    )
     semantic_status = derive_semantic_status(
         qwen_result=qwen_result,
         scalar_results=scalar_results,
         missing_scalar_tasks=missing_scalar_tasks,
-        item_pipeline_result=item_pipeline_result,
+        item_pipeline_result=effective_item_pipeline_result,
         item_pipeline_enabled=not args.skip_item_pipeline,
+        deterministic_validation=deterministic_validation,
     )
 
     return {
@@ -4136,10 +5401,17 @@ def assemble_final_receipt(
             "scalar_strategy": "semantically_named_micro_specialists",
             "item_strategy": "complete_receipt_direct_item_extraction",
             "communication_strategy": "structured_state_handoff",
-            "assembly_strategy": "direct_copy_only",
-            "deterministic_semantic_correction": False,
+            "assembly_strategy": "direct_copy_then_validated_patch_overlay",
+            "deterministic_validation": True,
+            "deterministic_semantic_correction": True,
+            "correction_strategy": "configured_validator_gated_strategy_chain",
+            "correction_profile": CORRECTION_PROFILE.as_dict(),
+            "enabled_correction_strategies": list(
+                CORRECTION_PROFILE.strategies
+            ),
+            "arithmetic_validation": True,
             "arithmetic_reconciliation": False,
-            "cross_specialist_conflict_resolution": False,
+            "cross_specialist_conflict_resolution": True,
         },
         "transcription": {
             "text": transcription,
@@ -4153,6 +5425,9 @@ def assemble_final_receipt(
             "alignment_report": qwen_result.get("alignment_report"),
         },
         "receipt": receipt,
+        "initial_deterministic_validation": initial_deterministic_validation,
+        "deterministic_validation": deterministic_validation,
+        "gemma_correction": gemma_correction,
         "semantic_status": semantic_status,
         "execution_status": "completed",
         "scalar_results": {
@@ -4173,6 +5448,11 @@ def assemble_final_receipt(
             for task_name, result in scalar_results.items()
         },
         "item_pipeline": item_pipeline_result,
+        "effective_item_pipeline": (
+            effective_item_pipeline_result
+            if gemma_correction.get("applied")
+            else None
+        ),
         "assembly": {
             "complete": (
                 not missing_scalar_tasks
@@ -4185,8 +5465,10 @@ def assemble_final_receipt(
                 not args.skip_item_pipeline
             ),
             "note": (
-                "Model outputs were handed to later model stages and copied "
-                "without deterministic semantic correction."
+                "Model outputs are assembled first, then validated. When validation "
+                "fails, Gemma may return only a bounded patch. Python applies the "
+                "patch to a copy and keeps it only when deterministic validation "
+                "strictly improves without new failed checks."
             ),
         },
     }
@@ -4353,6 +5635,21 @@ def summarize_final(
     semantic = final_receipt.get("semantic_status")
     semantic = semantic if isinstance(semantic, dict) else {}
 
+    deterministic_validation = final_receipt.get(
+        "deterministic_validation"
+    )
+    deterministic_validation = (
+        deterministic_validation
+        if isinstance(deterministic_validation, dict)
+        else {}
+    )
+    deterministic_summary = deterministic_validation.get("summary")
+    deterministic_summary = (
+        deterministic_summary
+        if isinstance(deterministic_summary, dict)
+        else {}
+    )
+
     transcription = final_receipt.get("transcription")
     transcription = transcription if isinstance(transcription, dict) else {}
 
@@ -4360,7 +5657,7 @@ def summarize_final(
         "image": str(image_path),
         "receipt_dir": str(receipt_dir),
         "final_json": str(
-            receipt_dir / "90_receipt_combined_final.json"
+            receipt_dir / "92_receipt_combined_final.json"
         ),
         "assembly_complete": (
             final_receipt.get("assembly", {}).get("complete")
@@ -4386,6 +5683,12 @@ def summarize_final(
         "transcription_status": transcription.get("transcription_status"),
         "semantic_status": semantic.get("status"),
         "semantic_reason_count": len(semantic.get("reasons") or []),
+        "deterministic_validation_status": (
+            deterministic_validation.get("status")
+        ),
+        "deterministic_failed_check_count": (
+            deterministic_summary.get("failed")
+        ),
         "transaction_status": receipt.get(
             "transaction_status"
         ),
@@ -4592,6 +5895,42 @@ def main() -> int:
             file=sys.stderr,
         )
         return 2
+    if args.gemma_correction_num_predict < 1:
+        print(
+            "Input error: --gemma-correction-num-predict must be at least 1",
+            file=sys.stderr,
+        )
+        return 2
+    if args.item_sum_recovery_num_predict < 1:
+        print(
+            "Input error: --item-sum-recovery-num-predict must be at least 1",
+            file=sys.stderr,
+        )
+        return 2
+    if args.vat_recovery_num_predict < 1:
+        print(
+            "Input error: --vat-recovery-num-predict must be at least 1",
+            file=sys.stderr,
+        )
+        return 2
+    if args.final_total_recovery_num_predict < 1:
+        print(
+            "Input error: --final-total-recovery-num-predict must be at least 1",
+            file=sys.stderr,
+        )
+        return 2
+    if args.gemma_correction_retries < 0:
+        print(
+            "Input error: --gemma-correction-retries cannot be negative",
+            file=sys.stderr,
+        )
+        return 2
+    if args.gemma_correction_max_rounds < 1:
+        print(
+            "Input error: --gemma-correction-max-rounds must be at least 1",
+            file=sys.stderr,
+        )
+        return 2
 
     try:
         images = discover_images(
@@ -4699,6 +6038,18 @@ def main() -> int:
         "archive_path": str(args.archive_path) if args.archive_path else None,
         "item_think": args.item_think,
         "item_num_predict": args.item_num_predict,
+        "gemma_correction_enabled": args.gemma_correction,
+        "gemma_correction_num_predict": args.gemma_correction_num_predict,
+        "gemma_correction_retries": args.gemma_correction_retries,
+        "gemma_correction_max_rounds": args.gemma_correction_max_rounds,
+        "item_sum_recovery_num_predict": (
+            args.item_sum_recovery_num_predict
+        ),
+        "vat_recovery_num_predict": args.vat_recovery_num_predict,
+        "final_total_recovery_num_predict": (
+            args.final_total_recovery_num_predict
+        ),
+        "correction_profile": _runtime_correction_profile(args).as_dict(),
         "scalar_tasks": selected_scalar_tasks,
         "default_batch_input": str(DEFAULT_BATCH_INPUT),
         "default_batch_scalar_tasks": list(DEFAULT_BATCH_SCALAR_TASKS),
@@ -4709,11 +6060,24 @@ def main() -> int:
         "item_pipeline_stages": [
             "complete_receipt_direct_item_extraction",
             "contract_validation",
+            "deterministic_receipt_validation",
+            "python_selected_failure_target",
+            "configured_specialist_strategy_chain",
+            "source_evidence_contract_validation",
+            "typed_patch_construction",
+            "bounded_generic_auto_patch_fallback",
+            "full_deterministic_revalidation",
+            "atomic_accept_or_discard",
         ],
-        "deterministic_semantic_correction": False,
+        "deterministic_validation": True,
+        "deterministic_semantic_correction": True,
+        "correction_strategy": (
+            "configured_validator_gated_strategy_chain"
+        ),
+        "arithmetic_validation": True,
         "arithmetic_reconciliation": False,
-        "cross_specialist_conflict_resolution": False,
-        "assembly_strategy": "direct_copy_only",
+        "cross_specialist_conflict_resolution": True,
+        "assembly_strategy": "direct_copy_then_validated_patch_overlay",
     }
     write_json(
         output_dir / "run_config.json",
@@ -4758,6 +6122,13 @@ def main() -> int:
     print(
         f"Gemma parallelism:    "
         f"{args.gemma_parallelism}"
+    )
+    print(
+        f"Gemma correction:     "
+        f"{'enabled' if args.gemma_correction else 'disabled'} "
+        f"(specialist chain + bounded generic fallback, "
+        f"rounds={args.gemma_correction_max_rounds}, "
+        f"retries={args.gemma_correction_retries})"
     )
     print(
         f"Scalar specialists:   "
@@ -4846,15 +6217,23 @@ def main() -> int:
         final_receipt = assemble_final_receipt(
             args=args,
             image_path=image_path,
+            receipt_dir=receipt_dir,
             transcription=transcription,
             qwen_result=qwen_result,
             scalar_results=scalar_results,
             item_pipeline_result=item_pipeline_result,
         )
         write_json(
-            receipt_dir / "90_receipt_combined_final.json",
+            receipt_dir / "92_receipt_combined_final.json",
             final_receipt,
         )
+        correction_report = final_receipt.get("gemma_correction")
+        if isinstance(correction_report, dict):
+            print(
+                "    correction: "
+                f"{correction_report.get('status')} "
+                f"applied={correction_report.get('applied')}"
+            )
 
         receipt_summaries.append(
             summarize_final(

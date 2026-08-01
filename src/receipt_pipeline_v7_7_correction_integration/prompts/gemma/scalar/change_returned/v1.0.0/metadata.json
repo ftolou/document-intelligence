@@ -1,0 +1,15 @@
+{
+  "id": "gemma.scalar.change_returned",
+  "version": "1.0.0",
+  "status": "baseline",
+  "model_family": "gemma4",
+  "role": "user",
+  "kind": "instruction",
+  "description": "Scalar specialist prompt for change_returned.",
+  "source_file": "experiment_batch_paddle_snapped_crops_qwen35_gemma_items_scalars_v7_5.py",
+  "source_symbol": "SCALAR_TASKS['change_returned'][\"question\"]",
+  "content_file": "prompt.md",
+  "sha256": "cb79471c1804e57b804ba44c7e975dc11441bf4a008a9b9e06f17f62a3effa62",
+  "variables": [],
+  "change_summary": "Exact prompt text extracted from pipeline v7.5."
+}

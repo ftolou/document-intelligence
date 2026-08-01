@@ -1,0 +1,170 @@
+{
+  "source_file": "experiment_batch_paddle_snapped_crops_qwen35_gemma_items_scalars_v7_5.py",
+  "prompt_count": 23,
+  "primary_prompt_count": 20,
+  "template_count": 3,
+  "version": "1.0.0",
+  "prompts": [
+    {
+      "id": "gemma.correction.generic",
+      "version": "1.0.0",
+      "path": "gemma/correction/generic/v1.0.0/prompt.md",
+      "sha256": "25c28493a835450aea6c52d8d340dec38fb54bed73aac01cbcf8fb50711a014b",
+      "source_symbol": "GEMMA_CORRECTION_QUESTION"
+    },
+    {
+      "id": "gemma.items.direct",
+      "version": "1.0.0",
+      "path": "gemma/items/direct/v1.0.0/prompt.md",
+      "sha256": "d8e0094c5e4be258ac51765e2a382dfc493171bd1af6bbaae3d96218d732d043",
+      "source_symbol": "DIRECT_ITEMS_QUESTION"
+    },
+    {
+      "id": "gemma.scalar.change_returned",
+      "version": "1.0.0",
+      "path": "gemma/scalar/change_returned/v1.0.0/prompt.md",
+      "sha256": "cb79471c1804e57b804ba44c7e975dc11441bf4a008a9b9e06f17f62a3effa62",
+      "source_symbol": "SCALAR_TASKS['change_returned'][\"question\"]"
+    },
+    {
+      "id": "gemma.scalar.currency",
+      "version": "1.0.0",
+      "path": "gemma/scalar/currency/v1.0.0/prompt.md",
+      "sha256": "c28895256b1cd2409ec7acc1cd9b51bf46fec60c4f93064b03fb2cbb633700bf",
+      "source_symbol": "SCALAR_TASKS['currency'][\"question\"]"
+    },
+    {
+      "id": "gemma.scalar.discount_total",
+      "version": "1.0.0",
+      "path": "gemma/scalar/discount_total/v1.0.0/prompt.md",
+      "sha256": "1c3b45b50753b6ee81023737330bb73c89bbf9b2c71d8e880d83fad7a67e4ae4",
+      "source_symbol": "SCALAR_TASKS['discount_total'][\"question\"]"
+    },
+    {
+      "id": "gemma.scalar.final_purchase_total",
+      "version": "1.0.0",
+      "path": "gemma/scalar/final_purchase_total/v1.0.0/prompt.md",
+      "sha256": "daf087ff191be90e1821ae1a236b23cf20bfafd86c36db5a466ab51a49c48c2b",
+      "source_symbol": "SCALAR_TASKS['final_purchase_total'][\"question\"]"
+    },
+    {
+      "id": "gemma.scalar.merchant_address",
+      "version": "1.0.0",
+      "path": "gemma/scalar/merchant_address/v1.0.0/prompt.md",
+      "sha256": "1791dfec476b61bd64ebfe6c6da2610ce40b4a5ef072f247f26ba7f55ecdae2f",
+      "source_symbol": "SCALAR_TASKS['merchant_address'][\"question\"]"
+    },
+    {
+      "id": "gemma.scalar.merchant_name",
+      "version": "1.0.0",
+      "path": "gemma/scalar/merchant_name/v1.0.0/prompt.md",
+      "sha256": "92d63acfde170bdaf2ed9444c41c46f6c60349cbd949215274271d06af77246a",
+      "source_symbol": "SCALAR_TASKS['merchant_name'][\"question\"]"
+    },
+    {
+      "id": "gemma.scalar.net_amount",
+      "version": "1.0.0",
+      "path": "gemma/scalar/net_amount/v1.0.0/prompt.md",
+      "sha256": "fbdf91942696573911be3e5bb7cb542be1467f826d153928ccd3b4b69a02ba1d",
+      "source_symbol": "SCALAR_TASKS['net_amount'][\"question\"]"
+    },
+    {
+      "id": "gemma.scalar.payment_method",
+      "version": "1.0.0",
+      "path": "gemma/scalar/payment_method/v1.0.0/prompt.md",
+      "sha256": "67d613048193b79a7ad5d74e84a2ec56b74e3d6eb1b185fd41e3fc72dceb1692",
+      "source_symbol": "SCALAR_TASKS['payment_method'][\"question\"]"
+    },
+    {
+      "id": "gemma.scalar.payment_received",
+      "version": "1.0.0",
+      "path": "gemma/scalar/payment_received/v1.0.0/prompt.md",
+      "sha256": "b2af7699bebe05244747c8383e73d0e8d3b91da5033e613e93789b859b419194",
+      "source_symbol": "SCALAR_TASKS['payment_received'][\"question\"]"
+    },
+    {
+      "id": "gemma.scalar.pre_discount_total",
+      "version": "1.0.0",
+      "path": "gemma/scalar/pre_discount_total/v1.0.0/prompt.md",
+      "sha256": "5c8c4fcbd484054251504314322ff4e945d6007a920d55ca90b36c5368bdd8e2",
+      "source_symbol": "SCALAR_TASKS['pre_discount_total'][\"question\"]"
+    },
+    {
+      "id": "gemma.scalar.receipt_date",
+      "version": "1.0.0",
+      "path": "gemma/scalar/receipt_date/v1.0.0/prompt.md",
+      "sha256": "3cad274c13a818003c1e1d13afdd1ff1742b17b33b59d6ae946c04d4241f8ab3",
+      "source_symbol": "SCALAR_TASKS['receipt_date'][\"question\"]"
+    },
+    {
+      "id": "gemma.scalar.receipt_number",
+      "version": "1.0.0",
+      "path": "gemma/scalar/receipt_number/v1.0.0/prompt.md",
+      "sha256": "0f85e4723d8d80c12ec561e50882f2ea2134302fa17c81667f26344fa52bee86",
+      "source_symbol": "SCALAR_TASKS['receipt_number'][\"question\"]"
+    },
+    {
+      "id": "gemma.scalar.receipt_time",
+      "version": "1.0.0",
+      "path": "gemma/scalar/receipt_time/v1.0.0/prompt.md",
+      "sha256": "ce5fc1a91c82d3246e410dddbfee173423a3d849e05ca4451bbb7943cf8aef5a",
+      "source_symbol": "SCALAR_TASKS['receipt_time'][\"question\"]"
+    },
+    {
+      "id": "gemma.scalar.transaction_status",
+      "version": "1.0.0",
+      "path": "gemma/scalar/transaction_status/v1.0.0/prompt.md",
+      "sha256": "21b9c75915f458d8680a176457f3a4e35922f856f9bf2a666d5dae65156f2bd9",
+      "source_symbol": "SCALAR_TASKS['transaction_status'][\"question\"]"
+    },
+    {
+      "id": "gemma.scalar.vat_amount",
+      "version": "1.0.0",
+      "path": "gemma/scalar/vat_amount/v1.0.0/prompt.md",
+      "sha256": "7cff02d567aad425fde8edd681f0fcc00bdd8866e2304742bb0f5cd08e489cb2",
+      "source_symbol": "SCALAR_TASKS['vat_amount'][\"question\"]"
+    },
+    {
+      "id": "gemma.scalar.vat_lines",
+      "version": "1.0.0",
+      "path": "gemma/scalar/vat_lines/v1.0.0/prompt.md",
+      "sha256": "7d6610738b2e9a6df5beb3547230e681c4643eb8ea7b313e87c05f51ffb1aeaa",
+      "source_symbol": "SCALAR_TASKS['vat_lines'][\"question\"]"
+    },
+    {
+      "id": "gemma.system.receipt_interpreter",
+      "version": "1.0.0",
+      "path": "gemma/system/receipt_interpreter/v1.0.0/prompt.md",
+      "sha256": "e6d23c391a68de3a729b7161db6a24009c3067a866216ae3287b9d668e1c6205",
+      "source_symbol": "GEMMA_SYSTEM_PROMPT"
+    },
+    {
+      "id": "gemma.template.correction_evidence",
+      "version": "1.0.0",
+      "path": "gemma/template/correction_evidence/v1.0.0/template.txt",
+      "sha256": "322813a1a229cdeca6d6d77d9950b066adc5a90b8a1e5805a8588fd44c531d82",
+      "source_symbol": "_correction_evidence return assembly"
+    },
+    {
+      "id": "gemma.template.correction_retry_suffix",
+      "version": "1.0.0",
+      "path": "gemma/template/correction_retry_suffix/v1.0.0/template.txt",
+      "sha256": "46f194326af401497bee17539344e04796aafb7926200732cfc3284517d93754",
+      "source_symbol": "_correction_question retry suffix"
+    },
+    {
+      "id": "gemma.template.task_envelope",
+      "version": "1.0.0",
+      "path": "gemma/template/task_envelope/v1.0.0/template.txt",
+      "sha256": "5a89b9719479cb550ad8e8df5f7455b0a71aaed4eff0213d55f092ef08bedddb",
+      "source_symbol": "invoke_gemma_task prompt assembly"
+    },
+    {
+      "id": "qwen.transcription",
+      "version": "1.0.0",
+      "path": "qwen/transcription/v1.0.0/prompt.md",
+      "sha256": "05c6fd973db432cb2f62a1a03ab4c0fc42616f34c26e7d102106d4152b3d7709",
+      "source_symbol": "QWEN_TRANSCRIPTION_PROMPT_TEMPLATE"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "id": "gemma.template.task_envelope",
+  "version": "1.0.0",
+  "status": "baseline",
+  "model_family": "gemma4",
+  "role": "user",
+  "kind": "template",
+  "description": "Combines task instruction, JSON schema, and evidence.",
+  "source_file": "experiment_batch_paddle_snapped_crops_qwen35_gemma_items_scalars_v7_5.py",
+  "source_symbol": "invoke_gemma_task prompt assembly",
+  "content_file": "template.txt",
+  "sha256": "5a89b9719479cb550ad8e8df5f7455b0a71aaed4eff0213d55f092ef08bedddb",
+  "variables": [
+    "question",
+    "schema_json",
+    "evidence"
+  ],
+  "change_summary": "Exact prompt text extracted from pipeline v7.5."
+}

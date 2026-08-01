@@ -1,0 +1,14 @@
+CORRECTION_TARGET:
+$correction_target_json
+
+TARGET_FAILED_CHECK:
+$target_failed_check_json
+
+VALIDATOR_CONTEXT:
+$validator_context_json
+
+SOURCE_EVIDENCE:
+$source_evidence
+
+CURRENT_STRUCTURED_RESULT:
+$current_structured_result_json

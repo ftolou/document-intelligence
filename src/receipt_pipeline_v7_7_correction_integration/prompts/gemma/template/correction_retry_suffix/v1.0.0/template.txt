@@ -1,0 +1,2 @@
+The previous response was rejected by Python. Correct only the reported schema, path, or unresolved-target errors while preserving the same failed constraint:
+$previous_errors_json

@@ -1,0 +1,54 @@
+{
+  "profile_version": "1.0.0",
+  "automatic_patching": true,
+  "retain_accepted_partial_corrections": true,
+  "max_rounds": 6,
+  "routes": {
+    "ITEM_SUM_RECONCILIATION": [
+      "item_sum_source_blocks_v3",
+      "final_total_source_evidence_v2_4"
+    ],
+    "VAT_LINE_RATE_ARITHMETIC": [
+      "vat_source_evidence_v9"
+    ],
+    "VAT_LINE_SUM_RECONCILIATION": [
+      "vat_source_evidence_v9"
+    ],
+    "VAT_LINES_GROSS_RECONCILIATION": [
+      "vat_source_evidence_v9",
+      "final_total_source_evidence_v2_4"
+    ],
+    "PRE_DISCOUNT_TOTAL_RECONCILIATION": [
+      "final_total_source_evidence_v2_4"
+    ],
+    "NET_PLUS_VAT_RECONCILIATION": [
+      "final_total_source_evidence_v2_4"
+    ],
+    "PAYMENT_CHANGE_RECONCILIATION": [
+      "final_total_source_evidence_v2_4"
+    ]
+  },
+  "strategies": {
+    "item_sum_source_blocks_v3": {
+      "kind": "source_evidence",
+      "prompt_id": "gemma.correction.item_sum_source_blocks",
+      "prompt_version": "1.0.0",
+      "max_attempts": 2,
+      "max_patches": 8
+    },
+    "vat_source_evidence_v9": {
+      "kind": "source_evidence",
+      "prompt_id": "gemma.correction.vat_source_evidence",
+      "prompt_version": "1.0.0",
+      "max_attempts": 2,
+      "max_patches": 4
+    },
+    "final_total_source_evidence_v2_4": {
+      "kind": "source_evidence",
+      "prompt_id": "gemma.correction.final_total_source_evidence",
+      "prompt_version": "1.0.0",
+      "max_attempts": 2,
+      "max_patches": 1
+    }
+  }
+}
