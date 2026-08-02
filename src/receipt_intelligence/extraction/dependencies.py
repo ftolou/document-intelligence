@@ -10,6 +10,7 @@ from receipt_intelligence.application.ports import (
     ModelLifecycleCoordinator,
     VlmEngine,
 )
+from receipt_intelligence.extraction.services.correction import ReceiptCorrectionService
 from receipt_intelligence.extraction.services.structured_extraction import (
     StructuredExtractionService,
 )
@@ -26,6 +27,7 @@ class ExtractionDependencies:
     transcription_service: TranscriptionService | None = None
     structured_extraction_service: StructuredExtractionService | None = None
     validation_service: ReceiptValidationService | None = None
+    correction_service: ReceiptCorrectionService | None = None
 
 
 __all__ = ["ExtractionDependencies"]

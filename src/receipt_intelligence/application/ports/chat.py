@@ -1,4 +1,4 @@
-"""Provider-neutral structured chat-generation contracts."""
+"""Provider-neutral structured and unformatted chat-generation contracts."""
 
 from __future__ import annotations
 
@@ -11,9 +11,9 @@ from receipt_intelligence.application.ports.llm import ModelCallMetrics
 @dataclass(frozen=True, slots=True)
 class ChatGenerationRequest:
     model: str
-    system_prompt: str
+    system_prompt: str | None
     user_prompt: str
-    response_json_schema: dict[str, Any]
+    response_json_schema: dict[str, Any] | None = None
     operation: str = "chat_generation"
     attempt: int = 1
     think: bool = False
@@ -26,24 +26,26 @@ class ChatGenerationRequest:
 
     def __post_init__(self) -> None:
         model = str(self.model or "").strip()
-        system_prompt = str(self.system_prompt or "").strip()
+        system_prompt = str(self.system_prompt or "").strip() or None
         user_prompt = str(self.user_prompt or "").strip()
         operation = str(self.operation or "").strip()
-        if not model or not system_prompt or not user_prompt or not operation:
-            raise ValueError("ChatGenerationRequest text fields must not be empty.")
+        if not model or not user_prompt or not operation:
+            raise ValueError("ChatGenerationRequest model, user_prompt, and operation are required.")
         if self.attempt < 1:
             raise ValueError("ChatGenerationRequest.attempt must be positive.")
         if self.num_ctx < 1 or self.num_predict < 1:
             raise ValueError("Chat token limits must be positive.")
         if self.timeout_seconds <= 0:
             raise ValueError("Chat timeout_seconds must be positive.")
-        if not isinstance(self.response_json_schema, dict) or not self.response_json_schema:
-            raise ValueError("response_json_schema must be a non-empty object.")
+        schema = self.response_json_schema
+        if schema is not None and (not isinstance(schema, dict) or not schema):
+            raise ValueError("response_json_schema must be None or a non-empty object.")
         object.__setattr__(self, "model", model)
         object.__setattr__(self, "system_prompt", system_prompt)
         object.__setattr__(self, "user_prompt", user_prompt)
         object.__setattr__(self, "operation", operation)
-        object.__setattr__(self, "response_json_schema", dict(self.response_json_schema))
+        if schema is not None:
+            object.__setattr__(self, "response_json_schema", dict(schema))
 
 
 @dataclass(frozen=True, slots=True)

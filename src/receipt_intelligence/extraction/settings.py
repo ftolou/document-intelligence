@@ -165,18 +165,35 @@ class ValidationSettings:
 
 @dataclass(frozen=True, slots=True)
 class CorrectionSettings:
-    """Correction activation plus an optional external strategy profile.
-
-    Strategy routes, prompt references, retries, token limits, and thinking settings remain in
-    the versioned correction profile rather than being duplicated in Python configuration.
-    """
+    """Exact runtime settings of the v7.8 specialist correction subsystem."""
 
     enabled: bool = True
     profile_path: Path | None = None
+    ollama_url: str = "http://localhost:11434"
+    model: str = "gemma4"
+    num_ctx: int = 16384
+    timeout_seconds: float = 300.0
+    keep_alive: str | None = "10m"
+    temperature: float = 0.0
+    seed: int = 42
+    think: bool = True
+    item_sum_num_predict: int = 6144
+    vat_num_predict: int = 6144
+    final_total_num_predict: int = 2048
 
     def __post_init__(self) -> None:
         if self.profile_path is not None:
             object.__setattr__(self, "profile_path", Path(self.profile_path))
+        if not str(self.ollama_url or "").strip() or not str(self.model or "").strip():
+            raise ValueError("CorrectionSettings requires ollama_url and model.")
+        if self.num_ctx < 1 or self.timeout_seconds <= 0:
+            raise ValueError("Correction context and timeout must be positive.")
+        if min(
+            self.item_sum_num_predict,
+            self.vat_num_predict,
+            self.final_total_num_predict,
+        ) < 1:
+            raise ValueError("Correction token limits must be positive.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -267,7 +284,11 @@ class PipelineSettings:
                 format_json=config.format_json,
             ),
             validation=ValidationSettings(tolerance=config.tolerance),
-            correction=CorrectionSettings(enabled=config.correction_enabled),
+            correction=CorrectionSettings(
+                enabled=config.correction_enabled,
+                ollama_url=config.ollama_url,
+                model=config.model,
+            ),
             categorization=CategorizationSettings(
                 enabled=config.categorization_enabled,
                 model=config.categorization_model,

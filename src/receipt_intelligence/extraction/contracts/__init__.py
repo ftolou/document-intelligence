@@ -8,6 +8,7 @@ from receipt_intelligence.extraction.contracts.common import (
 from receipt_intelligence.extraction.contracts.correction import (
     CorrectionAttempt,
     CorrectionAttemptStatus,
+    CorrectionRequest,
     CorrectionResult,
     CorrectionTargetOutcome,
 )
@@ -39,6 +40,7 @@ __all__ = [
     "CanonicalTranscriptionRow",
     "CorrectionAttempt",
     "CorrectionAttemptStatus",
+    "CorrectionRequest",
     "CorrectionResult",
     "CorrectionTargetOutcome",
     "GemmaTaskResult",

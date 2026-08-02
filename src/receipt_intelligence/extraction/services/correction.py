@@ -4,20 +4,11 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from receipt_intelligence.extraction.contracts.common import ReadonlyJsonObject
-from receipt_intelligence.extraction.contracts.correction import CorrectionResult
-from receipt_intelligence.extraction.contracts.transcription import TranscriptionResult
-from receipt_intelligence.extraction.contracts.validation import ValidationReport
+from receipt_intelligence.extraction.contracts.correction import CorrectionRequest, CorrectionResult
 
 
 class ReceiptCorrectionService(Protocol):
-    def correct(
-        self,
-        *,
-        receipt: ReadonlyJsonObject,
-        transcription: TranscriptionResult,
-        validation: ValidationReport,
-    ) -> CorrectionResult: ...
+    def correct(self, request: CorrectionRequest) -> CorrectionResult: ...
 
 
 __all__ = ["ReceiptCorrectionService"]

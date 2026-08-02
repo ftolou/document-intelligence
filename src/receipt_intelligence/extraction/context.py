@@ -12,6 +12,7 @@ from receipt_intelligence.extraction.config import ExtractionConfig
 from receipt_intelligence.extraction.dependencies import ExtractionDependencies
 from receipt_intelligence.extraction.state import (
     ExtractionPhase,
+    CorrectionArtifacts,
     FinalizationArtifacts,
     JsonObject,
     OverviewArtifacts,
@@ -51,6 +52,7 @@ class ExtractionContext:
     transcription: TranscriptionArtifacts | None = None
     structured_extraction: StructuredExtractionArtifacts | None = None
     validation: ValidationArtifacts | None = None
+    correction: CorrectionArtifacts | None = None
     visual: VisualArtifacts | None = None
     overview: OverviewArtifacts | None = None
     parsed: ParsingArtifacts | None = None
@@ -112,6 +114,13 @@ class ExtractionContext:
         self.validation = ValidationArtifacts()
         return self.validation
 
+    def begin_correction_stage(self) -> CorrectionArtifacts:
+        if self.correction is not None:
+            raise StageContractError("Correction artifacts were already initialized.")
+        self.require_validation()
+        self.correction = CorrectionArtifacts()
+        return self.correction
+
     def begin_visual_stage(self) -> VisualArtifacts:
         if self.visual is not None:
             raise StageContractError("Visual artifacts were already initialized.")
@@ -161,6 +170,9 @@ class ExtractionContext:
 
     def require_validation(self) -> ValidationArtifacts:
         return _required(self.validation, "validation artifacts")
+
+    def require_correction(self) -> CorrectionArtifacts:
+        return _required(self.correction, "correction artifacts")
 
     def require_visual(self) -> VisualArtifacts:
         return _required(self.visual, "visual artifacts")

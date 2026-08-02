@@ -7,6 +7,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from receipt_intelligence.extraction.contracts.correction import CorrectionResult
 from receipt_intelligence.extraction.contracts.extraction import StructuredExtractionResult
 from receipt_intelligence.extraction.contracts.transcription import TranscriptionResult
 from receipt_intelligence.extraction.contracts.validation import ValidationReport
@@ -22,6 +23,7 @@ class ExtractionPhase(str, Enum):  # noqa: UP042
     TRANSCRIBED = "transcribed"
     EXTRACTED = "extracted"
     VALIDATED = "validated"
+    CORRECTED = "corrected"
     VISUAL_READY = "visual_ready"
     OVERVIEW_READY = "overview_ready"
     PARSED = "parsed"
@@ -60,6 +62,13 @@ class ValidationArtifacts:
     """Read-only deterministic report for the next extraction path."""
 
     report: ValidationReport | None = None
+
+
+@dataclass(slots=True)
+class CorrectionArtifacts:
+    """Specialist correction result selected by deterministic acceptance."""
+
+    result: CorrectionResult | None = None
 
 
 @dataclass(slots=True)

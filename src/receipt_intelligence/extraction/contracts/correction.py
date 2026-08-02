@@ -1,25 +1,50 @@
-"""Typed outputs of the specialist correction coordinator."""
+"""Typed contracts for validator-gated specialist correction."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
 
+from receipt_intelligence.application.ports.llm import ModelCallMetrics
 from receipt_intelligence.extraction.contracts.common import JsonObject, StageArtifact
+from receipt_intelligence.extraction.contracts.transcription import TranscriptionResult
 from receipt_intelligence.extraction.contracts.validation import ValidationReport
 
 
 class CorrectionAttemptStatus(StrEnum):
     ACCEPTED = "accepted"
-    ACCEPTED_REVIEW_REQUIRED = "accepted_review_required"
     ABSTAINED = "abstained"
     INVALID_JSON = "invalid_json"
-    SCHEMA_INVALID = "schema_invalid"
-    EVIDENCE_NOT_GROUNDED = "evidence_not_grounded"
-    PROPOSAL_REJECTED = "proposal_rejected"
+    INVALID_EVIDENCE = "invalid_evidence"
+    INVALID_PATCH = "invalid_patch"
+    REJECTED_NO_IMPROVEMENT = "rejected_no_improvement"
+    ERROR = "error"
     TARGET_EXHAUSTED = "target_exhausted"
     OPEN_NO_STRATEGY = "open_no_strategy"
-    NOT_ATTEMPTED_ROUND_LIMIT = "not_attempted_round_limit"
+
+
+@dataclass(frozen=True, slots=True)
+class CorrectionRequest:
+    run_id: str
+    receipt: JsonObject
+    transcription: TranscriptionResult
+    validation: ValidationReport
+    item_contract: JsonObject
+    item_pipeline_enabled: bool
+    selected_scalar_tasks: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        run_id = str(self.run_id or "").strip()
+        if not run_id:
+            raise ValueError("CorrectionRequest.run_id must not be empty.")
+        object.__setattr__(self, "run_id", run_id)
+        object.__setattr__(self, "receipt", dict(self.receipt))
+        object.__setattr__(self, "item_contract", dict(self.item_contract))
+        object.__setattr__(
+            self,
+            "selected_scalar_tasks",
+            tuple(str(value).strip() for value in self.selected_scalar_tasks if str(value).strip()),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,6 +71,8 @@ class CorrectionResult:
     final_validation: ValidationReport
     attempts: tuple[CorrectionAttempt, ...] = ()
     target_outcomes: tuple[CorrectionTargetOutcome, ...] = ()
+    report: JsonObject = field(default_factory=dict)
+    model_calls: tuple[ModelCallMetrics, ...] = ()
     artifacts: tuple[StageArtifact, ...] = ()
 
     @property
@@ -57,17 +84,14 @@ class CorrectionResult:
         return frozenset(
             outcome.target_code
             for outcome in self.target_outcomes
-            if outcome.status
-            in {
-                CorrectionAttemptStatus.ACCEPTED,
-                CorrectionAttemptStatus.ACCEPTED_REVIEW_REQUIRED,
-            }
+            if outcome.status is CorrectionAttemptStatus.ACCEPTED
         )
 
 
 __all__ = [
     "CorrectionAttempt",
     "CorrectionAttemptStatus",
+    "CorrectionRequest",
     "CorrectionResult",
     "CorrectionTargetOutcome",
 ]

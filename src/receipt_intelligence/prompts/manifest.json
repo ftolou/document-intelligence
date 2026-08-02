@@ -2,6 +2,71 @@
   "schema_version": "prompt_manifest.v1",
   "prompts": [
     {
+      "id": "gemma.correction.final_total_source_evidence",
+      "version": "1.0.0",
+      "template": "gemma/correction/final_total_source_evidence/v1.0.0/prompt.md",
+      "sha256": "430dde2b2aecb1f8dfa9e4500d4c49b6b670e10765cfcb905cfad5050dfadcd4",
+      "required_variables": [
+        "source_evidence",
+        "output_schema"
+      ],
+      "metadata": {
+        "model_family": "gemma4",
+        "source": "receipt_pipeline_v7_8_specialist_correction",
+        "description": "V2.4 source-only final-purchase-total selection for bounded total correction."
+      },
+      "schema": "gemma/correction/final_total_source_evidence/v1.0.0/schema.json",
+      "schema_sha256": "dc63df9d629510c34e3eed5d7fa0b60a60decd2f2784eb4217a0d8f04a05ccf3"
+    },
+    {
+      "id": "gemma.correction.item_sum_source_blocks",
+      "version": "1.0.0",
+      "template": "gemma/correction/item_sum_source_blocks/v1.0.0/template.txt",
+      "sha256": "8aeb00b78fe3eae5069ee068c4d8e578634e42df8f7e01eb593719261436fe89",
+      "required_variables": [
+        "source_evidence",
+        "output_schema"
+      ],
+      "metadata": {
+        "model_family": "gemma4",
+        "source": "receipt_pipeline_v7_8_specialist_correction",
+        "description": "V3 source-only item-block evidence prompt for validator-gated item-sum correction."
+      },
+      "schema": "gemma/correction/item_sum_source_blocks/v1.0.0/schema.json",
+      "schema_sha256": "949926e3465f38a55116278c0c06da80b945bbf32c8815b29269f29eca7222b7"
+    },
+    {
+      "id": "gemma.correction.json_repair",
+      "version": "1.0.0",
+      "template": "gemma/correction/json_repair/v1.0.0/prompt.md",
+      "sha256": "b1b45330f25c73649906bd6728a510a9581651feb743d8d4ac5616f1602f7802",
+      "required_variables": [
+        "invalid_json"
+      ],
+      "metadata": {
+        "model_family": "gemma4",
+        "source": "receipt_pipeline_v7_8_specialist_correction",
+        "description": "Format-only reserialization of invalid specialist JSON using the existing strategy schema through Ollama format."
+      }
+    },
+    {
+      "id": "gemma.correction.vat_source_evidence",
+      "version": "1.0.0",
+      "template": "gemma/correction/vat_source_evidence/v1.0.0/prompt.md",
+      "sha256": "937073847254b12428cc8e03031c27a22da43044d2d8f65673e3a910f5e72172",
+      "required_variables": [
+        "source_evidence",
+        "output_schema"
+      ],
+      "metadata": {
+        "model_family": "gemma4",
+        "source": "receipt_pipeline_v7_8_specialist_correction",
+        "description": "V9 source-only VAT evidence extraction for bounded VAT correction."
+      },
+      "schema": "gemma/correction/vat_source_evidence/v1.0.0/schema.json",
+      "schema_sha256": "3155e3778f441d9e209881175dec452f1dd6312b7610051faee259a3a07b1865"
+    },
+    {
       "id": "gemma.items.direct",
       "version": "1.0.0",
       "template": "gemma/items/direct/v1.0.0/prompt.md",

@@ -1,4 +1,4 @@
-"""Ollama `/api/chat` adapter for schema-constrained Gemma tasks."""
+"""Ollama `/api/chat` adapter for structured and unformatted Gemma calls."""
 
 from __future__ import annotations
 
@@ -24,15 +24,15 @@ class OllamaChatGateway(ChatGateway):
         self.base_url = normalized
 
     def generate(self, request: ChatGenerationRequest) -> ChatGenerationResult:
+        messages: list[dict[str, str]] = []
+        if request.system_prompt:
+            messages.append({"role": "system", "content": request.system_prompt})
+        messages.append({"role": "user", "content": request.user_prompt})
         payload: dict[str, Any] = {
             "model": request.model,
-            "messages": [
-                {"role": "system", "content": request.system_prompt},
-                {"role": "user", "content": request.user_prompt},
-            ],
+            "messages": messages,
             "stream": False,
             "think": request.think,
-            "format": request.response_json_schema,
             "options": {
                 "temperature": request.temperature,
                 "seed": request.seed,
@@ -40,6 +40,8 @@ class OllamaChatGateway(ChatGateway):
                 "num_predict": request.num_predict,
             },
         }
+        if request.response_json_schema is not None:
+            payload["format"] = request.response_json_schema
         if request.keep_alive not in (None, ""):
             payload["keep_alive"] = request.keep_alive
 
@@ -73,12 +75,7 @@ class OllamaChatGateway(ChatGateway):
         )
 
 
-def _http_json(
-    url: str,
-    *,
-    payload: dict[str, Any],
-    timeout: float,
-) -> dict[str, Any]:
+def _http_json(url: str, *, payload: dict[str, Any], timeout: float) -> dict[str, Any]:
     request = urllib.request.Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
