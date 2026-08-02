@@ -1,0 +1,1 @@
+recursive-include src/receipt_intelligence/prompts *.txt *.json *.md

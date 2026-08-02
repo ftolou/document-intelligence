@@ -11,6 +11,11 @@ from importlib import import_module
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from receipt_intelligence.application.ports.artifacts import (
+        ArtifactKind,
+        ArtifactReference,
+        ArtifactStore,
+    )
     from receipt_intelligence.application.ports.events import (
         ApplicationEvent,
         EventSink,
@@ -42,6 +47,11 @@ if TYPE_CHECKING:
         ModelLifecycleRequest,
         NoOpModelLifecycleCoordinator,
     )
+    from receipt_intelligence.application.ports.multimodal import (
+        MultimodalGateway,
+        MultimodalGenerationRequest,
+        MultimodalGenerationResult,
+    )
     from receipt_intelligence.application.ports.ocr import OcrEngine, OcrRequest
     from receipt_intelligence.application.ports.receipts import (
         ReceiptEditor,
@@ -50,9 +60,20 @@ if TYPE_CHECKING:
         ReviewWorkflow,
     )
     from receipt_intelligence.application.ports.runtime import RuntimeInformation
+    from receipt_intelligence.application.ports.text_detection import (
+        DetectedTextRegion,
+        Point,
+        Polygon,
+        TextDetectionEngine,
+        TextDetectionRequest,
+        TextDetectionResult,
+    )
     from receipt_intelligence.application.ports.vlm import VlmEngine, VlmRequest
 
     _TYPE_EXPORTS = (
+        ArtifactKind,
+        ArtifactReference,
+        ArtifactStore,
         ApplicationEvent,
         EventSink,
         NullEventSink,
@@ -68,6 +89,9 @@ if TYPE_CHECKING:
         ModelCallMetrics,
         coerce_generation_result,
         metrics_to_diagnostics,
+        MultimodalGateway,
+        MultimodalGenerationRequest,
+        MultimodalGenerationResult,
         ModelCallFilter,
         ModelCallRepository,
         ModelPricingInput,
@@ -81,11 +105,20 @@ if TYPE_CHECKING:
         ReviewApplier,
         ReviewWorkflow,
         RuntimeInformation,
+        DetectedTextRegion,
+        Point,
+        Polygon,
+        TextDetectionEngine,
+        TextDetectionRequest,
+        TextDetectionResult,
         VlmEngine,
         VlmRequest,
     )
 
 _EXPORTS: dict[str, tuple[str, str]] = {
+    "ArtifactKind": ("artifacts", "ArtifactKind"),
+    "ArtifactReference": ("artifacts", "ArtifactReference"),
+    "ArtifactStore": ("artifacts", "ArtifactStore"),
     "ApplicationEvent": ("events", "ApplicationEvent"),
     "EventSink": ("events", "EventSink"),
     "NullEventSink": ("events", "NullEventSink"),
@@ -101,6 +134,9 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "ModelCallMetrics": ("llm", "ModelCallMetrics"),
     "coerce_generation_result": ("llm", "coerce_generation_result"),
     "metrics_to_diagnostics": ("llm", "metrics_to_diagnostics"),
+    "MultimodalGateway": ("multimodal", "MultimodalGateway"),
+    "MultimodalGenerationRequest": ("multimodal", "MultimodalGenerationRequest"),
+    "MultimodalGenerationResult": ("multimodal", "MultimodalGenerationResult"),
     "ModelCallFilter": ("model_calls", "ModelCallFilter"),
     "ModelCallRepository": ("model_calls", "ModelCallRepository"),
     "ModelPricingInput": ("model_calls", "ModelPricingInput"),
@@ -117,6 +153,12 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "ReviewApplier": ("receipts", "ReviewApplier"),
     "ReviewWorkflow": ("receipts", "ReviewWorkflow"),
     "RuntimeInformation": ("runtime", "RuntimeInformation"),
+    "DetectedTextRegion": ("text_detection", "DetectedTextRegion"),
+    "Point": ("text_detection", "Point"),
+    "Polygon": ("text_detection", "Polygon"),
+    "TextDetectionEngine": ("text_detection", "TextDetectionEngine"),
+    "TextDetectionRequest": ("text_detection", "TextDetectionRequest"),
+    "TextDetectionResult": ("text_detection", "TextDetectionResult"),
     "VlmEngine": ("vlm", "VlmEngine"),
     "VlmRequest": ("vlm", "VlmRequest"),
 }
