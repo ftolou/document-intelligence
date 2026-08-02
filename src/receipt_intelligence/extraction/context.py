@@ -19,6 +19,7 @@ from receipt_intelligence.extraction.state import (
     PreparedArtifacts,
     RepairArtifacts,
     StageContractError,
+    TranscriptionArtifacts,
     VisualArtifacts,
 )
 from receipt_intelligence.observability.timing import utc_now_iso
@@ -45,6 +46,7 @@ class ExtractionContext:
     phase: ExtractionPhase = ExtractionPhase.CREATED
 
     prepared: PreparedArtifacts | None = None
+    transcription: TranscriptionArtifacts | None = None
     visual: VisualArtifacts | None = None
     overview: OverviewArtifacts | None = None
     parsed: ParsingArtifacts | None = None
@@ -84,6 +86,13 @@ class ExtractionContext:
     ) -> None:
         self.assert_phase(expected, stage_name)
         self.phase = target
+
+    def begin_transcription_stage(self) -> TranscriptionArtifacts:
+        if self.transcription is not None:
+            raise StageContractError("Transcription artifacts were already initialized.")
+        self.require_prepared()
+        self.transcription = TranscriptionArtifacts()
+        return self.transcription
 
     def begin_visual_stage(self) -> VisualArtifacts:
         if self.visual is not None:
@@ -125,6 +134,9 @@ class ExtractionContext:
 
     def require_prepared(self) -> PreparedArtifacts:
         return _required(self.prepared, "prepared artifacts")
+
+    def require_transcription(self) -> TranscriptionArtifacts:
+        return _required(self.transcription, "transcription artifacts")
 
     def require_visual(self) -> VisualArtifacts:
         return _required(self.visual, "visual artifacts")

@@ -34,6 +34,7 @@ class ReceiptCrop:
     source_box: BoundingBox
     order: int
     is_full_image_fallback: bool = False
+    detected_line_indices: tuple[int, ...] = ()
 
     def __post_init__(self) -> None:
         crop_id = str(self.crop_id or "").strip()
@@ -51,6 +52,8 @@ class TranscriptionFragment:
     text: str
     order: int
     metrics: ModelCallMetrics | None = None
+    attempt: int = 1
+    text_source: str | None = None
 
     def __post_init__(self) -> None:
         crop_id = str(self.crop_id or "").strip()
@@ -61,8 +64,12 @@ class TranscriptionFragment:
             raise ValueError("TranscriptionFragment.text must not be empty.")
         if self.order < 0:
             raise ValueError("TranscriptionFragment.order must not be negative.")
+        if self.attempt < 1:
+            raise ValueError("TranscriptionFragment.attempt must be positive.")
         object.__setattr__(self, "crop_id", crop_id)
         object.__setattr__(self, "text", text)
+        if self.text_source is not None:
+            object.__setattr__(self, "text_source", str(self.text_source).strip() or None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,6 +104,7 @@ class TranscriptionResult:
         if not canonical_text:
             raise ValueError("TranscriptionResult.canonical_text must not be empty.")
         object.__setattr__(self, "canonical_text", canonical_text)
+        object.__setattr__(self, "diagnostics", dict(self.diagnostics))
 
 
 __all__ = [

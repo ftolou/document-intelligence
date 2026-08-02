@@ -10,6 +10,7 @@ from receipt_intelligence.application.ports import (
     ModelLifecycleCoordinator,
     VlmEngine,
 )
+from receipt_intelligence.extraction.services.transcription import TranscriptionService
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,6 +19,7 @@ class ExtractionDependencies:
     vlm_engine: VlmEngine
     model_lifecycle: ModelLifecycleCoordinator
     event_sink: EventSink
+    transcription_service: TranscriptionService | None = None
 
 
 __all__ = ["ExtractionDependencies"]

@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 Point = tuple[float, float]
 Polygon = tuple[Point, ...]
@@ -56,12 +56,14 @@ class TextDetectionResult:
     image_width: int
     image_height: int
     duration_ms: float = 0.0
+    diagnostics: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.image_width < 1 or self.image_height < 1:
             raise ValueError("Detected image dimensions must be positive.")
         if self.duration_ms < 0:
             raise ValueError("TextDetectionResult.duration_ms must not be negative.")
+        object.__setattr__(self, "diagnostics", dict(self.diagnostics))
 
 
 class TextDetectionEngine(Protocol):

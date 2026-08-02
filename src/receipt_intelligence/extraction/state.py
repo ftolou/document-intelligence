@@ -7,6 +7,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from receipt_intelligence.extraction.contracts.transcription import TranscriptionResult
+
 JsonObject = dict[str, Any]
 
 
@@ -15,6 +17,7 @@ class ExtractionPhase(str, Enum):  # noqa: UP042
 
     CREATED = "created"
     PREPARED = "prepared"
+    TRANSCRIBED = "transcribed"
     VISUAL_READY = "visual_ready"
     OVERVIEW_READY = "overview_ready"
     PARSED = "parsed"
@@ -32,6 +35,13 @@ class PreparedArtifacts:
 
     paths: dict[str, Path]
     preliminary_ocr_context: JsonObject | None = None
+
+
+@dataclass(slots=True)
+class TranscriptionArtifacts:
+    """Canonical Paddle/Qwen evidence produced by the next transcription stage."""
+
+    result: TranscriptionResult | None = None
 
 
 @dataclass(slots=True)

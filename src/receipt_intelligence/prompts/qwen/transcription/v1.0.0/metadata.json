@@ -1,0 +1,17 @@
+{
+  "id": "qwen.transcription",
+  "version": "1.0.0",
+  "status": "baseline",
+  "model_family": "qwen3.5-vl",
+  "role": "user",
+  "kind": "instruction",
+  "description": "Physical receipt-row transcription instruction.",
+  "source_file": "experiment_batch_paddle_snapped_crops_qwen35_gemma_items_scalars_v7_5.py",
+  "source_symbol": "QWEN_TRANSCRIPTION_PROMPT_TEMPLATE",
+  "content_file": "prompt.md",
+  "sha256": "05c6fd973db432cb2f62a1a03ab4c0fc42616f34c26e7d102106d4152b3d7709",
+  "variables": [
+    "estimated_count"
+  ],
+  "change_summary": "Exact prompt text extracted from pipeline v7.5."
+}

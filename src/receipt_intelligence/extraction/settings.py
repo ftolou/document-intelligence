@@ -7,7 +7,7 @@ additive migration target. Later phases can move one stage at a time and use
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from receipt_intelligence.extraction.config import ExtractionConfig
@@ -15,10 +15,70 @@ from receipt_intelligence.extraction.config import ExtractionConfig
 
 @dataclass(frozen=True, slots=True)
 class DetectionSettings:
-    language: str = "german"
+    language: str = "en"
     device: str = "cpu"
     max_crops: int = 8
     max_side_length: int | None = None
+    backend: str = "auto"
+    model_name: str | None = None
+    minimum_score: float = 0.20
+    minimum_box_width: float = 6.0
+    minimum_box_height: float = 4.0
+    minimum_line_width: float = 8.0
+    minimum_line_height: float = 4.0
+    line_overlap_threshold: float = 0.40
+    line_center_factor: float = 0.60
+    minimum_lines: int = 3
+    maximum_lines: int = 300
+
+    def __post_init__(self) -> None:
+        backend = str(self.backend or "").strip().lower()
+        if backend not in {"auto", "text_detection", "paddleocr"}:
+            raise ValueError("DetectionSettings.backend is not supported.")
+        if self.max_side_length is not None and self.max_side_length < 1:
+            raise ValueError("DetectionSettings.max_side_length must be positive.")
+        if not 0.0 <= self.minimum_score <= 1.0:
+            raise ValueError("DetectionSettings.minimum_score must be between 0 and 1.")
+        if self.minimum_lines < 0 or self.maximum_lines < self.minimum_lines:
+            raise ValueError("DetectionSettings line-count bounds are invalid.")
+        object.__setattr__(self, "backend", backend)
+
+
+@dataclass(frozen=True, slots=True)
+class CropPlanningSettings:
+    max_crops: int = 4
+    target_rows_per_crop: int = 18
+    single_crop_max_rows: int = 25
+    single_crop_max_aspect_ratio: float = 2.0
+    minimum_lines_per_crop: int = 3
+    safe_cut_search_ratio: float = 0.20
+    maximum_safe_cut_search_ratio: float = 0.35
+    full_width_crops: bool = True
+    horizontal_padding: int = 20
+    minimum_safe_gap: float = 1.0
+    cut_search_margin: int = 1
+    cut_strip_half_height: int = 3
+    cut_ink_threshold: int = 190
+    maximum_cut_ink_density: float = 0.01
+
+    def __post_init__(self) -> None:
+        if self.max_crops < 1:
+            raise ValueError("CropPlanningSettings.max_crops must be positive.")
+        if self.target_rows_per_crop < 1 or self.single_crop_max_rows < 1:
+            raise ValueError("CropPlanningSettings row limits must be positive.")
+        if self.minimum_lines_per_crop < 1:
+            raise ValueError("minimum_lines_per_crop must be positive.")
+        if not (
+            0.0
+            <= self.safe_cut_search_ratio
+            <= self.maximum_safe_cut_search_ratio
+            <= 1.0
+        ):
+            raise ValueError("Safe-cut search ratios are invalid.")
+        if not 0 <= self.cut_ink_threshold <= 255:
+            raise ValueError("cut_ink_threshold must be between 0 and 255.")
+        if not 0.0 <= self.maximum_cut_ink_density <= 1.0:
+            raise ValueError("maximum_cut_ink_density must be between 0 and 1.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +90,23 @@ class TranscriptionSettings:
     timeout_seconds: float = 300.0
     keep_alive: str | None = None
     think: bool = False
+    temperature: float = 0.0
+    seed: int = 42
+    parallelism: int = 1
+    retries: int = 1
+    crop_scale: float = 1.0
+    crop_contrast: float = 1.15
+    crop_sharpen: bool = False
+
+    def __post_init__(self) -> None:
+        if not str(self.ollama_url or "").strip():
+            raise ValueError("TranscriptionSettings.ollama_url must not be empty.")
+        if not str(self.model or "").strip():
+            raise ValueError("TranscriptionSettings.model must not be empty.")
+        if self.parallelism < 1 or self.retries < 0:
+            raise ValueError("Transcription parallelism/retries are invalid.")
+        if self.crop_scale <= 0 or self.crop_contrast <= 0:
+            raise ValueError("Transcription crop preprocessing values must be positive.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,6 +179,7 @@ class PipelineSettings:
     correction: CorrectionSettings
     categorization: CategorizationSettings
     runtime: RuntimeSettings
+    crop_planning: CropPlanningSettings = field(default_factory=CropPlanningSettings)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "source_image_path", Path(self.source_image_path))
@@ -133,7 +211,7 @@ class PipelineSettings:
             detection=DetectionSettings(
                 language=config.ocr_lang,
                 device=config.ocr_device,
-                max_crops=config.max_reocr_images or 8,
+                max_side_length=None,
             ),
             transcription=TranscriptionSettings(
                 ollama_url=config.ollama_url,
@@ -167,12 +245,16 @@ class PipelineSettings:
                 unload_llm_before_multimodal=config.unload_llm_before_vlm,
                 reload_llm_after_multimodal=config.reload_llm_after_vlm,
             ),
+            crop_planning=CropPlanningSettings(
+                max_crops=config.max_reocr_images or 4,
+            ),
         )
 
 
 __all__ = [
     "CategorizationSettings",
     "CorrectionSettings",
+    "CropPlanningSettings",
     "DetectionSettings",
     "ParsingSettings",
     "PipelineSettings",

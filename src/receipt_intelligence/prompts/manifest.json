@@ -1,4 +1,17 @@
 {
   "schema_version": "prompt_manifest.v1",
-  "prompts": []
+  "prompts": [
+    {
+      "id": "qwen.transcription",
+      "version": "1.0.0",
+      "template": "qwen/transcription/v1.0.0/prompt.md",
+      "sha256": "05c6fd973db432cb2f62a1a03ab4c0fc42616f34c26e7d102106d4152b3d7709",
+      "required_variables": [],
+      "metadata": {
+        "model_family": "qwen3.5-vl",
+        "role": "user",
+        "source": "receipt_pipeline_v7_7_correction_integration"
+      }
+    }
+  ]
 }

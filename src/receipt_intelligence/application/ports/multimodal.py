@@ -7,7 +7,7 @@ keeping them separate prevents optional image fields from leaking into every LLM
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -18,8 +18,9 @@ from receipt_intelligence.application.ports.llm import ModelCallMetrics
 class MultimodalGenerationRequest:
     """One image-aware generation request.
 
-    ``response_json_schema`` is optional because transcription normally returns text. Later
-    extraction stages may still use the same port for image-grounded structured responses.
+    ``response_json_schema`` is optional because transcription normally returns text. Provider
+    options are copied at the port boundary so adapters may consume model-specific sampling
+    controls without leaking them into extraction services.
     """
 
     model: str
@@ -35,6 +36,7 @@ class MultimodalGenerationRequest:
     timeout_seconds: float = 300.0
     format_json: bool = False
     response_json_schema: dict[str, Any] | None = None
+    provider_options: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         model = str(self.model or "").strip()
@@ -69,6 +71,7 @@ class MultimodalGenerationRequest:
         object.__setattr__(self, "prompt", prompt)
         object.__setattr__(self, "operation", operation)
         object.__setattr__(self, "image_paths", image_paths)
+        object.__setattr__(self, "provider_options", dict(self.provider_options))
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,12 +80,18 @@ class MultimodalGenerationResult:
 
     text: str
     metrics: ModelCallMetrics | None = None
+    text_source: str | None = None
+    raw_response: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         text = str(self.text or "").strip()
         if not text:
             raise ValueError("MultimodalGenerationResult.text must not be empty.")
         object.__setattr__(self, "text", text)
+        if self.text_source is not None:
+            object.__setattr__(self, "text_source", str(self.text_source).strip() or None)
+        if self.raw_response is not None:
+            object.__setattr__(self, "raw_response", dict(self.raw_response))
 
 
 class MultimodalGateway(Protocol):
