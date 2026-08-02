@@ -18,6 +18,13 @@ from receipt_intelligence.extraction.contracts.extraction import (
     StructuredExtractionRequest,
     StructuredExtractionResult,
 )
+from receipt_intelligence.extraction.contracts.presentation import (
+    CategorizationRequest,
+    CategorizationResult,
+    CategorizationStatus,
+    FinalizationRequest,
+    FinalizationResult,
+)
 from receipt_intelligence.extraction.contracts.result import ReceiptPipelineResult
 from receipt_intelligence.extraction.contracts.transcription import (
     BoundingBox,
@@ -38,11 +45,16 @@ from receipt_intelligence.extraction.contracts.validation import (
 __all__ = [
     "BoundingBox",
     "CanonicalTranscriptionRow",
+    "CategorizationRequest",
+    "CategorizationResult",
+    "CategorizationStatus",
     "CorrectionAttempt",
     "CorrectionAttemptStatus",
     "CorrectionRequest",
     "CorrectionResult",
     "CorrectionTargetOutcome",
+    "FinalizationRequest",
+    "FinalizationResult",
     "GemmaTaskResult",
     "GemmaTaskStatus",
     "JsonObject",

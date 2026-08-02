@@ -15,8 +15,15 @@ class ArtifactKind(StrEnum):
     INITIAL_VALIDATION = "initial_validation"
     CORRECTION_REPORT = "correction_report"
     FINAL_VALIDATION = "final_validation"
+    CATEGORIZATION_PROMPT = "categorization_prompt"
+    CATEGORIZATION_RAW = "categorization_raw"
+    CATEGORIZATION_RESULT = "categorization_result"
     FINAL_RECEIPT = "final_receipt"
+    FINAL_RECEIPT_RECONCILED = "final_receipt_reconciled"
+    FINAL_RECEIPT_CATEGORIZED = "final_receipt_categorized"
+    RECONCILIATION_REPORT = "reconciliation_report"
     PIPELINE_METADATA = "pipeline_metadata"
+    STAGE_TRACE = "stage_trace"
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,6 +53,13 @@ class ArtifactStore(Protocol):
         kind: ArtifactKind,
         text: str,
     ) -> ArtifactReference: ...
+
+    def publish_aliases(
+        self,
+        *,
+        run_id: str,
+        kinds: tuple[ArtifactKind, ...],
+    ) -> tuple[ArtifactReference, ...]: ...
 
 
 __all__ = ["ArtifactKind", "ArtifactReference", "ArtifactStore"]

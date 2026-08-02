@@ -9,6 +9,10 @@ from typing import Any
 
 from receipt_intelligence.extraction.contracts.correction import CorrectionResult
 from receipt_intelligence.extraction.contracts.extraction import StructuredExtractionResult
+from receipt_intelligence.extraction.contracts.presentation import (
+    CategorizationResult,
+    FinalizationResult,
+)
 from receipt_intelligence.extraction.contracts.transcription import TranscriptionResult
 from receipt_intelligence.extraction.contracts.validation import ValidationReport
 
@@ -24,6 +28,7 @@ class ExtractionPhase(str, Enum):  # noqa: UP042
     EXTRACTED = "extracted"
     VALIDATED = "validated"
     CORRECTED = "corrected"
+    CATEGORIZED = "categorized"
     VISUAL_READY = "visual_ready"
     OVERVIEW_READY = "overview_ready"
     PARSED = "parsed"
@@ -125,3 +130,5 @@ class FinalizationArtifacts:
     categorization_result: JsonObject | None = None
     categorized_receipt: JsonObject | None = None
     pipeline_meta: JsonObject | None = None
+    next_categorization: CategorizationResult | None = None
+    next_finalization: FinalizationResult | None = None
