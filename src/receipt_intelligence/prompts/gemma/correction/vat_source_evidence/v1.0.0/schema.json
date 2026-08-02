@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "vat-source-evidence-v5",
+  "title": "Single-row VAT source-evidence blocks",
+  "description": "Source-grounded VAT evidence. Every completed block has exactly one value-bearing source row. Header context may be shared across blocks.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "vat_evidence_blocks": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "context_rows": {
+            "description": "Header or nearby label rows that establish field roles. May be empty when labels occur in source_row.",
+            "type": "array",
+            "maxItems": 8,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^R[0-9]{4}$"
+            }
+          },
+          "source_row": {
+            "description": "Exactly one row that literally contains all returned field values and the optional row label.",
+            "type": "string",
+            "pattern": "^R[0-9]{4}$"
+          },
+          "row_label": {
+            "description": "Literal aggregate or descriptive label printed in source_row, or null when absent.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fields": {
+            "description": "VAT fields in printed source order. The role enum is vocabulary only and never defines output order.",
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 4,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "vat_amount",
+                    "gross_amount",
+                    "rate_percent",
+                    "net_amount"
+                  ]
+                },
+                "value": {
+                  "description": "Literal printed value from source_row. It must not be calculated, normalized, or converted.",
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "role",
+                "value"
+              ]
+            }
+          }
+        },
+        "required": [
+          "context_rows",
+          "source_row",
+          "row_label",
+          "fields"
+        ]
+      }
+    },
+    "unresolved_candidate_rows": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "context_rows": {
+            "type": "array",
+            "maxItems": 8,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^R[0-9]{4}$"
+            }
+          },
+          "source_rows": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 8,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^R[0-9]{4}$"
+            }
+          }
+        },
+        "required": [
+          "context_rows",
+          "source_rows"
+        ]
+      }
+    }
+  },
+  "required": [
+    "vat_evidence_blocks",
+    "unresolved_candidate_rows"
+  ]
+}

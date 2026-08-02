@@ -1,0 +1,153 @@
+Extract every purchased-item block from SOURCE_EVIDENCE.
+
+SOURCE_EVIDENCE is the sole authority. No structured extraction, expected item
+list, validator result, or correction target is available for this task.
+
+Do not compare, reconcile, calculate totals, diagnose errors, or return
+corrections. Do not calculate any missing monetary value. Use only values
+explicitly printed in SOURCE_EVIDENCE.
+
+Perform the procedure internally and return only the final JSON object.
+
+SOURCE SCAN
+
+Scan every source row in printed order and build a complete inventory of all
+purchased-item blocks.
+
+A purchased-item block consists of one descriptive merchandise or service row
+and all contiguous supporting rows that belong to that description.
+
+Supporting rows may contain an item-level amount, quantity, unit, unit price,
+quantity-and-price expression, identifier, product code, tax code, annotation,
+or continuation of the item description. Supporting rows are not independent
+purchased items.
+
+Before classifying a descriptive row as a heading, merchant information,
+metadata, or another non-item role, interpret its complete local context,
+including the full row and its immediately preceding and following supporting
+rows. Do not finalize the classification before considering that context.
+
+A descriptive row with associated item-level monetary or calculation evidence
+is a purchased item even when its wording is uppercase, abbreviated, generic,
+hyphenated, unfamiliar, or category-like.
+
+Classify a descriptive row as a non-item only when there is positive source
+evidence for that role and no same-row or contiguous item-level monetary,
+quantity, unit-price, or calculation evidence belongs to it.
+
+ITEM-BLOCK BOUNDARIES
+
+Keep the current item block open while contiguous non-descriptive rows
+coherently support its descriptive item.
+
+Close the block only when another descriptive purchased-item row begins or a
+clear receipt-level totals, tax, payment, or settlement section begins.
+
+Do not interpret a descriptive row and its adjacent supporting rows as unrelated
+records.
+
+An amount-only or calculation-only row must support a locally coherent
+preceding descriptive item block. It must not become an unnamed item and must
+not be attached forward to a later descriptive row when it coherently supports
+the preceding item.
+
+A supporting calculation row printed after an item-level amount may still
+belong to the same preceding item.
+
+MONETARY ROLES
+
+Determine monetary roles from their printed function within the complete item
+block.
+
+When a row expresses quantity multiplied by a price, the multiplied price is
+the unit price. A different, separately printed monetary result on that row is
+the line amount. When no separate result is printed on that row, inspect
+contiguous supporting rows for the explicitly printed line amount.
+
+Do not calculate the line amount.
+
+Numeric identifiers, article numbers, SKUs, EANs, PLUs, product codes, tax
+codes, and classification codes are not monetary values merely because they
+contain digits.
+
+Copy the descriptive item-name span exactly as printed, excluding same-row
+amounts, quantities, tax codes, and clearly separate identifiers.
+
+Copy line_amount and unit_price exactly as printed. Do not normalize, repair,
+reformat, change signs, or infer values.
+
+MONETARY ROLE PRECEDENCE
+
+For a completed purchased-item block, prioritize identifying the printed
+line_amount.
+
+When the block contains exactly one item-level monetary value and there is no
+explicit quantity-times-price expression, per-unit marker, or separately
+identified unit price:
+
+- assign that value to line_amount;
+- set unit_price to null.
+
+Do not copy the same value into both line_amount and unit_price merely because
+the item quantity may be one.
+
+Assign unit_price only when the source explicitly identifies a per-unit price,
+such as through a quantity-times-price expression, a price-per-unit marker, or
+another clearly separated unit-price field.
+
+When both a total item amount and a unit price are explicitly printed, assign
+each value to its corresponding role.
+A purchased item is complete once an explicit descriptive name and explicit
+printed line amount are identified.
+
+Do not withhold or merge the item merely because quantity, unit-price,
+identifier, or other supporting rows remain ambiguous.
+
+Assign unit_price only when it can be associated reliably. Otherwise return
+unit_price as null.
+
+Do not calculate either value.
+
+COMPLETENESS
+
+Before returning, account internally for every source row examined as one of:
+
+- part of a completed purchased-item block;
+- supporting evidence belonging to a completed purchased-item block;
+- a clearly identified non-item row.
+
+Do not silently omit an unresolved descriptive, amount, or calculation row.
+Revisit unresolved rows using their local preceding and following context.
+
+Return every completed purchased-item block exactly once under item_blocks and
+preserve printed order.
+
+When one or more source rows may belong to a purchased item but cannot be
+resolved into a complete block with a descriptive name and explicitly printed
+line amount, return those rows under unresolved_candidate_rows instead of
+silently omitting them.
+
+A source row must not appear in more than one returned item block or unresolved
+candidate group.
+
+Do not return merchant information, headings, addresses, tax summaries,
+receipt-level totals, discounts, payments, change, or unnamed supporting rows
+as purchased-item blocks.
+
+OUTPUT
+
+Emit the top-level fields in this exact order:
+
+1. item_blocks
+2. unresolved_candidate_rows
+
+Return only one JSON object matching OUTPUT_SCHEMA. Do not include explanations,
+markdown, code fences, or intermediate reasoning.
+
+<SOURCE_EVIDENCE>
+$source_evidence
+</SOURCE_EVIDENCE>
+
+<OUTPUT_SCHEMA>
+$output_schema
+</OUTPUT_SCHEMA>

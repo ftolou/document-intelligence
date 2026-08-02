@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "total-confusion-recovery-v2-4",
+  "title": "Final purchase total source evidence",
+  "description": "One literal source-grounded final purchase total, or an unresolved result.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "status",
+    "label_row",
+    "source_row",
+    "label_text",
+    "value_text"
+  ],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "resolved",
+        "unresolved"
+      ]
+    },
+    "label_row": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "source_row": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "label_text": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "value_text": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "status": {
+          "const": "resolved"
+        },
+        "label_row": {
+          "type": "string",
+          "pattern": "^R[0-9]{4}$"
+        },
+        "source_row": {
+          "type": "string",
+          "pattern": "^R[0-9]{4}$"
+        },
+        "label_text": {
+          "type": "string",
+          "pattern": ".*\\S.*"
+        },
+        "value_text": {
+          "type": "string",
+          "pattern": ".*\\S.*"
+        }
+      }
+    },
+    {
+      "properties": {
+        "status": {
+          "const": "unresolved"
+        },
+        "label_row": {
+          "type": "null"
+        },
+        "source_row": {
+          "type": "null"
+        },
+        "label_text": {
+          "type": "null"
+        },
+        "value_text": {
+          "type": "null"
+        }
+      }
+    }
+  ]
+}
