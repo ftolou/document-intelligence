@@ -155,6 +155,12 @@ class ParsingSettings:
 @dataclass(frozen=True, slots=True)
 class ValidationSettings:
     tolerance: float = 0.03
+    money_tolerance: float = 0.02
+    vat_rate_tolerance: float = 0.02
+
+    def __post_init__(self) -> None:
+        if self.tolerance < 0 or self.money_tolerance < 0 or self.vat_rate_tolerance < 0:
+            raise ValueError("Validation tolerances must be nonnegative.")
 
 
 @dataclass(frozen=True, slots=True)

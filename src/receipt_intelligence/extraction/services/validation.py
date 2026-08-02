@@ -4,17 +4,14 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from receipt_intelligence.extraction.contracts.common import ReadonlyJsonObject
-from receipt_intelligence.extraction.contracts.transcription import TranscriptionResult
-from receipt_intelligence.extraction.contracts.validation import ValidationReport
+from receipt_intelligence.extraction.contracts.validation import (
+    ValidationReport,
+    ValidationRequest,
+)
 
 
 class ReceiptValidationService(Protocol):
-    def validate(
-        self,
-        receipt: ReadonlyJsonObject,
-        transcription: TranscriptionResult,
-    ) -> ValidationReport: ...
+    def validate(self, request: ValidationRequest) -> ValidationReport: ...
 
 
 __all__ = ["ReceiptValidationService"]

@@ -9,6 +9,7 @@ from typing import Any
 
 from receipt_intelligence.extraction.contracts.extraction import StructuredExtractionResult
 from receipt_intelligence.extraction.contracts.transcription import TranscriptionResult
+from receipt_intelligence.extraction.contracts.validation import ValidationReport
 
 JsonObject = dict[str, Any]
 
@@ -20,6 +21,7 @@ class ExtractionPhase(str, Enum):  # noqa: UP042
     PREPARED = "prepared"
     TRANSCRIBED = "transcribed"
     EXTRACTED = "extracted"
+    VALIDATED = "validated"
     VISUAL_READY = "visual_ready"
     OVERVIEW_READY = "overview_ready"
     PARSED = "parsed"
@@ -51,6 +53,13 @@ class StructuredExtractionArtifacts:
     """Gemma scalar/item output produced by the next extraction stage."""
 
     result: StructuredExtractionResult | None = None
+
+
+@dataclass(slots=True)
+class ValidationArtifacts:
+    """Read-only deterministic report for the next extraction path."""
+
+    report: ValidationReport | None = None
 
 
 @dataclass(slots=True)

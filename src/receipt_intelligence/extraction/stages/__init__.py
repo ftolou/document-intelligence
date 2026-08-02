@@ -7,6 +7,7 @@ from receipt_intelligence.extraction.stages.parse import MainParsingStage
 from receipt_intelligence.extraction.stages.prepare import PreparationStage
 from receipt_intelligence.extraction.stages.repair import RepairAndCorrectionStage
 from receipt_intelligence.extraction.stages.transcribe import TranscriptionStage
+from receipt_intelligence.extraction.stages.validate import ValidationStage
 from receipt_intelligence.extraction.stages.visual import VisualEvidenceStage
 
 __all__ = [
@@ -14,6 +15,7 @@ __all__ = [
     "VisualEvidenceStage",
     "TranscriptionStage",
     "StructuredExtractionStage",
+    "ValidationStage",
     "SpatialOverviewStage",
     "MainParsingStage",
     "RepairAndCorrectionStage",

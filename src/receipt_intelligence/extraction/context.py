@@ -21,6 +21,7 @@ from receipt_intelligence.extraction.state import (
     StageContractError,
     StructuredExtractionArtifacts,
     TranscriptionArtifacts,
+    ValidationArtifacts,
     VisualArtifacts,
 )
 from receipt_intelligence.observability.timing import utc_now_iso
@@ -49,6 +50,7 @@ class ExtractionContext:
     prepared: PreparedArtifacts | None = None
     transcription: TranscriptionArtifacts | None = None
     structured_extraction: StructuredExtractionArtifacts | None = None
+    validation: ValidationArtifacts | None = None
     visual: VisualArtifacts | None = None
     overview: OverviewArtifacts | None = None
     parsed: ParsingArtifacts | None = None
@@ -103,6 +105,13 @@ class ExtractionContext:
         self.structured_extraction = StructuredExtractionArtifacts()
         return self.structured_extraction
 
+    def begin_validation_stage(self) -> ValidationArtifacts:
+        if self.validation is not None:
+            raise StageContractError("Validation artifacts were already initialized.")
+        self.require_structured_extraction()
+        self.validation = ValidationArtifacts()
+        return self.validation
+
     def begin_visual_stage(self) -> VisualArtifacts:
         if self.visual is not None:
             raise StageContractError("Visual artifacts were already initialized.")
@@ -149,6 +158,9 @@ class ExtractionContext:
 
     def require_structured_extraction(self) -> StructuredExtractionArtifacts:
         return _required(self.structured_extraction, "structured extraction artifacts")
+
+    def require_validation(self) -> ValidationArtifacts:
+        return _required(self.validation, "validation artifacts")
 
     def require_visual(self) -> VisualArtifacts:
         return _required(self.visual, "visual artifacts")

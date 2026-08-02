@@ -29,6 +29,7 @@ from receipt_intelligence.extraction.contracts.transcription import (
 from receipt_intelligence.extraction.contracts.validation import (
     ValidationCheck,
     ValidationReport,
+    ValidationRequest,
     ValidationSeverity,
     ValidationStatus,
 )
@@ -54,6 +55,7 @@ __all__ = [
     "TranscriptionResult",
     "ValidationCheck",
     "ValidationReport",
+    "ValidationRequest",
     "ValidationSeverity",
     "ValidationStatus",
 ]
