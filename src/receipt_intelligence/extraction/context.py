@@ -19,6 +19,7 @@ from receipt_intelligence.extraction.state import (
     PreparedArtifacts,
     RepairArtifacts,
     StageContractError,
+    StructuredExtractionArtifacts,
     TranscriptionArtifacts,
     VisualArtifacts,
 )
@@ -47,6 +48,7 @@ class ExtractionContext:
 
     prepared: PreparedArtifacts | None = None
     transcription: TranscriptionArtifacts | None = None
+    structured_extraction: StructuredExtractionArtifacts | None = None
     visual: VisualArtifacts | None = None
     overview: OverviewArtifacts | None = None
     parsed: ParsingArtifacts | None = None
@@ -94,6 +96,13 @@ class ExtractionContext:
         self.transcription = TranscriptionArtifacts()
         return self.transcription
 
+    def begin_structured_extraction_stage(self) -> StructuredExtractionArtifacts:
+        if self.structured_extraction is not None:
+            raise StageContractError("Structured extraction artifacts were already initialized.")
+        self.require_transcription()
+        self.structured_extraction = StructuredExtractionArtifacts()
+        return self.structured_extraction
+
     def begin_visual_stage(self) -> VisualArtifacts:
         if self.visual is not None:
             raise StageContractError("Visual artifacts were already initialized.")
@@ -137,6 +146,9 @@ class ExtractionContext:
 
     def require_transcription(self) -> TranscriptionArtifacts:
         return _required(self.transcription, "transcription artifacts")
+
+    def require_structured_extraction(self) -> StructuredExtractionArtifacts:
+        return _required(self.structured_extraction, "structured extraction artifacts")
 
     def require_visual(self) -> VisualArtifacts:
         return _required(self.visual, "visual artifacts")

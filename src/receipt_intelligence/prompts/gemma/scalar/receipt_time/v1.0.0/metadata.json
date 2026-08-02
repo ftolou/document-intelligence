@@ -1,0 +1,15 @@
+{
+  "id": "gemma.scalar.receipt_time",
+  "version": "1.0.0",
+  "status": "baseline",
+  "model_family": "gemma4",
+  "role": "user",
+  "kind": "instruction",
+  "description": "Scalar specialist prompt for receipt_time.",
+  "source_file": "experiment_batch_paddle_snapped_crops_qwen35_gemma_items_scalars_v7_5.py",
+  "source_symbol": "SCALAR_TASKS['receipt_time'][\"question\"]",
+  "content_file": "prompt.md",
+  "sha256": "ce5fc1a91c82d3246e410dddbfee173423a3d849e05ca4451bbb7943cf8aef5a",
+  "variables": [],
+  "change_summary": "Exact prompt text extracted from pipeline v7.5."
+}

@@ -10,6 +10,9 @@ from receipt_intelligence.application.ports import (
     ModelLifecycleCoordinator,
     VlmEngine,
 )
+from receipt_intelligence.extraction.services.structured_extraction import (
+    StructuredExtractionService,
+)
 from receipt_intelligence.extraction.services.transcription import TranscriptionService
 
 
@@ -20,6 +23,7 @@ class ExtractionDependencies:
     model_lifecycle: ModelLifecycleCoordinator
     event_sink: EventSink
     transcription_service: TranscriptionService | None = None
+    structured_extraction_service: StructuredExtractionService | None = None
 
 
 __all__ = ["ExtractionDependencies"]

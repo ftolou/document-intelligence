@@ -1,0 +1,15 @@
+{
+  "id": "gemma.scalar.payment_received",
+  "version": "1.0.0",
+  "status": "baseline",
+  "model_family": "gemma4",
+  "role": "user",
+  "kind": "instruction",
+  "description": "Scalar specialist prompt for payment_received.",
+  "source_file": "experiment_batch_paddle_snapped_crops_qwen35_gemma_items_scalars_v7_5.py",
+  "source_symbol": "SCALAR_TASKS['payment_received'][\"question\"]",
+  "content_file": "prompt.md",
+  "sha256": "b2af7699bebe05244747c8383e73d0e8d3b91da5033e613e93789b859b419194",
+  "variables": [],
+  "change_summary": "Exact prompt text extracted from pipeline v7.5."
+}

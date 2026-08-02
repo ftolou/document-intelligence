@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "transaction_status": {
+      "type": "string",
+      "enum": [
+        "completed",
+        "cancelled",
+        "refunded",
+        "not_clear"
+      ]
+    }
+  },
+  "required": [
+    "transaction_status"
+  ]
+}

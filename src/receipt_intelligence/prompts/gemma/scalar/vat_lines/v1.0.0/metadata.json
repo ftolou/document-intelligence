@@ -1,0 +1,15 @@
+{
+  "id": "gemma.scalar.vat_lines",
+  "version": "1.0.0",
+  "status": "baseline",
+  "model_family": "gemma4",
+  "role": "user",
+  "kind": "instruction",
+  "description": "Scalar specialist prompt for vat_lines.",
+  "source_file": "experiment_batch_paddle_snapped_crops_qwen35_gemma_items_scalars_v7_5.py",
+  "source_symbol": "SCALAR_TASKS['vat_lines'][\"question\"]",
+  "content_file": "prompt.md",
+  "sha256": "7d6610738b2e9a6df5beb3547230e681c4643eb8ea7b313e87c05f51ffb1aeaa",
+  "variables": [],
+  "change_summary": "Exact prompt text extracted from pipeline v7.5."
+}

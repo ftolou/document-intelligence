@@ -1,0 +1,15 @@
+{
+  "id": "gemma.scalar.payment_method",
+  "version": "1.0.0",
+  "status": "baseline",
+  "model_family": "gemma4",
+  "role": "user",
+  "kind": "instruction",
+  "description": "Scalar specialist prompt for payment_method.",
+  "source_file": "experiment_batch_paddle_snapped_crops_qwen35_gemma_items_scalars_v7_5.py",
+  "source_symbol": "SCALAR_TASKS['payment_method'][\"question\"]",
+  "content_file": "prompt.md",
+  "sha256": "67d613048193b79a7ad5d74e84a2ec56b74e3d6eb1b185fd41e3fc72dceb1692",
+  "variables": [],
+  "change_summary": "Exact prompt text extracted from pipeline v7.5."
+}

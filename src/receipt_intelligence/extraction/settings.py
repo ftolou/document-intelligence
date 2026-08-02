@@ -109,15 +109,47 @@ class TranscriptionSettings:
             raise ValueError("Transcription crop preprocessing values must be positive.")
 
 
+DEFAULT_SCALAR_TASKS = (
+    "merchant_name",
+    "merchant_address",
+    "currency",
+    "final_purchase_total",
+    "discount_total",
+    "vat_amount",
+    "vat_lines",
+)
+
+
 @dataclass(frozen=True, slots=True)
 class ParsingSettings:
     ollama_url: str
     model: str
-    num_ctx: int = 24384
+    num_ctx: int = 16384
     num_predict: int = 8192
+    item_num_predict: int = 4096
     timeout_seconds: float = 300.0
+    keep_alive: str | None = "10m"
+    temperature: float = 0.0
+    seed: int = 42
+    parallelism: int = 2
+    scalar_tasks: tuple[str, ...] = DEFAULT_SCALAR_TASKS
+    skip_scalars: bool = False
+    skip_items: bool = False
+    think: bool = False
     json_retry_count: int = 1
     format_json: bool = True
+
+    def __post_init__(self) -> None:
+        if not str(self.ollama_url or "").strip() or not str(self.model or "").strip():
+            raise ValueError("ParsingSettings requires ollama_url and model.")
+        if self.num_ctx < 1 or self.num_predict < 1 or self.item_num_predict < 1:
+            raise ValueError("Parsing token limits must be positive.")
+        if self.timeout_seconds <= 0 or self.parallelism < 1:
+            raise ValueError("Parsing timeout and parallelism must be positive.")
+        scalar_tasks = tuple(dict.fromkeys(str(value).strip() for value in self.scalar_tasks))
+        if any(not value for value in scalar_tasks):
+            raise ValueError("Parsing scalar task names must not be empty.")
+        object.__setattr__(self, "scalar_tasks", scalar_tasks)
 
 
 @dataclass(frozen=True, slots=True)
@@ -224,6 +256,7 @@ class PipelineSettings:
                 num_ctx=config.num_ctx,
                 num_predict=config.num_predict,
                 timeout_seconds=config.llm_timeout_seconds,
+                keep_alive=config.keep_alive,
                 json_retry_count=config.json_retry_count,
                 format_json=config.format_json,
             ),
@@ -255,6 +288,7 @@ __all__ = [
     "CategorizationSettings",
     "CorrectionSettings",
     "CropPlanningSettings",
+    "DEFAULT_SCALAR_TASKS",
     "DetectionSettings",
     "ParsingSettings",
     "PipelineSettings",

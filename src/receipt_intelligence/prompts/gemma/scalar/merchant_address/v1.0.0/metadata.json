@@ -1,0 +1,15 @@
+{
+  "id": "gemma.scalar.merchant_address",
+  "version": "1.0.0",
+  "status": "baseline",
+  "model_family": "gemma4",
+  "role": "user",
+  "kind": "instruction",
+  "description": "Scalar specialist prompt for merchant_address.",
+  "source_file": "experiment_batch_paddle_snapped_crops_qwen35_gemma_items_scalars_v7_5.py",
+  "source_symbol": "SCALAR_TASKS['merchant_address'][\"question\"]",
+  "content_file": "prompt.md",
+  "sha256": "1791dfec476b61bd64ebfe6c6da2610ce40b4a5ef072f247f26ba7f55ecdae2f",
+  "variables": [],
+  "change_summary": "Exact prompt text extracted from pipeline v7.5."
+}

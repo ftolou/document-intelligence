@@ -1,0 +1,48 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "vat_lines": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "source_rows": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "rate_percent": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "net_amount": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "vat_amount": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "source_rows",
+          "rate_percent",
+          "net_amount",
+          "vat_amount"
+        ]
+      }
+    }
+  },
+  "required": [
+    "vat_lines"
+  ]
+}

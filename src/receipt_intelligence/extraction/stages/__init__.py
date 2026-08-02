@@ -1,5 +1,6 @@
 """Default receipt extraction stages."""
 
+from receipt_intelligence.extraction.stages.extract import StructuredExtractionStage
 from receipt_intelligence.extraction.stages.finalize import FinalizationStage
 from receipt_intelligence.extraction.stages.overview import SpatialOverviewStage
 from receipt_intelligence.extraction.stages.parse import MainParsingStage
@@ -12,6 +13,7 @@ __all__ = [
     "PreparationStage",
     "VisualEvidenceStage",
     "TranscriptionStage",
+    "StructuredExtractionStage",
     "SpatialOverviewStage",
     "MainParsingStage",
     "RepairAndCorrectionStage",

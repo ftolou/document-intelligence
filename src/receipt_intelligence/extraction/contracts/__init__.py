@@ -11,7 +11,12 @@ from receipt_intelligence.extraction.contracts.correction import (
     CorrectionResult,
     CorrectionTargetOutcome,
 )
-from receipt_intelligence.extraction.contracts.extraction import StructuredExtractionResult
+from receipt_intelligence.extraction.contracts.extraction import (
+    GemmaTaskResult,
+    GemmaTaskStatus,
+    StructuredExtractionRequest,
+    StructuredExtractionResult,
+)
 from receipt_intelligence.extraction.contracts.result import ReceiptPipelineResult
 from receipt_intelligence.extraction.contracts.transcription import (
     BoundingBox,
@@ -35,11 +40,14 @@ __all__ = [
     "CorrectionAttemptStatus",
     "CorrectionResult",
     "CorrectionTargetOutcome",
+    "GemmaTaskResult",
+    "GemmaTaskStatus",
     "JsonObject",
     "ReadonlyJsonObject",
     "ReceiptCrop",
     "ReceiptPipelineResult",
     "StageArtifact",
+    "StructuredExtractionRequest",
     "StructuredExtractionResult",
     "TranscriptionFragment",
     "TranscriptionRequest",

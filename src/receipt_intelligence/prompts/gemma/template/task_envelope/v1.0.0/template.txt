@@ -1,0 +1,8 @@
+$question
+
+Required JSON schema:
+$schema_json
+
+----- BEGIN TASK EVIDENCE -----
+$evidence
+----- END TASK EVIDENCE -----

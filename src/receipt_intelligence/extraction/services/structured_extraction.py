@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from receipt_intelligence.extraction.contracts.extraction import StructuredExtractionResult
-from receipt_intelligence.extraction.contracts.transcription import TranscriptionResult
+from receipt_intelligence.extraction.contracts.extraction import (
+    StructuredExtractionRequest,
+    StructuredExtractionResult,
+)
 
 
 class StructuredExtractionService(Protocol):
-    def extract(self, transcription: TranscriptionResult) -> StructuredExtractionResult: ...
+    def extract(self, request: StructuredExtractionRequest) -> StructuredExtractionResult: ...
 
 
 __all__ = ["StructuredExtractionService"]

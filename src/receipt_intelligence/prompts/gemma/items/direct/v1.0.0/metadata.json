@@ -1,0 +1,15 @@
+{
+  "id": "gemma.items.direct",
+  "version": "1.0.0",
+  "status": "baseline",
+  "model_family": "gemma4",
+  "role": "user",
+  "kind": "instruction",
+  "description": "Direct extraction of top-level purchased or charged items.",
+  "source_file": "experiment_batch_paddle_snapped_crops_qwen35_gemma_items_scalars_v7_5.py",
+  "source_symbol": "DIRECT_ITEMS_QUESTION",
+  "content_file": "prompt.md",
+  "sha256": "d8e0094c5e4be258ac51765e2a382dfc493171bd1af6bbaae3d96218d732d043",
+  "variables": [],
+  "change_summary": "Exact prompt text extracted from pipeline v7.5."
+}

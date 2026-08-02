@@ -7,6 +7,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from receipt_intelligence.extraction.contracts.extraction import StructuredExtractionResult
 from receipt_intelligence.extraction.contracts.transcription import TranscriptionResult
 
 JsonObject = dict[str, Any]
@@ -18,6 +19,7 @@ class ExtractionPhase(str, Enum):  # noqa: UP042
     CREATED = "created"
     PREPARED = "prepared"
     TRANSCRIBED = "transcribed"
+    EXTRACTED = "extracted"
     VISUAL_READY = "visual_ready"
     OVERVIEW_READY = "overview_ready"
     PARSED = "parsed"
@@ -42,6 +44,13 @@ class TranscriptionArtifacts:
     """Canonical Paddle/Qwen evidence produced by the next transcription stage."""
 
     result: TranscriptionResult | None = None
+
+
+@dataclass(slots=True)
+class StructuredExtractionArtifacts:
+    """Gemma scalar/item output produced by the next extraction stage."""
+
+    result: StructuredExtractionResult | None = None
 
 
 @dataclass(slots=True)
