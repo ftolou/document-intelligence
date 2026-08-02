@@ -5,6 +5,7 @@ from receipt_intelligence.extraction.stages.correct import CorrectionStage
 from receipt_intelligence.extraction.stages.extract import StructuredExtractionStage
 from receipt_intelligence.extraction.stages.finalize import FinalizationStage
 from receipt_intelligence.extraction.stages.overview import SpatialOverviewStage
+from receipt_intelligence.extraction.stages.next_prepare import NextPreparationStage
 from receipt_intelligence.extraction.stages.parse import MainParsingStage
 from receipt_intelligence.extraction.stages.prepare import PreparationStage
 from receipt_intelligence.extraction.stages.publish import NextFinalizationStage
@@ -15,6 +16,7 @@ from receipt_intelligence.extraction.stages.visual import VisualEvidenceStage
 
 __all__ = [
     "PreparationStage",
+    "NextPreparationStage",
     "VisualEvidenceStage",
     "TranscriptionStage",
     "StructuredExtractionStage",

@@ -15,6 +15,10 @@ from receipt_intelligence.extraction import (
 )
 from receipt_intelligence.extraction.compatibility import extraction_request_from_mapping
 from receipt_intelligence.extraction.dependencies import ExtractionDependencies
+from receipt_intelligence.extraction.strategy import (
+    ExtractionStrategy,
+    resolve_extraction_strategy,
+)
 from receipt_intelligence.extraction.support import (
     merge_visual_evidence as _merge_visual_evidence,
 )
@@ -28,8 +32,29 @@ def run_receipt_extraction(
     request: ExtractionRequest,
     *,
     dependencies: ExtractionDependencies | None = None,
+    extraction_strategy: str | ExtractionStrategy | None = None,
 ) -> dict[str, Any]:
-    """Run receipt extraction from an explicit immutable request contract."""
+    """Run one receipt through the selected extraction workflow.
+
+    ``current`` remains the default and preserves the existing production path.
+    ``next`` activates the staged Paddle/Qwen/Gemma workflow introduced in Phases 1-6.
+    """
+
+    strategy = resolve_extraction_strategy(extraction_strategy)
+    if strategy is ExtractionStrategy.NEXT:
+        from receipt_intelligence.extraction.next_composition import (
+            build_next_extraction_dependencies,
+        )
+        from receipt_intelligence.extraction.next_factory import (
+            build_next_extraction_workflow,
+        )
+
+        context = ExtractionContext(
+            config=request,
+            dependencies=dependencies or build_next_extraction_dependencies(request),
+        )
+        completed = build_next_extraction_workflow().run(context)
+        return _next_application_result(completed)
 
     context = ExtractionContext(
         config=request,
@@ -37,6 +62,20 @@ def run_receipt_extraction(
     )
     workflow = build_default_extraction_workflow()
     return workflow.run(context).as_result()
+
+
+def _next_application_result(context: ExtractionContext) -> dict[str, Any]:
+    finalized = context.require_finalized().next_finalization
+    if finalized is None:
+        raise RuntimeError("Next extraction workflow finished without finalization result.")
+    result = finalized.as_application_result()
+    result["paths"] = dict(context.paths)
+    result["logs"] = list(context.logs)
+    result["observability"] = {
+        "stage_trace": [dict(entry) for entry in context.stage_trace],
+        "metrics_path": context.paths.get("extraction_metrics"),
+    }
+    return result
 
 
 def run_integrated_receipt_pipeline(
@@ -81,6 +120,7 @@ def run_integrated_receipt_pipeline(
     ollama_start_command: str = "",
     ollama_reload_prompt: str = "ok",
     ollama_gpu_handoff_wait_seconds: float = 0.0,
+    extraction_strategy: str | ExtractionStrategy | None = None,
     **legacy_options: Any,
 ) -> dict[str, Any]:
     """Backward-compatible adapter that rejects unsupported options.
@@ -138,7 +178,10 @@ def run_integrated_receipt_pipeline(
     values.update(legacy_options)
 
     request = extraction_request_from_mapping(values)
-    return run_receipt_extraction(request)
+    return run_receipt_extraction(
+        request,
+        extraction_strategy=extraction_strategy,
+    )
 
 
 __all__ = [
