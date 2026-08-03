@@ -136,9 +136,7 @@ def test_item_discount_arithmetic_routes_to_extended_item_evidence_strategy() ->
         Path("src/receipt_intelligence/extraction/correction/config/production.json")
     )
     assert profile.profile_version == "1.1.0"
-    assert profile.routes["ITEM_DISCOUNT_ARITHMETIC"] == (
-        "item_sum_source_blocks_v3",
-    )
+    assert profile.routes["ITEM_DISCOUNT_ARITHMETIC"] == ("item_sum_source_blocks_v3",)
     assert profile.strategies["item_sum_source_blocks_v3"].prompt_version == "1.1.0"
 
 

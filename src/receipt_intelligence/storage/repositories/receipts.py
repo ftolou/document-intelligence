@@ -12,12 +12,16 @@ from receipt_intelligence.receipt_compat import (
     is_next_receipt,
     item_line_total,
     receipt_currency,
-    receipt_date as compat_receipt_date,
     receipt_grand_total,
     receipt_paid_total,
     receipt_payment_method,
     receipt_subtotal,
     receipt_tax_total,
+)
+from receipt_intelligence.receipt_compat import (
+    receipt_date as compat_receipt_date,
+)
+from receipt_intelligence.receipt_compat import (
     receipt_time as compat_receipt_time,
 )
 from receipt_intelligence.storage.fingerprints import file_sha256, receipt_core

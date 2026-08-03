@@ -134,11 +134,7 @@ def _normalize_item_evidence(
             path=f"/unresolved_candidate_rows/{index}/source_rows",
             operations=operations,
         )
-        removable = sorted(
-            key
-            for key in group
-            if key in _ITEM_UNRESOLVED_DECORATIVE_FIELDS
-        )
+        removable = sorted(key for key in group if key in _ITEM_UNRESOLVED_DECORATIVE_FIELDS)
         if removable and "source_rows" in group:
             before = copy.deepcopy(group)
             for key in removable:

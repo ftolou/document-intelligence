@@ -7,9 +7,7 @@ from receipt_intelligence.adapters.text_detection.paddle import (
 
 
 def test_ollama_multimodal_accepts_qwen_thinking_transport_field() -> None:
-    text, source = _extract_text(
-        {"message": {"content": "", "thinking": "VISIBLE RECEIPT TEXT"}}
-    )
+    text, source = _extract_text({"message": {"content": "", "thinking": "VISIBLE RECEIPT TEXT"}})
 
     assert text == "VISIBLE RECEIPT TEXT"
     assert source == "message.thinking"

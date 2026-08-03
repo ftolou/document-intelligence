@@ -72,9 +72,7 @@ class ExistingReceiptCategorizationService(ReceiptCategorizationService):
             llm_gateway=self._llm_gateway,
         )
         status = _status(raw.get("status"))
-        candidate = (
-            raw.get("receipt") if isinstance(raw.get("receipt"), dict) else request.receipt
-        )
+        candidate = raw.get("receipt") if isinstance(raw.get("receipt"), dict) else request.receipt
         receipt = _category_overlay(request.receipt, candidate)
         return CategorizationResult(
             status=status,
@@ -149,9 +147,7 @@ def _category_overlay(original: dict[str, Any], candidate: dict[str, Any]) -> di
 
     result = copy.deepcopy(original)
     original_items = result.get("items") if isinstance(result.get("items"), list) else []
-    candidate_items = (
-        candidate.get("items") if isinstance(candidate.get("items"), list) else []
-    )
+    candidate_items = candidate.get("items") if isinstance(candidate.get("items"), list) else []
     for index, item in enumerate(original_items):
         if not isinstance(item, dict) or index >= len(candidate_items):
             continue
@@ -162,9 +158,7 @@ def _category_overlay(original: dict[str, Any], candidate: dict[str, Any]) -> di
             if key in candidate_item:
                 item[key] = copy.deepcopy(candidate_item[key])
 
-    original_merchant = (
-        result.get("merchant") if isinstance(result.get("merchant"), dict) else {}
-    )
+    original_merchant = result.get("merchant") if isinstance(result.get("merchant"), dict) else {}
     candidate_merchant = (
         candidate.get("merchant") if isinstance(candidate.get("merchant"), dict) else {}
     )

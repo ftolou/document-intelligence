@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from enum import StrEnum
-from typing import Mapping
 
 
 class ExtractionStrategy(StrEnum):

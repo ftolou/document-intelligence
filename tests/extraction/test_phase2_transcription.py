@@ -82,10 +82,7 @@ def test_canonical_rows_are_ordered_and_transport_wrappers_are_removed() -> None
 
     assert [row.text for row in rows] == ["ARTIKEL 3,00", "SUMME 3,00"]
     assert serialize_canonical_rows(rows) == (
-        "BEGIN_RECEIPT\n"
-        "R0001 :: ARTIKEL 3,00\n"
-        "R0002 :: SUMME 3,00\n"
-        "END_RECEIPT"
+        "BEGIN_RECEIPT\nR0001 :: ARTIKEL 3,00\nR0002 :: SUMME 3,00\nEND_RECEIPT"
     )
 
 
@@ -107,9 +104,7 @@ def test_crop_count_uses_rows_and_height_width_aspect_ratio() -> None:
 def test_detector_failure_uses_whole_image_without_post_validation(tmp_path: Path) -> None:
     image_path = tmp_path / "receipt.png"
     Image.new("RGB", (100, 200), "white").save(image_path)
-    detector = FakeDetector(
-        TextDetectionResult(regions=(), image_width=100, image_height=200)
-    )
+    detector = FakeDetector(TextDetectionResult(regions=(), image_width=100, image_height=200))
     gateway = FakeGateway({"GFULL": "SHOP\nSUMME 5,00"})
     service = CanonicalReceiptTranscriptionService(
         detector=detector,
@@ -136,9 +131,7 @@ def test_failed_crop_discards_partial_output_and_retries_whole_image(tmp_path: P
     image_path = tmp_path / "receipt.png"
     Image.new("RGB", (100, 600), "white").save(image_path)
     regions = tuple(_region(index, 20.0 + index * 40.0) for index in range(12))
-    detector = FakeDetector(
-        TextDetectionResult(regions=regions, image_width=100, image_height=600)
-    )
+    detector = FakeDetector(TextDetectionResult(regions=regions, image_width=100, image_height=600))
     gateway = FakeGateway(
         {
             "G001": "PARTIAL SHOULD BE DISCARDED",
@@ -177,9 +170,7 @@ def test_failed_crop_discards_partial_output_and_retries_whole_image(tmp_path: P
 def test_empty_qwen_text_is_a_transport_failure(tmp_path: Path) -> None:
     image_path = tmp_path / "receipt.png"
     Image.new("RGB", (100, 200), "white").save(image_path)
-    detector = FakeDetector(
-        TextDetectionResult(regions=(), image_width=100, image_height=200)
-    )
+    detector = FakeDetector(TextDetectionResult(regions=(), image_width=100, image_height=200))
 
     class EmptyGateway:
         def generate(self, request: MultimodalGenerationRequest) -> MultimodalGenerationResult:

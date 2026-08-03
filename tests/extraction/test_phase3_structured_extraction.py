@@ -20,7 +20,18 @@ class FakeChatGateway:
             "merchant_name": {"merchant_name": "Testmarkt"},
             "currency": {"currency": "EUR"},
             "final_purchase_total": {"final_purchase_total": 3.5, "currency": "EUR"},
-            "direct_receipt_items": {"items": [{"name": "Milch", "final_price": 3.5, "quantity": None, "unit": None, "discount_amount": None, "original_price": None}]},
+            "direct_receipt_items": {
+                "items": [
+                    {
+                        "name": "Milch",
+                        "final_price": 3.5,
+                        "quantity": None,
+                        "unit": None,
+                        "discount_amount": None,
+                        "original_price": None,
+                    }
+                ]
+            },
         }
         return ChatGenerationResult(text=json.dumps(answers[operation]))
 
@@ -45,7 +56,9 @@ def test_service_assembles_scalars_and_items(tmp_path: Path) -> None:
             run_id="receipt-1",
             transcription=TranscriptionResult(
                 canonical_text="R0001 :: Testmarkt\nR0002 :: Milch 3,50",
-                rows=(), crops=(), fragments=(),
+                rows=(),
+                crops=(),
+                fragments=(),
             ),
         )
     )
@@ -56,7 +69,18 @@ def test_service_assembles_scalars_and_items(tmp_path: Path) -> None:
 
 
 def test_item_contract_is_read_only_and_reports_missing_price() -> None:
-    answer = {"items": [{"name": "Menu component", "final_price": None, "quantity": None, "unit": None, "discount_amount": None, "original_price": None}]}
+    answer = {
+        "items": [
+            {
+                "name": "Menu component",
+                "final_price": None,
+                "quantity": None,
+                "unit": None,
+                "discount_amount": None,
+                "original_price": None,
+            }
+        ]
+    }
     before = json.loads(json.dumps(answer))
     report = validate_direct_items(answer)
     assert answer == before

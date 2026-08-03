@@ -68,8 +68,7 @@ class GemmaTaskRunner:
             answer = json.loads(result.text)
         except json.JSONDecodeError as exc:
             raise RuntimeError(
-                f"Gemma task {definition.task_name!r} returned invalid JSON: "
-                f"{result.text[:1000]}"
+                f"Gemma task {definition.task_name!r} returned invalid JSON: {result.text[:1000]}"
             ) from exc
         if not isinstance(answer, dict):
             raise RuntimeError(f"Gemma task {definition.task_name!r} did not return an object.")

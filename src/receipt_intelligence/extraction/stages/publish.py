@@ -32,7 +32,12 @@ class NextFinalizationStage:
         transcription = context.require_transcription().result
         finalization = context.require_finalized()
         categorization = finalization.next_categorization
-        if correction is None or extraction is None or transcription is None or categorization is None:
+        if (
+            correction is None
+            or extraction is None
+            or transcription is None
+            or categorization is None
+        ):
             raise StageContractError(
                 "NextFinalizationStage requires transcription, extraction, correction, and "
                 "categorization results."
@@ -72,9 +77,7 @@ class NextFinalizationStage:
                     "correction": {
                         "changed": correction.changed,
                         "corrected_codes": sorted(correction.corrected_codes),
-                        "remaining_failed_codes": sorted(
-                            correction.final_validation.failed_codes
-                        ),
+                        "remaining_failed_codes": sorted(correction.final_validation.failed_codes),
                         "attempt_count": len(correction.attempts),
                     },
                 },

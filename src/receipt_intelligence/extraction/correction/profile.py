@@ -34,9 +34,7 @@ class CorrectionProfile:
         return {
             "profile_version": self.profile_version,
             "automatic_patching": self.automatic_patching,
-            "retain_accepted_partial_corrections": (
-                self.retain_accepted_partial_corrections
-            ),
+            "retain_accepted_partial_corrections": (self.retain_accepted_partial_corrections),
             "max_rounds": self.max_rounds,
             "source_path": str(self.source_path),
             "routes": {key: list(value) for key, value in self.routes.items()},
@@ -124,9 +122,7 @@ def load_correction_profile(path: Path) -> CorrectionProfile:
         chain = tuple(str(value) for value in raw_chain)
         unknown = [value for value in chain if value not in strategies]
         if unknown:
-            raise ValueError(
-                f"Route {validation_code!r} references unknown strategies: {unknown}"
-            )
+            raise ValueError(f"Route {validation_code!r} references unknown strategies: {unknown}")
         if len(set(chain)) != len(chain):
             raise ValueError(f"Route {validation_code!r} contains duplicates")
         routes[validation_code] = chain

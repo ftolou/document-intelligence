@@ -10,7 +10,6 @@ from receipt_intelligence.receipt_compat import (
     validation_for_review,
     validation_issues,
 )
-
 from receipt_intelligence.storage.fingerprints import (
     duplicate_score_against_row,
     file_sha256,

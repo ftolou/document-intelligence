@@ -87,9 +87,7 @@ def test_review_projection_exposes_next_numbers_without_mutating_receipt() -> No
     receipt = _next_receipt()
     projected = to_review_document(receipt)
 
-    assert projected["merchant"]["address"] == (
-        "Josef-Landes-Straße 44, 87600 Kaufbeuren"
-    )
+    assert projected["merchant"]["address"] == ("Josef-Landes-Straße 44, 87600 Kaufbeuren")
     assert projected["currency"] == "EUR"
     assert projected["receipt_number"] == "8620"
     assert projected["totals"] == {
@@ -105,9 +103,7 @@ def test_review_projection_exposes_next_numbers_without_mutating_receipt() -> No
         "KRAWATTE",
         "Louie Winter",
     ]
-    assert projected["validation"]["issues"][0]["code"] == (
-        "ITEM_DISCOUNT_ARITHMETIC"
-    )
+    assert projected["validation"]["issues"][0]["code"] == ("ITEM_DISCOUNT_ARITHMETIC")
     assert isinstance(receipt["merchant"]["address"], dict)
     assert "line_total" not in receipt["items"][0]
 
@@ -123,15 +119,11 @@ def test_review_edits_update_canonical_next_paths_only() -> None:
             "paid_total": "110.24",
             "currency": "EUR",
         },
-        [
-            {"index": 0, "description": "KRAWATTE EDITED", "line_total": "14.24"}
-        ],
+        [{"index": 0, "description": "KRAWATTE EDITED", "line_total": "14.24"}],
         {"status": "needs_review", "reviewer": "FT"},
     )
 
-    assert receipt["merchant"]["address"] == {
-        "formatted": "New Street 1, 40225 Düsseldorf"
-    }
+    assert receipt["merchant"]["address"] == {"formatted": "New Street 1, 40225 Düsseldorf"}
     assert receipt["totals"]["net_amount"]["net_amount"] == 90.0
     assert receipt["tax"]["vat_amount"]["vat_amount"] == 20.24
     assert receipt["totals"]["final_purchase_total"]["final_purchase_total"] == 110.24

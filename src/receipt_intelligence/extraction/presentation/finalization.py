@@ -191,8 +191,7 @@ def _categorization_artifact(
         else {}
     )
     return {
-        "schema_version": receipt_meta.get("schema_version")
-        or "v14_14_item_categories_1",
+        "schema_version": receipt_meta.get("schema_version") or "v14_14_item_categories_1",
         "app_version": app_version,
         "status": categorization.status.value,
         "categories": [dict(value) for value in categorization.categories],

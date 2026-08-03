@@ -67,12 +67,7 @@ def test_observability_timing_does_not_eagerly_import_readiness() -> None:
 
 
 def test_domain_taxonomy_has_no_inward_application_dependencies() -> None:
-    taxonomy_path = (
-        SRC_ROOT
-        / "receipt_intelligence"
-        / "domain"
-        / "categorization_taxonomy.py"
-    )
+    taxonomy_path = SRC_ROOT / "receipt_intelligence" / "domain" / "categorization_taxonomy.py"
     tree = ast.parse(taxonomy_path.read_text(encoding="utf-8"), filename=str(taxonomy_path))
     imported_modules: list[str] = []
     for node in ast.walk(tree):
@@ -89,9 +84,5 @@ def test_domain_taxonomy_has_no_inward_application_dependencies() -> None:
         "receipt_intelligence.storage",
         "receipt_intelligence.web",
     )
-    violations = [
-        module
-        for module in imported_modules
-        if module.startswith(forbidden_prefixes)
-    ]
+    violations = [module for module in imported_modules if module.startswith(forbidden_prefixes)]
     assert violations == []

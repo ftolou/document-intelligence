@@ -26,14 +26,17 @@ from receipt_intelligence.extraction.validation.rules.base import ValidationRule
 
 class DeterministicValidationEngine(ReceiptValidationService):
     def __init__(self, rules: Sequence[ValidationRule] | None = None) -> None:
-        self._rules = tuple(rules or (
-            ReceiptAmountRule(),
-            ItemRules(),
-            TotalRules(),
-            VatRules(),
-            PaymentRule(),
-            CurrencyRule(),
-        ))
+        self._rules = tuple(
+            rules
+            or (
+                ReceiptAmountRule(),
+                ItemRules(),
+                TotalRules(),
+                VatRules(),
+                PaymentRule(),
+                CurrencyRule(),
+            )
+        )
 
     def validate(self, request: ValidationRequest) -> ValidationReport:
         facts = ValidationFacts.build(request)

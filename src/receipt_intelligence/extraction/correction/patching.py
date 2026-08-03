@@ -11,6 +11,7 @@ PATCH_FIELDS_BY_OPERATION: dict[str, set[str]] = {
     "remove_array_elements": {"op", "reason", "path", "indices"},
 }
 
+
 def _escape(token: str) -> str:
     return token.replace("~", "~0").replace("/", "~1")
 
@@ -87,7 +88,11 @@ def validate_patch(
 ) -> dict[str, Any]:
     errors: list[dict[str, Any]] = []
     if not isinstance(answer, dict) or set(answer) != {"patches"}:
-        return {"status": "invalid", "errors": [{"code": "PATCH_ENVELOPE_INVALID"}], "patch_count": 0}
+        return {
+            "status": "invalid",
+            "errors": [{"code": "PATCH_ENVELOPE_INVALID"}],
+            "patch_count": 0,
+        }
     patches = answer.get("patches")
     if not isinstance(patches, list):
         return {"status": "invalid", "errors": [{"code": "PATCHES_NOT_ARRAY"}], "patch_count": 0}
@@ -106,10 +111,18 @@ def validate_patch(
             continue
         op = patch.get("op")
         if op not in PATCH_FIELDS_BY_OPERATION:
-            errors.append({"code": "UNSUPPORTED_PATCH_OPERATION", "location": f"{location}.op", "value": op})
+            errors.append(
+                {"code": "UNSUPPORTED_PATCH_OPERATION", "location": f"{location}.op", "value": op}
+            )
             continue
         if op not in permitted_operations:
-            errors.append({"code": "OPERATION_NOT_PERMITTED_FOR_TARGET", "location": f"{location}.op", "value": op})
+            errors.append(
+                {
+                    "code": "OPERATION_NOT_PERMITTED_FOR_TARGET",
+                    "location": f"{location}.op",
+                    "value": op,
+                }
+            )
         if set(patch) != PATCH_FIELDS_BY_OPERATION[op]:
             errors.append({"code": "PATCH_FIELDS_DO_NOT_MATCH_OPERATION", "location": location})
         reason = patch.get("reason")
@@ -134,7 +147,11 @@ def validate_patch(
                     raise ValueError("path_is_not_array")
                 if op == "replace_array_element":
                     array_index = patch.get("index")
-                    if isinstance(array_index, bool) or not isinstance(array_index, int) or not 0 <= array_index < len(array):
+                    if (
+                        isinstance(array_index, bool)
+                        or not isinstance(array_index, int)
+                        or not 0 <= array_index < len(array)
+                    ):
                         raise ValueError("array_index_out_of_range")
                     if not _supported_json(patch.get("value")):
                         raise ValueError("unsupported_json_value")
@@ -145,22 +162,40 @@ def validate_patch(
                         raise ValueError("unsupported_json_value")
                     if array_index is None:
                         array.append(copy.deepcopy(patch.get("value")))
-                    elif isinstance(array_index, int) and not isinstance(array_index, bool) and 0 <= array_index <= len(array):
+                    elif (
+                        isinstance(array_index, int)
+                        and not isinstance(array_index, bool)
+                        and 0 <= array_index <= len(array)
+                    ):
                         array.insert(array_index, copy.deepcopy(patch.get("value")))
                     else:
                         raise ValueError("insert_index_out_of_range")
                 elif op == "remove_array_elements":
                     indices = patch.get("indices")
-                    if not isinstance(indices, list) or not indices or len(set(indices)) != len(indices):
+                    if (
+                        not isinstance(indices, list)
+                        or not indices
+                        or len(set(indices)) != len(indices)
+                    ):
                         raise ValueError("indices_invalid")
-                    if any(isinstance(value, bool) or not isinstance(value, int) or not 0 <= value < len(array) for value in indices):
+                    if any(
+                        isinstance(value, bool)
+                        or not isinstance(value, int)
+                        or not 0 <= value < len(array)
+                        for value in indices
+                    ):
                         raise ValueError("array_index_out_of_range")
                     for value in sorted(indices, reverse=True):
                         del array[value]
         except (KeyError, ValueError) as exc:
-            errors.append({"code": "INVALID_PATCH_OPERATION", "location": location, "message": str(exc)})
-    return {"status": "invalid" if errors else "valid", "errors": errors, "patch_count": len(patches)}
-
+            errors.append(
+                {"code": "INVALID_PATCH_OPERATION", "location": location, "message": str(exc)}
+            )
+    return {
+        "status": "invalid" if errors else "valid",
+        "errors": errors,
+        "patch_count": len(patches),
+    }
 
 
 def apply_patch(receipt: dict[str, Any], answer: dict[str, Any]) -> dict[str, Any]:
@@ -215,20 +250,48 @@ def target_for_strategy(
             for field_name in ("final_price", "original_price", "discount_amount")
             if field_name in item
         ]
-        operations = (["replace_value"] if value_paths else []) + (["insert_array_element"] if isinstance(receipt.get("items"), list) else [])
-        return {**base, "permitted_operations": operations, "permitted_value_paths": value_paths, "permitted_array_paths": ["/items"] if isinstance(receipt.get("items"), list) else [], "model_patch_supported": bool(operations)}
+        operations = (["replace_value"] if value_paths else []) + (
+            ["insert_array_element"] if isinstance(receipt.get("items"), list) else []
+        )
+        return {
+            **base,
+            "permitted_operations": operations,
+            "permitted_value_paths": value_paths,
+            "permitted_array_paths": ["/items"] if isinstance(receipt.get("items"), list) else [],
+            "model_patch_supported": bool(operations),
+        }
     if strategy_id == "vat_source_evidence_v9":
         paths = ["/tax/vat_lines", "/tax/vat_amount"]
         tax = receipt.get("tax")
-        if isinstance(tax, dict) and isinstance(tax.get("vat_amount"), dict) and "vat_amount" in tax["vat_amount"]:
+        if (
+            isinstance(tax, dict)
+            and isinstance(tax.get("vat_amount"), dict)
+            and "vat_amount" in tax["vat_amount"]
+        ):
             paths.append("/tax/vat_amount/vat_amount")
-        return {**base, "permitted_operations": ["replace_value"], "permitted_value_paths": paths, "permitted_array_paths": [], "model_patch_supported": True}
+        return {
+            **base,
+            "permitted_operations": ["replace_value"],
+            "permitted_value_paths": paths,
+            "permitted_array_paths": [],
+            "model_patch_supported": True,
+        }
     if strategy_id == "final_total_source_evidence_v2_4":
         paths = ["/totals/final_purchase_total"]
         totals = receipt.get("totals")
-        if isinstance(totals, dict) and isinstance(totals.get("final_purchase_total"), dict) and "final_purchase_total" in totals["final_purchase_total"]:
+        if (
+            isinstance(totals, dict)
+            and isinstance(totals.get("final_purchase_total"), dict)
+            and "final_purchase_total" in totals["final_purchase_total"]
+        ):
             paths.append("/totals/final_purchase_total/final_purchase_total")
-        return {**base, "permitted_operations": ["replace_value"], "permitted_value_paths": paths, "permitted_array_paths": [], "model_patch_supported": True}
+        return {
+            **base,
+            "permitted_operations": ["replace_value"],
+            "permitted_value_paths": paths,
+            "permitted_array_paths": [],
+            "model_patch_supported": True,
+        }
     return {
         **base,
         "permitted_operations": [],

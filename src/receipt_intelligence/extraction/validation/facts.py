@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from receipt_intelligence.extraction.contracts.validation import ValidationRequest
@@ -135,44 +135,48 @@ class ValidationFacts:
             if original_price is not None and final_price is not None and item_discount is not None:
                 expected = original_price - item_discount
                 if not request_money_close(request, expected, final_price):
-                    item_discount_failures.append({
-                        "item_index": index,
-                        "name": name,
-                        "original_price": money_float(original_price),
-                        "discount_amount": money_float(item_discount),
-                        "expected_final_price": money_float(expected),
-                        "final_price": money_float(final_price),
-                        "difference": money_float(final_price - expected),
-                        "reason": "original_minus_discount_does_not_equal_final",
-                    })
+                    item_discount_failures.append(
+                        {
+                            "item_index": index,
+                            "name": name,
+                            "original_price": money_float(original_price),
+                            "discount_amount": money_float(item_discount),
+                            "expected_final_price": money_float(expected),
+                            "final_price": money_float(final_price),
+                            "difference": money_float(final_price - expected),
+                            "reason": "original_minus_discount_does_not_equal_final",
+                        }
+                    )
             elif (
                 original_price is not None
                 and final_price is not None
                 and item_discount is None
                 and not request_money_close(request, original_price, final_price)
             ):
-                item_discount_failures.append({
-                    "item_index": index,
-                    "name": name,
-                    "original_price": money_float(original_price),
-                    "discount_amount": None,
-                    "final_price": money_float(final_price),
-                    "difference": money_float(original_price - final_price),
-                    "reason": "price_changed_without_discount_amount",
-                })
+                item_discount_failures.append(
+                    {
+                        "item_index": index,
+                        "name": name,
+                        "original_price": money_float(original_price),
+                        "discount_amount": None,
+                        "final_price": money_float(final_price),
+                        "difference": money_float(original_price - final_price),
+                        "reason": "price_changed_without_discount_amount",
+                    }
+                )
             elif item_discount is not None and original_price is None:
-                item_discount_failures.append({
-                    "item_index": index,
-                    "name": name,
-                    "original_price": None,
-                    "discount_amount": money_float(item_discount),
-                    "final_price": money_float(final_price),
-                    "reason": "discount_amount_without_original_price",
-                })
+                item_discount_failures.append(
+                    {
+                        "item_index": index,
+                        "name": name,
+                        "original_price": None,
+                        "discount_amount": money_float(item_discount),
+                        "final_price": money_float(final_price),
+                        "reason": "discount_amount_without_original_price",
+                    }
+                )
             normalized_name = (
-                " ".join(name.casefold().split())
-                if isinstance(name, str) and name.strip()
-                else ""
+                " ".join(name.casefold().split()) if isinstance(name, str) and name.strip() else ""
             )
             duplicate_key = (
                 normalized_name,
@@ -215,22 +219,26 @@ class ValidationFacts:
                     MONEY_QUANTUM, rounding=ROUND_HALF_UP
                 )
                 if not request_vat_close(request, expected_vat, line_vat):
-                    vat_rate_failures.append({
-                        "vat_line_index": index,
-                        "rate_percent": float(line_rate),
-                        "net_amount": money_float(line_net),
-                        "expected_vat_amount": money_float(expected_vat),
-                        "vat_amount": money_float(line_vat),
-                        "difference": money_float(line_vat - expected_vat),
-                    })
+                    vat_rate_failures.append(
+                        {
+                            "vat_line_index": index,
+                            "rate_percent": float(line_rate),
+                            "net_amount": money_float(line_net),
+                            "expected_vat_amount": money_float(expected_vat),
+                            "vat_amount": money_float(line_vat),
+                            "difference": money_float(line_vat - expected_vat),
+                        }
+                    )
 
         currency_sources: list[dict[str, str]] = []
         metadata_currency = normalize_currency(metadata.get("currency"))
         if metadata_currency is not None:
-            currency_sources.append({
-                "path": "receipt_metadata.currency",
-                "currency": metadata_currency,
-            })
+            currency_sources.append(
+                {
+                    "path": "receipt_metadata.currency",
+                    "currency": metadata_currency,
+                }
+            )
         for path, payload in (
             ("totals.final_purchase_total", final_total_payload),
             ("totals.pre_discount_total", pre_discount_payload),

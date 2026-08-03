@@ -18,16 +18,17 @@ class FakeGateway:
 
 
 def test_disabled_categorization_keeps_receipt_unchanged() -> None:
-    receipt = {"items": [{"description": "Milk", "line_total": 1.29}], "totals": {"grand_total": 1.29}}
+    receipt = {
+        "items": [{"description": "Milk", "line_total": 1.29}],
+        "totals": {"grand_total": 1.29},
+    }
     service = ExistingReceiptCategorizationService(
         llm_gateway=FakeGateway(),
         ollama_url="http://ollama",
         model="gemma4",
         categorizer=lambda *args, **kwargs: {},
     )
-    result = service.categorize(
-        CategorizationRequest(run_id="r1", receipt=receipt, enabled=False)
-    )
+    result = service.categorize(CategorizationRequest(run_id="r1", receipt=receipt, enabled=False))
     assert result.status is CategorizationStatus.DISABLED
     assert result.receipt == receipt
     assert result.receipt is not receipt

@@ -203,8 +203,10 @@ def _is_point(value: Any) -> bool:
 
 def _coerce_polygon(value: Any) -> tuple[tuple[float, float], ...] | None:
     value = _to_plain(value)
-    if isinstance(value, (list, tuple)) and len(value) == 4 and all(
-        _is_number(item) for item in value
+    if (
+        isinstance(value, (list, tuple))
+        and len(value) == 4
+        and all(_is_number(item) for item in value)
     ):
         x_min, y_min, x_max, y_max = (float(item) for item in value)
         return ((x_min, y_min), (x_max, y_min), (x_max, y_max), (x_min, y_max))
@@ -293,7 +295,9 @@ def _extract_polygons_and_scores(
     raw_scores = _to_plain(score_value)
     scores: list[float | None] = []
     if isinstance(raw_scores, (list, tuple)):
-        scores.extend(float(score) if _is_number(_to_plain(score)) else None for score in raw_scores)
+        scores.extend(
+            float(score) if _is_number(_to_plain(score)) else None for score in raw_scores
+        )
     scores.extend([None] * max(0, len(unique) - len(scores)))
     return unique, scores[: len(unique)]
 

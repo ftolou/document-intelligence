@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
+from receipt_intelligence.domain.categorization_taxonomy import fashion_category_path
 from receipt_intelligence.extraction.validation.receipt import validate_receipt
 from receipt_intelligence.receipt_compat import (
     apply_review_field,
@@ -21,7 +22,7 @@ from receipt_intelligence.services.artifact_service import artifact_resource
 from receipt_intelligence.services.semantic_index_service import SemanticIndexUpdater
 from receipt_intelligence.storage.job_store import JobStore
 from receipt_intelligence.storage.receipt_db import ReceiptDatabase
-from receipt_intelligence.domain.categorization_taxonomy import fashion_category_path
+
 
 def _deep_copy_json(value: Any) -> Any:
     return json.loads(json.dumps(value, ensure_ascii=False, default=str))

@@ -30,7 +30,9 @@ class ChatGenerationRequest:
         user_prompt = str(self.user_prompt or "").strip()
         operation = str(self.operation or "").strip()
         if not model or not user_prompt or not operation:
-            raise ValueError("ChatGenerationRequest model, user_prompt, and operation are required.")
+            raise ValueError(
+                "ChatGenerationRequest model, user_prompt, and operation are required."
+            )
         if self.attempt < 1:
             raise ValueError("ChatGenerationRequest.attempt must be positive.")
         if self.num_ctx < 1 or self.num_predict < 1:

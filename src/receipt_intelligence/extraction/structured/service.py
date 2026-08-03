@@ -16,7 +16,9 @@ from receipt_intelligence.extraction.contracts.extraction import (
     StructuredExtractionRequest,
     StructuredExtractionResult,
 )
-from receipt_intelligence.extraction.services.structured_extraction import StructuredExtractionService
+from receipt_intelligence.extraction.services.structured_extraction import (
+    StructuredExtractionService,
+)
 from receipt_intelligence.extraction.settings import ParsingSettings
 from receipt_intelligence.extraction.structured.assembler import assemble_receipt
 from receipt_intelligence.extraction.structured.catalog import ITEM_TASK, SCALAR_TASKS
@@ -50,7 +52,13 @@ class GemmaStructuredExtractionService(StructuredExtractionService):
         item_result = None if self._settings.skip_items else self._run_item(evidence, work_dir)
         item_contract = validate_direct_items(item_result.answer if item_result else None)
         if self._settings.skip_items:
-            item_contract = {"status": "skipped", "errors": [], "warnings": [], "observations": [], "metrics": {}}
+            item_contract = {
+                "status": "skipped",
+                "errors": [],
+                "warnings": [],
+                "observations": [],
+                "metrics": {},
+            }
         receipt = assemble_receipt(scalar_results, item_result)
         missing = tuple(
             name
@@ -64,7 +72,9 @@ class GemmaStructuredExtractionService(StructuredExtractionService):
         report_path = work_dir / "70_structured_extraction_report.json"
         self._write_json(receipt_path, receipt)
         diagnostics = {
-            "status": "completed" if not missing and item_contract.get("status") != "invalid" else "completed_with_errors",
+            "status": "completed"
+            if not missing and item_contract.get("status") != "invalid"
+            else "completed_with_errors",
             "strategy": "gemma_scalar_specialists_plus_direct_items",
             "selected_scalar_tasks": list(selected),
             "missing_or_failed_scalar_tasks": list(missing),

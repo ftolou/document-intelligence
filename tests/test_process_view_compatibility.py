@@ -124,9 +124,7 @@ def test_modepark_next_receipt_is_projected_for_process_view() -> None:
     }
     assert [item["description"] for item in view["items"]] == ["KRAWATTE", "Louie Winter"]
     assert [item["line_total"] for item in view["items"]] == [14.24, 96.0]
-    assert view["payments"] == [
-        {"method": "Lastschrift", "amount": 110.24, "source_line_ids": []}
-    ]
+    assert view["payments"] == [{"method": "Lastschrift", "amount": 110.24, "source_line_ids": []}]
     assert view["taxes"] == [
         {"rate": 19, "net": None, "tax": None, "gross": None, "source_line_ids": ["R0027"]}
     ]
@@ -134,9 +132,7 @@ def test_modepark_next_receipt_is_projected_for_process_view() -> None:
     assert view["validation"]["balanced"] is True
     assert view["validation"]["difference"] == 0.0
     assert view["validation"]["calculated_item_total"] == 110.24
-    assert [issue["code"] for issue in view["validation"]["issues"]] == [
-        "ITEM_DISCOUNT_ARITHMETIC"
-    ]
+    assert [issue["code"] for issue in view["validation"]["issues"]] == ["ITEM_DISCOUNT_ARITHMETIC"]
 
 
 def test_legacy_receipt_fields_remain_available() -> None:

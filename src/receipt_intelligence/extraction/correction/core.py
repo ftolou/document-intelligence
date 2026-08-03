@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import copy
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 from .acceptance import evaluate_candidate, failed_checks, failed_codes, validation_score
 from .normalization import normalize_source_evidence
@@ -37,10 +38,13 @@ def _item_contract_is_missing_final_price_only(check: dict[str, Any]) -> bool:
     if str(check.get("code") or "") != "ITEM_CONTRACT":
         return False
     details = check.get("details")
-    return bool(details) and isinstance(details, list) and all(
-        isinstance(detail, dict)
-        and str(detail.get("code") or "") == _MISSING_FINAL_PRICE_CODE
-        for detail in details
+    return (
+        bool(details)
+        and isinstance(details, list)
+        and all(
+            isinstance(detail, dict) and str(detail.get("code") or "") == _MISSING_FINAL_PRICE_CODE
+            for detail in details
+        )
     )
 
 
@@ -166,8 +170,7 @@ def run_correction_coordinator(
     def finish(status: str, **extra: Any):
         remaining = sorted(failed_codes(current_validation))
         attempt_status_counts = Counter(
-            str(attempt.get("status") or "unknown")
-            for attempt in report["attempts"]
+            str(attempt.get("status") or "unknown") for attempt in report["attempts"]
         )
         normalization_records = [
             attempt.get("normalization")
@@ -182,9 +185,7 @@ def run_correction_coordinator(
             for attempt in report["attempts"]
             if isinstance(attempt.get("json_repair"), dict)
         ]
-        triggered_json_repairs = [
-            value for value in json_repair_records if value.get("triggered")
-        ]
+        triggered_json_repairs = [value for value in json_repair_records if value.get("triggered")]
         completed_json_repairs = [
             value for value in triggered_json_repairs if value.get("status") == "completed"
         ]
@@ -200,17 +201,14 @@ def run_correction_coordinator(
                 "exhausted_target_codes": sorted(exhausted_target_codes),
                 "open_no_strategy_codes": sorted(open_no_strategy_codes),
                 "unattempted_failed_codes": sorted(
-                    set(remaining)
-                    - exhausted_target_codes
-                    - open_no_strategy_codes
+                    set(remaining) - exhausted_target_codes - open_no_strategy_codes
                 ),
                 "attempt_status_counts": dict(sorted(attempt_status_counts.items())),
                 "normalization_summary": {
                     "attempt_count": len(normalization_records),
                     "normalized_attempt_count": len(normalized_records),
                     "operation_count": sum(
-                        int(value.get("operation_count") or 0)
-                        for value in normalized_records
+                        int(value.get("operation_count") or 0) for value in normalized_records
                     ),
                 },
                 "json_repair_summary": {
@@ -218,9 +216,7 @@ def run_correction_coordinator(
                     "triggered_count": len(triggered_json_repairs),
                     "completed_count": len(completed_json_repairs),
                     "failed_count": sum(
-                        1
-                        for value in triggered_json_repairs
-                        if value.get("status") != "completed"
+                        1 for value in triggered_json_repairs if value.get("status") != "completed"
                     ),
                 },
                 "summary": {
@@ -261,16 +257,11 @@ def run_correction_coordinator(
                 "reason": reason,
             }
             for strategy in configured_chain
-            if (reason := _strategy_routing_reason(strategy.strategy_id, check))
-            is not None
+            if (reason := _strategy_routing_reason(strategy.strategy_id, check)) is not None
         ]
-        ineligible_ids = {
-            entry["strategy_id"] for entry in ineligible_strategies
-        }
+        ineligible_ids = {entry["strategy_id"] for entry in ineligible_strategies}
         chain = tuple(
-            strategy
-            for strategy in configured_chain
-            if strategy.strategy_id not in ineligible_ids
+            strategy for strategy in configured_chain if strategy.strategy_id not in ineligible_ids
         )
         targeted_codes = _related_target_codes(check, current_validation)
         round_record: dict[str, Any] = {
@@ -278,9 +269,7 @@ def run_correction_coordinator(
             "target_code": code,
             "target_codes": sorted(targeted_codes),
             "target_check": copy.deepcopy(check),
-            "configured_strategy_chain": [
-                strategy.strategy_id for strategy in configured_chain
-            ],
+            "configured_strategy_chain": [strategy.strategy_id for strategy in configured_chain],
             "strategy_chain": [strategy.strategy_id for strategy in chain],
             "ineligible_strategies": ineligible_strategies,
             "validation_status_before": current_validation.get("status"),
@@ -304,9 +293,7 @@ def run_correction_coordinator(
                     "target_code": code,
                     "target_codes": [code],
                     "status": "open_no_strategy",
-                    "ineligible_strategies": copy.deepcopy(
-                        ineligible_strategies
-                    ),
+                    "ineligible_strategies": copy.deepcopy(ineligible_strategies),
                     "receipt_modified": False,
                 }
             )
@@ -368,9 +355,7 @@ def run_correction_coordinator(
                         strategy, transcription, round_index, attempt
                     )
                     raw_answer = result.get("answer")
-                    callbacks.write_artifact(
-                        f"{prefix}_source_evidence_result.json", result
-                    )
+                    callbacks.write_artifact(f"{prefix}_source_evidence_result.json", result)
                     attempt_record.update(
                         {
                             "model_metrics": result.get("metrics"),
@@ -406,9 +391,7 @@ def run_correction_coordinator(
                         raw_answer,
                         transcription,
                     )
-                    callbacks.write_artifact(
-                        f"{prefix}_evidence_normalization.json", normalization
-                    )
+                    callbacks.write_artifact(f"{prefix}_evidence_normalization.json", normalization)
                     if normalization.get("status") == "normalized":
                         callbacks.write_artifact(
                             f"{prefix}_source_evidence_normalized.json",
@@ -420,13 +403,11 @@ def run_correction_coordinator(
                         }
                     )
 
-                    patch_answer, evidence_validation, adapter_diagnostics = (
-                        _evidence_to_patch(
-                            strategy.strategy_id,
-                            normalized_answer,
-                            transcription,
-                            current_receipt,
-                        )
+                    patch_answer, evidence_validation, adapter_diagnostics = _evidence_to_patch(
+                        strategy.strategy_id,
+                        normalized_answer,
+                        transcription,
+                        current_receipt,
                     )
                     callbacks.write_artifact(
                         f"{prefix}_evidence_validation.json", evidence_validation
@@ -457,9 +438,7 @@ def run_correction_coordinator(
                         current_receipt,
                         target=target,
                     )
-                    callbacks.write_artifact(
-                        f"{prefix}_patch_validation.json", patch_validation
-                    )
+                    callbacks.write_artifact(f"{prefix}_patch_validation.json", patch_validation)
                     attempt_record["patch_validation"] = patch_validation
                     attempt_record["patch"] = copy.deepcopy(answer)
                     if patch_validation.get("status") != "valid":
@@ -487,9 +466,7 @@ def run_correction_coordinator(
                         candidate_receipt,
                         candidate_item_pipeline,
                     )
-                    callbacks.write_artifact(
-                        f"{prefix}_candidate_receipt.json", candidate_receipt
-                    )
+                    callbacks.write_artifact(f"{prefix}_candidate_receipt.json", candidate_receipt)
                     callbacks.write_artifact(
                         f"{prefix}_candidate_validation.json", candidate_validation
                     )
@@ -500,9 +477,7 @@ def run_correction_coordinator(
                     )
                     attempt_record.update(
                         {
-                            "candidate_validation_status": candidate_validation.get(
-                                "status"
-                            ),
+                            "candidate_validation_status": candidate_validation.get("status"),
                             "candidate_validation_score": list(
                                 validation_score(candidate_validation)
                             ),
@@ -545,9 +520,7 @@ def run_correction_coordinator(
                                 "status": "accepted",
                                 "accepted_strategy": strategy.strategy_id,
                                 "accepted_attempt": attempt,
-                                "validation_status_after": current_validation.get(
-                                    "status"
-                                ),
+                                "validation_status_after": current_validation.get("status"),
                                 "validation_score_after": list(
                                     validation_score(current_validation)
                                 ),

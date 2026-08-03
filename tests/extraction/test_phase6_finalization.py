@@ -23,7 +23,9 @@ def test_finalization_writes_compatible_artifacts_and_aliases(tmp_path) -> None:
     categorized = CategorizationResult(
         status=CategorizationStatus.OK,
         receipt={
-            "items": [{"description": "Milk", "line_total": 1.29, "category_key": "groceries_dairy_eggs"}],
+            "items": [
+                {"description": "Milk", "line_total": 1.29, "category_key": "groceries_dairy_eggs"}
+            ],
             "totals": {"grand_total": 1.29},
             "categorization": {"item_count": 1, "categorized_count": 1},
         },
@@ -107,6 +109,4 @@ def test_finalization_metadata_records_safety_invariants(tmp_path) -> None:
     safety = result.pipeline_metadata["safety"]
     assert safety["read_only_validation"] is True
     assert safety["no_generic_correction_fallback"] is True
-    assert result.pipeline_metadata["validation"]["failed_codes"] == [
-        "ITEM_SUM_RECONCILIATION"
-    ]
+    assert result.pipeline_metadata["validation"]["failed_codes"] == ["ITEM_SUM_RECONCILIATION"]

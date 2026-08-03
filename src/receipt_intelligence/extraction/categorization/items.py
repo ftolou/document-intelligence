@@ -830,9 +830,9 @@ def merge_categories_into_receipt(
             items[idx]["category_key"] = cat.get("category_key")
             items[idx]["category_group"] = cat.get("category_group")
             items[idx]["category_path"] = cat.get("category_path")
-            items[idx]["category_taxonomy_version"] = cat.get(
-                "category_taxonomy_version"
-            ) or ITEM_TAXONOMY_VERSION
+            items[idx]["category_taxonomy_version"] = (
+                cat.get("category_taxonomy_version") or ITEM_TAXONOMY_VERSION
+            )
             items[idx]["category_confidence"] = cat.get("category_confidence")
             items[idx]["category_confidence_raw"] = cat.get("category_confidence_raw")
             items[idx]["category_confidence_calibrated"] = cat.get("category_confidence_calibrated")
@@ -858,9 +858,9 @@ def merge_categories_into_receipt(
     merchant["category_confidence"] = merchant_classification.get("confidence")
     merchant["category_reason"] = merchant_classification.get("reason")
     merchant["category_source"] = merchant_classification.get("source")
-    merchant["category_taxonomy_version"] = merchant_classification.get(
-        "taxonomy_version"
-    ) or MERCHANT_TAXONOMY_VERSION
+    merchant["category_taxonomy_version"] = (
+        merchant_classification.get("taxonomy_version") or MERCHANT_TAXONOMY_VERSION
+    )
     out["merchant"] = merchant
     out["categorization"] = {
         "schema_version": CATEGORY_SCHEMA_VERSION,
@@ -982,9 +982,7 @@ def recalibrate_existing_categorized_receipt(receipt: dict[str, Any]) -> dict[st
     merchant = out.get("merchant") if isinstance(out.get("merchant"), dict) else {}
     if merchant:
         merchant = dict(merchant)
-        merchant_key = canonical_merchant_category_key(
-            merchant.get("category_key") or "unknown"
-        )
+        merchant_key = canonical_merchant_category_key(merchant.get("category_key") or "unknown")
         if merchant_key not in VALID_MERCHANT_CATEGORY_KEYS:
             merchant_key = "unknown"
         merchant["category_key"] = merchant_key

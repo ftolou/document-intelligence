@@ -260,11 +260,12 @@ class CanonicalReceiptTranscriptionService(TranscriptionService):
         list[dict[str, Any]],
     ]:
         max_workers = min(len(plan.crops), max(1, self._transcription.parallelism))
-        completed: list[
-            tuple[TranscriptionFragment | None, ReceiptCrop, list[dict[str, Any]]]
-        ] = []
+        completed: list[tuple[TranscriptionFragment | None, ReceiptCrop, list[dict[str, Any]]]] = []
         if max_workers == 1:
-            completed = [self._transcribe_crop(crop, index, work_dir) for index, crop in enumerate(plan.crops)]
+            completed = [
+                self._transcribe_crop(crop, index, work_dir)
+                for index, crop in enumerate(plan.crops)
+            ]
         else:
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = {
@@ -367,9 +368,7 @@ class CanonicalReceiptTranscriptionService(TranscriptionService):
                         "status": "accepted",
                         "text_source": result.text_source,
                         "metrics": (
-                            result.metrics.to_diagnostics()
-                            if result.metrics is not None
-                            else None
+                            result.metrics.to_diagnostics() if result.metrics is not None else None
                         ),
                     }
                 )
@@ -470,7 +469,9 @@ def _aggregate_metrics(
     metrics = [fragment.metrics for fragment in fragments if fragment.metrics is not None]
 
     def total(field: str) -> int | float | None:
-        values = [getattr(metric, field) for metric in metrics if getattr(metric, field) is not None]
+        values = [
+            getattr(metric, field) for metric in metrics if getattr(metric, field) is not None
+        ]
         return sum(values) if values else None
 
     return {

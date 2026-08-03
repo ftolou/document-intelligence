@@ -18,12 +18,15 @@ def validate_final_total_evidence(answer: Any, transcription: str) -> dict[str, 
             "warnings": [],
         }
     warnings.extend(
-        {"code": "TRANSCRIPTION_WARNING", "message": value}
-        for value in source_warnings
+        {"code": "TRANSCRIPTION_WARNING", "message": value} for value in source_warnings
     )
     expected_fields = {"status", "label_row", "source_row", "label_text", "value_text"}
     if not isinstance(answer, dict):
-        return {"status": "invalid", "errors": [{"code": "ANSWER_NOT_OBJECT"}], "warnings": warnings}
+        return {
+            "status": "invalid",
+            "errors": [{"code": "ANSWER_NOT_OBJECT"}],
+            "warnings": warnings,
+        }
     if set(answer) != expected_fields:
         errors.append({"code": "TOP_LEVEL_FIELDS_INVALID"})
     status = answer.get("status")
@@ -44,11 +47,19 @@ def validate_final_total_evidence(answer: Any, transcription: str) -> dict[str, 
             errors.append({"code": "SOURCE_ROW_INVALID", "value": source_row})
         if not isinstance(label_text, str) or not label_text.strip():
             errors.append({"code": "LABEL_TEXT_INVALID"})
-        elif isinstance(label_row, str) and label_row in source and label_text not in source[label_row]:
+        elif (
+            isinstance(label_row, str)
+            and label_row in source
+            and label_text not in source[label_row]
+        ):
             errors.append({"code": "LABEL_TEXT_NOT_LITERAL", "value": label_text})
         if not isinstance(value_text, str) or not value_text.strip():
             errors.append({"code": "VALUE_TEXT_INVALID"})
-        elif isinstance(source_row, str) and source_row in source and value_text not in source[source_row]:
+        elif (
+            isinstance(source_row, str)
+            and source_row in source
+            and value_text not in source[source_row]
+        ):
             errors.append({"code": "VALUE_TEXT_NOT_LITERAL", "value": value_text})
         parsed = parse_decimal_literal(value_text)
         if parsed is None or parsed < 0:
@@ -94,7 +105,10 @@ def build_final_total_patch(
         return {"patches": []}, {"status": "abstained", "reason": "source_total_not_parseable"}
     current = _current_total(receipt)
     if current is not None and current == parsed:
-        return {"patches": []}, {"status": "abstained", "reason": "source_total_matches_current_total"}
+        return {"patches": []}, {
+            "status": "abstained",
+            "reason": "source_total_matches_current_total",
+        }
 
     totals = receipt.get("totals")
     totals = totals if isinstance(totals, dict) else {}

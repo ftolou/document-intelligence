@@ -10,7 +10,9 @@ class _Store:
     def __init__(self) -> None:
         self.registered: list[str] = []
 
-    def register_artifact(self, job_id: str, key: str, path: Path, category: str | None = None) -> None:
+    def register_artifact(
+        self, job_id: str, key: str, path: Path, category: str | None = None
+    ) -> None:
         del job_id, path, category
         self.registered.append(key)
 

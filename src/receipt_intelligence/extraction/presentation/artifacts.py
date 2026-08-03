@@ -13,7 +13,6 @@ from receipt_intelligence.application.ports.artifacts import (
     ArtifactStore,
 )
 
-
 _FILENAMES: dict[ArtifactKind, str] = {
     ArtifactKind.TRANSCRIPTION: "{run_id}_next_transcription.json",
     ArtifactKind.STRUCTURED_EXTRACTION: "{run_id}_next_structured_extraction.json",
@@ -125,7 +124,9 @@ class CompatibilityFilesystemArtifactStore(ArtifactStore):
                 ArtifactReference(
                     kind=kind,
                     path=destination,
-                    media_type=("text/plain" if destination.suffix == ".txt" else "application/json"),
+                    media_type=(
+                        "text/plain" if destination.suffix == ".txt" else "application/json"
+                    ),
                 )
             )
         return tuple(references)

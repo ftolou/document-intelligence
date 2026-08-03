@@ -111,6 +111,7 @@ class TranscriptionResult:
         """Whether transcription used a whole-image fallback crop."""
         return any(crop.is_full_image_fallback for crop in self.crops)
 
+
 __all__ = [
     "BoundingBox",
     "CanonicalTranscriptionRow",

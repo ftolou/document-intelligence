@@ -258,8 +258,7 @@ def _select_boundary(
 ) -> tuple[VerifiedCutBoundary | None, str]:
     minimum_cut_index = previous_cut_index + settings.minimum_lines_per_crop
     maximum_cut_index = (
-        detected_line_count
-        - remaining_crops_after_cut * settings.minimum_lines_per_crop
+        detected_line_count - remaining_crops_after_cut * settings.minimum_lines_per_crop
     )
     if minimum_cut_index > maximum_cut_index:
         return None, "insufficient_detected_lines_for_remaining_crops"
@@ -272,9 +271,7 @@ def _select_boundary(
     if not candidates:
         return None, "no_verified_boundary_in_allowed_line_range"
     normal = [
-        boundary
-        for boundary in candidates
-        if abs(float(boundary.y) - nominal_y) <= normal_radius
+        boundary for boundary in candidates if abs(float(boundary.y) - nominal_y) <= normal_radius
     ]
     if normal:
         pool = normal
@@ -313,9 +310,11 @@ def _try_plan(
     if 0 not in boundaries or len(lines) not in boundaries:
         return None, [], "missing_image_edge_boundaries"
     if crop_count == 1:
-        return [full_image_crop(image, lines, fallback=False)], [
-            {"boundary_number": 0, "selection": "single_full_image_crop"}
-        ], None
+        return (
+            [full_image_crop(image, lines, fallback=False)],
+            [{"boundary_number": 0, "selection": "single_full_image_crop"}],
+            None,
+        )
     if len(lines) < crop_count * settings.minimum_lines_per_crop:
         return None, [], "insufficient_detected_lines_for_minimum_lines_per_crop"
 

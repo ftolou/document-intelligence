@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from receipt_intelligence.extraction.categorization.items import (
-    CATEGORY_SCHEMA_VERSION,
-    _coerce_categories,
-    _coerce_merchant_classification,
-    build_categorization_prompt,
-)
 from receipt_intelligence.domain.categorization_taxonomy import (
     ITEM_TAXONOMY_VERSION,
     MERCHANT_TAXONOMY_VERSION,
     canonical_item_category_key,
     fashion_category_path,
+)
+from receipt_intelligence.extraction.categorization.items import (
+    CATEGORY_SCHEMA_VERSION,
+    _coerce_categories,
+    _coerce_merchant_classification,
+    build_categorization_prompt,
 )
 from receipt_intelligence.services.review_service import _category_path_from_group_key
 from receipt_intelligence.storage.normalization import category_from_item
@@ -108,7 +108,9 @@ def test_modepark_tie_is_accessory_not_footwear() -> None:
     assert categories[0]["category_group"] == "Fashion"
     assert categories[1]["category_key"] == "fashion_unknown"
     assert categories[1]["category_path"] == "fashion/unknown"
-    assert any("downgraded contextual fashion subtype" in warning.lower() for warning in category_warnings)
+    assert any(
+        "downgraded contextual fashion subtype" in warning.lower() for warning in category_warnings
+    )
     assert all(row["category_key"] != "fashion_footwear" for row in categories)
 
 
@@ -140,14 +142,8 @@ def test_legacy_combined_key_never_becomes_footwear() -> None:
 
 
 def test_review_save_preserves_canonical_fashion_path() -> None:
-    assert (
-        _category_path_from_group_key("Fashion", "fashion_accessories")
-        == "fashion/accessories"
-    )
-    assert (
-        _category_path_from_group_key("Clothing", "clothing_shoes")
-        == "fashion/unknown"
-    )
+    assert _category_path_from_group_key("Fashion", "fashion_accessories") == "fashion/accessories"
+    assert _category_path_from_group_key("Clothing", "clothing_shoes") == "fashion/unknown"
 
 
 def test_storage_uses_canonical_fashion_paths() -> None:
@@ -155,7 +151,4 @@ def test_storage_uses_canonical_fashion_paths() -> None:
         category_from_item({"category_key": "fashion_accessories"}, "KRAWATTE")
         == "fashion/accessories"
     )
-    assert (
-        category_from_item({"category_key": "clothing_shoes"}, "KRAWATTE")
-        == "fashion/unknown"
-    )
+    assert category_from_item({"category_key": "clothing_shoes"}, "KRAWATTE") == "fashion/unknown"

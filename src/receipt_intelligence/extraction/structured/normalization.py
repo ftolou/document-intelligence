@@ -36,9 +36,7 @@ def normalize_task_answer(
     _normalize_node(normalized, schema, schema, path="$", changes=changes)
 
     if task_name == "discount_total" and normalized.get("discount_total") is not None:
-        if not _has_supported_aggregate_discount(
-            evidence, normalized.get("discount_total")
-        ):
+        if not _has_supported_aggregate_discount(evidence, normalized.get("discount_total")):
             normalized["discount_total"] = None
             changes.append("discount_total_removed_without_explicit_aggregate_evidence")
 
@@ -162,8 +160,7 @@ def _allows_null(schema: dict[str, Any]) -> bool:
     for keyword in ("oneOf", "anyOf"):
         alternatives = schema.get(keyword)
         if isinstance(alternatives, list) and any(
-            isinstance(candidate, dict) and _allows_null(candidate)
-            for candidate in alternatives
+            isinstance(candidate, dict) and _allows_null(candidate) for candidate in alternatives
         ):
             return True
     return False

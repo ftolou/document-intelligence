@@ -31,16 +31,20 @@ def main() -> int:
         if args.item_contract
         else {"status": "valid", "errors": [], "warnings": []}
     )
-    report = DeterministicValidationEngine().validate(
-        ValidationRequest(
-            receipt=receipt,
-            item_contract=item_contract,
-            item_pipeline_enabled=not args.item_pipeline_disabled,
-            selected_scalar_tasks=tuple(args.scalar_tasks),
-            money_tolerance=args.money_tolerance,
-            vat_rate_tolerance=args.vat_rate_tolerance,
+    report = (
+        DeterministicValidationEngine()
+        .validate(
+            ValidationRequest(
+                receipt=receipt,
+                item_contract=item_contract,
+                item_pipeline_enabled=not args.item_pipeline_disabled,
+                selected_scalar_tasks=tuple(args.scalar_tasks),
+                money_tolerance=args.money_tolerance,
+                vat_rate_tolerance=args.vat_rate_tolerance,
+            )
         )
-    ).to_dict()
+        .to_dict()
+    )
     rendered = json.dumps(report, ensure_ascii=False, indent=2)
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)

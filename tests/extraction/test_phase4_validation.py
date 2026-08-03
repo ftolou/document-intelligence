@@ -40,9 +40,7 @@ def _receipt() -> dict:
         "payment": {"payment_received": None, "change_returned": None},
         "tax": {
             "vat_amount": {"vat_amount": 1.28, "currency": "EUR"},
-            "vat_lines": [
-                {"rate_percent": 19.0, "net_amount": 6.72, "vat_amount": 1.28}
-            ],
+            "vat_lines": [{"rate_percent": 19.0, "net_amount": 6.72, "vat_amount": 1.28}],
         },
     }
 
@@ -96,9 +94,7 @@ def test_missing_price_is_review_and_item_sum_is_skipped() -> None:
 
 def test_vat_semantic_role_error_is_detected_without_mutation() -> None:
     receipt = _receipt()
-    receipt["tax"]["vat_lines"] = [
-        {"rate_percent": 19.0, "net_amount": 30.16, "vat_amount": 4.82}
-    ]
+    receipt["tax"]["vat_lines"] = [{"rate_percent": 19.0, "net_amount": 30.16, "vat_amount": 4.82}]
     receipt["tax"]["vat_amount"] = {"vat_amount": 4.82, "currency": "EUR"}
     before = copy.deepcopy(receipt)
     report = DeterministicValidationEngine().validate(_request(receipt))

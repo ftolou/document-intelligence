@@ -34,9 +34,7 @@ class ValidationStage:
                 item_pipeline_enabled=bool(
                     diagnostics.get("item_pipeline_enabled", extraction.item_result is not None)
                 ),
-                selected_scalar_tasks=tuple(
-                    diagnostics.get("selected_scalar_tasks") or ()
-                ),
+                selected_scalar_tasks=tuple(diagnostics.get("selected_scalar_tasks") or ()),
                 money_tolerance=0.02,
                 vat_rate_tolerance=0.02,
             )

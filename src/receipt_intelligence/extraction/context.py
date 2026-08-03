@@ -11,8 +11,8 @@ from receipt_intelligence.app_version import get_app_version
 from receipt_intelligence.extraction.config import ExtractionConfig
 from receipt_intelligence.extraction.dependencies import ExtractionDependencies
 from receipt_intelligence.extraction.state import (
-    ExtractionPhase,
     CorrectionArtifacts,
+    ExtractionPhase,
     FinalizationArtifacts,
     JsonObject,
     OverviewArtifacts,

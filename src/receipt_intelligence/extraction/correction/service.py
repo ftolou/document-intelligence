@@ -18,13 +18,15 @@ from receipt_intelligence.extraction.correction.artifacts import (
     CorrectionArtifactSink,
     NullCorrectionArtifactSink,
 )
-from receipt_intelligence.extraction.correction.core import CorrectionCallbacks, run_correction_coordinator
+from receipt_intelligence.extraction.correction.core import (
+    CorrectionCallbacks,
+    run_correction_coordinator,
+)
 from receipt_intelligence.extraction.correction.invocation import SourceEvidenceInvoker
 from receipt_intelligence.extraction.correction.profile import CorrectionProfile
 from receipt_intelligence.extraction.services.correction import ReceiptCorrectionService
 from receipt_intelligence.extraction.services.validation import ReceiptValidationService
 from receipt_intelligence.extraction.structured.item_contract import validate_direct_items
-
 
 _STATUS_MAP = {
     "accepted": CorrectionAttemptStatus.ACCEPTED,

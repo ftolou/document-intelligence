@@ -108,8 +108,7 @@ class PromptRegistry:
             return text
 
         alternatives = "|".join(
-            re.escape(name)
-            for name in sorted(artifact.required_variables, key=len, reverse=True)
+            re.escape(name) for name in sorted(artifact.required_variables, key=len, reverse=True)
         )
         placeholder_pattern = re.compile(
             r"\{\{(?P<mustache>" + alternatives + r")\}\}"
@@ -143,9 +142,7 @@ class PromptRegistry:
                     for match in unresolved_matches
                 }
             )
-            raise PromptRenderError(
-                "Unresolved prompt variables: " + ", ".join(unresolved)
-            )
+            raise PromptRenderError("Unresolved prompt variables: " + ", ".join(unresolved))
 
         for name, sentinel in sentinels.items():
             replacement = "" if values[name] is None else str(values[name])

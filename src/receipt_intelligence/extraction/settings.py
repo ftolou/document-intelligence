@@ -68,12 +68,7 @@ class CropPlanningSettings:
             raise ValueError("CropPlanningSettings row limits must be positive.")
         if self.minimum_lines_per_crop < 1:
             raise ValueError("minimum_lines_per_crop must be positive.")
-        if not (
-            0.0
-            <= self.safe_cut_search_ratio
-            <= self.maximum_safe_cut_search_ratio
-            <= 1.0
-        ):
+        if not (0.0 <= self.safe_cut_search_ratio <= self.maximum_safe_cut_search_ratio <= 1.0):
             raise ValueError("Safe-cut search ratios are invalid.")
         if not 0 <= self.cut_ink_threshold <= 255:
             raise ValueError("cut_ink_threshold must be between 0 and 255.")
@@ -192,11 +187,14 @@ class CorrectionSettings:
             raise ValueError("CorrectionSettings requires ollama_url and model.")
         if self.num_ctx < 1 or self.timeout_seconds <= 0:
             raise ValueError("Correction context and timeout must be positive.")
-        if min(
-            self.item_sum_num_predict,
-            self.vat_num_predict,
-            self.final_total_num_predict,
-        ) < 1:
+        if (
+            min(
+                self.item_sum_num_predict,
+                self.vat_num_predict,
+                self.final_total_num_predict,
+            )
+            < 1
+        ):
             raise ValueError("Correction token limits must be positive.")
 
 

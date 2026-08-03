@@ -11,7 +11,6 @@ from receipt_intelligence.receipt_compat import (
     receipt_currency,
     receipt_date,
 )
-
 from receipt_intelligence.storage.normalization import (
     as_float,
     as_str,

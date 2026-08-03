@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 
 def failed_checks(validation: dict[str, Any]) -> list[dict[str, Any]]:
@@ -8,18 +9,12 @@ def failed_checks(validation: dict[str, Any]) -> list[dict[str, Any]]:
     if not isinstance(checks, list):
         return []
     return [
-        check
-        for check in checks
-        if isinstance(check, dict) and check.get("status") == "failed"
+        check for check in checks if isinstance(check, dict) and check.get("status") == "failed"
     ]
 
 
 def failed_codes(validation: dict[str, Any]) -> set[str]:
-    return {
-        str(check.get("code"))
-        for check in failed_checks(validation)
-        if check.get("code")
-    }
+    return {str(check.get("code")) for check in failed_checks(validation) if check.get("code")}
 
 
 def validation_score(validation: dict[str, Any]) -> tuple[int, int, int]:
@@ -78,24 +73,17 @@ def evaluate_candidate(
     regressed_passed = sorted(
         code
         for code, check in before_map.items()
-        if check.get("status") == "passed"
-        and (after_map.get(code) or {}).get("status") != "passed"
+        if check.get("status") == "passed" and (after_map.get(code) or {}).get("status") != "passed"
     )
     if regressed_passed:
-        reasons.append(
-            "previously_passed_checks_regressed:" + ",".join(regressed_passed)
-        )
+        reasons.append("previously_passed_checks_regressed:" + ",".join(regressed_passed))
 
     newly_failed = sorted(after_failed - before_failed)
     non_dependency_failures = [
-        code
-        for code in newly_failed
-        if (before_map.get(code) or {}).get("status") != "skipped"
+        code for code in newly_failed if (before_map.get(code) or {}).get("status") != "skipped"
     ]
     if non_dependency_failures:
-        reasons.append(
-            "new_non_dependency_failures:" + ",".join(non_dependency_failures)
-        )
+        reasons.append("new_non_dependency_failures:" + ",".join(non_dependency_failures))
 
     if len(after_failed) > len(before_failed):
         reasons.append("failed_check_count_increased")
