@@ -112,9 +112,13 @@ class TranscriptionSettings:
 DEFAULT_SCALAR_TASKS = (
     "merchant_name",
     "merchant_address",
+    "receipt_number",
     "currency",
     "final_purchase_total",
     "discount_total",
+    "payment_method",
+    "payment_received",
+    "net_amount",
     "vat_amount",
     "vat_lines",
 )

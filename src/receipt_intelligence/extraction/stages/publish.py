@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from receipt_intelligence.app_version import get_app_version
 from receipt_intelligence.extraction.context import ExtractionContext
+from receipt_intelligence.extraction.contracts.common import JsonObject
 from receipt_intelligence.extraction.contracts.presentation import FinalizationRequest
 from receipt_intelligence.extraction.presentation.artifacts import (
     CompatibilityFilesystemArtifactStore,
@@ -50,7 +53,7 @@ class NextFinalizationStage:
                 receipt=correction.accepted_receipt,
                 validation=correction.final_validation,
                 categorization=categorization,
-                stage_trace=tuple(context.stage_trace),
+                stage_trace=_completed_finalization_trace(context.stage_trace),
                 upstream_metadata={
                     "transcription": {
                         "row_count": len(transcription.rows),
@@ -91,6 +94,20 @@ class NextFinalizationStage:
             artifact_count=len(result.artifacts),
         )
         return context
+
+
+def _completed_finalization_trace(
+    stage_trace: Iterable[JsonObject],
+) -> tuple[JsonObject, ...]:
+    """Return a metadata snapshot that does not persist this stage as still running."""
+
+    snapshot = [dict(entry) for entry in stage_trace if isinstance(entry, dict)]
+    for entry in reversed(snapshot):
+        if entry.get("stage") == NextFinalizationStage.name:
+            if entry.get("status") == "running":
+                entry["status"] = "done"
+            break
+    return tuple(snapshot)
 
 
 __all__ = ["NextFinalizationStage"]

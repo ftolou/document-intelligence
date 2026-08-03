@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from receipt_intelligence.receipt_compat import to_review_document
 from receipt_intelligence.services.review_service import ReviewService, apply_human_review
 from receipt_intelligence.services.semantic_index_service import (
     ReindexCallback,
@@ -51,7 +52,7 @@ class DatabaseReceiptEditor:
             "receipt_id": int(receipt_id),
             "receipt_db_id": int(receipt_id),
             "job_id": job_id or None,
-            "receipt": receipt,
+            "receipt": to_review_document(receipt),
             "review": review,
             "artifacts": artifacts,
             "receipt_image": image_reference,
@@ -151,7 +152,7 @@ class DatabaseReceiptEditor:
         payload.update(
             {
                 "ok": True,
-                "receipt": fresh,
+                "receipt": to_review_document(fresh),
                 "review": {
                     **(
                         fresh.get("human_review")

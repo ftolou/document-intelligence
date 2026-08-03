@@ -15,6 +15,7 @@ from receipt_intelligence.extraction.structured.catalog import (
     TASK_ENVELOPE,
     TaskDefinition,
 )
+from receipt_intelligence.extraction.structured.normalization import normalize_task_answer
 from receipt_intelligence.prompts.registry import PromptRegistry
 
 
@@ -72,6 +73,12 @@ class GemmaTaskRunner:
             ) from exc
         if not isinstance(answer, dict):
             raise RuntimeError(f"Gemma task {definition.task_name!r} did not return an object.")
+        answer, normalization_changes = normalize_task_answer(
+            task_name=definition.task_name,
+            answer=answer,
+            schema=schema,
+            evidence=evidence,
+        )
         return GemmaTaskResult(
             task_name=definition.task_name,
             prompt_id=definition.prompt.prompt_id,
@@ -89,6 +96,7 @@ class GemmaTaskRunner:
                     if definition.task_name == "direct_receipt_items"
                     else definition.num_predict
                 ),
+                "normalization_changes": list(normalization_changes),
             },
         )
 

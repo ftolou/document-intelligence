@@ -36,6 +36,23 @@
       "schema_sha256": "949926e3465f38a55116278c0c06da80b945bbf32c8815b29269f29eca7222b7"
     },
     {
+      "id": "gemma.correction.item_sum_source_blocks",
+      "version": "1.1.0",
+      "template": "gemma/correction/item_sum_source_blocks/v1.1.0/template.txt",
+      "sha256": "d46f27eaca2e0203c7e37a7c1f4ea3668fa2d2970d2983a90da6925e275cd6a6",
+      "required_variables": [
+        "source_evidence",
+        "output_schema"
+      ],
+      "metadata": {
+        "model_family": "gemma4",
+        "source": "receipt_pipeline_v7_8_specialist_correction",
+        "description": "V3.1 source-only item-block evidence including explicit item discount arithmetic fields."
+      },
+      "schema": "gemma/correction/item_sum_source_blocks/v1.1.0/schema.json",
+      "schema_sha256": "0fa19f3a82df28bdd1c7d6f8ee380428e0ee8ce41a253c611a4830e1fd96667a"
+    },
+    {
       "id": "gemma.correction.json_repair",
       "version": "1.0.0",
       "template": "gemma/correction/json_repair/v1.0.0/prompt.md",

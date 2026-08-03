@@ -6,6 +6,20 @@ import json
 from pathlib import Path
 from typing import Any
 
+from receipt_intelligence.receipt_compat import (
+    apply_review_field,
+    apply_review_item_field,
+    is_next_receipt,
+    item_line_total,
+    receipt_currency,
+    receipt_date as compat_receipt_date,
+    receipt_grand_total,
+    receipt_paid_total,
+    receipt_payment_method,
+    receipt_subtotal,
+    receipt_tax_total,
+    receipt_time as compat_receipt_time,
+)
 from receipt_intelligence.storage.fingerprints import file_sha256, receipt_core
 from receipt_intelligence.storage.models import ReceiptImportResult
 from receipt_intelligence.storage.normalization import (
@@ -105,17 +119,13 @@ class ReceiptRepository(BaseRepository):
         image_path: Path | str | None = None,
     ) -> ReceiptImportResult:
         merchant = receipt.get("merchant") if isinstance(receipt.get("merchant"), dict) else {}
-        totals = receipt.get("totals") if isinstance(receipt.get("totals"), dict) else {}
         human_review = (
             receipt.get("human_review") if isinstance(receipt.get("human_review"), dict) else {}
         )
         validation = (
             receipt.get("validation") if isinstance(receipt.get("validation"), dict) else {}
         )
-        payments = receipt.get("payments") if isinstance(receipt.get("payments"), list) else []
-        payment_method = None
-        if payments and isinstance(payments[0], dict):
-            payment_method = as_str(payments[0].get("method"))
+        payment_method = as_str(receipt_payment_method(receipt))
 
         merchant_name = as_str(first_present(merchant.get("name"), receipt.get("merchant_name")))
         merchant_normalized = normalize_merchant_name(merchant_name)
@@ -131,13 +141,13 @@ class ReceiptRepository(BaseRepository):
             values = (
                 merchant_name,
                 merchant_normalized,
-                as_str(receipt.get("date")),
-                as_str(receipt.get("time")),
-                as_str(receipt.get("currency")) or "EUR",
-                as_float(totals.get("subtotal")),
-                as_float(totals.get("tax_total")),
-                as_float(totals.get("grand_total")),
-                as_float(first_present(totals.get("paid_total"), totals.get("grand_total"))),
+                as_str(compat_receipt_date(receipt)),
+                as_str(compat_receipt_time(receipt)),
+                as_str(receipt_currency(receipt)) or "EUR",
+                as_float(receipt_subtotal(receipt)),
+                as_float(receipt_tax_total(receipt)),
+                as_float(receipt_grand_total(receipt)),
+                as_float(receipt_paid_total(receipt)),
                 payment_method,
                 as_str(
                     first_present(
@@ -281,21 +291,14 @@ class ReceiptRepository(BaseRepository):
         merchant = dict(merchant)
         merchant["name"] = row.get("merchant_name")
         receipt["merchant"] = merchant
-        receipt["date"] = row.get("receipt_date")
-        receipt["time"] = row.get("receipt_time")
-        receipt["currency"] = row.get("currency") or "EUR"
-
-        totals = receipt.get("totals") if isinstance(receipt.get("totals"), dict) else {}
-        totals = dict(totals)
-        totals.update(
-            {
-                "subtotal": row.get("subtotal"),
-                "tax_total": row.get("tax_total"),
-                "grand_total": row.get("grand_total"),
-                "paid_total": row.get("paid_total"),
-            }
-        )
-        receipt["totals"] = totals
+        apply_review_field(receipt, "date", row.get("receipt_date"))
+        apply_review_field(receipt, "time", row.get("receipt_time"))
+        apply_review_field(receipt, "currency", row.get("currency") or "EUR")
+        apply_review_field(receipt, "subtotal", row.get("subtotal"))
+        apply_review_field(receipt, "tax_total", row.get("tax_total"))
+        apply_review_field(receipt, "grand_total", row.get("grand_total"))
+        apply_review_field(receipt, "paid_total", row.get("paid_total"))
+        apply_review_field(receipt, "payment_method", row.get("payment_method"))
 
         review = (
             receipt.get("human_review") if isinstance(receipt.get("human_review"), dict) else {}
@@ -310,11 +313,16 @@ class ReceiptRepository(BaseRepository):
             item_row = dict(stored)
             item = _json_object(item_row.get("raw_json"))
             item["_db_item_id"] = int(item_row["id"])
-            item["product_description"] = item_row.get("raw_name")
-            item.setdefault("description", item_row.get("raw_name"))
+            next_item_schema = is_next_receipt({"items": [item]})
+            if next_item_schema:
+                item["name"] = item_row.get("raw_name")
+            else:
+                item["product_description"] = item_row.get("raw_name")
+                item.setdefault("description", item_row.get("raw_name"))
             item["normalized_name"] = item_row.get("normalized_name")
             item["parser_item_type"] = item_row.get("parser_item_type")
-            item["receipt_row_type"] = item_row.get("parser_item_type")
+            if not next_item_schema:
+                item["receipt_row_type"] = item_row.get("parser_item_type")
             item["category_group"] = item_row.get("category_group")
             item["category_key"] = item_row.get("category_key")
             item["category_reason"] = item_row.get("category_reason")
@@ -326,7 +334,7 @@ class ReceiptRepository(BaseRepository):
                 item["category_path"] = category_path
             if item_row.get("category"):
                 item["product_category"] = item_row.get("category")
-            if item_row.get("parser_item_type"):
+            if item_row.get("parser_item_type") and not next_item_schema:
                 item["category"] = item_row.get("parser_item_type")
             for field in (
                 "quantity",
@@ -340,7 +348,12 @@ class ReceiptRepository(BaseRepository):
                 "confidence",
                 "review_status",
             ):
-                item[field] = item_row.get(field)
+                apply_review_item_field(
+                    item,
+                    field,
+                    item_row.get(field),
+                    next_schema=next_item_schema,
+                )
             items.append(item)
         receipt["items"] = items
         receipt["_database"] = {
@@ -379,7 +392,6 @@ class ReceiptRepository(BaseRepository):
             raise ValueError("receipt items must be a list")
 
         merchant = receipt.get("merchant") if isinstance(receipt.get("merchant"), dict) else {}
-        totals = receipt.get("totals") if isinstance(receipt.get("totals"), dict) else {}
         human_review = (
             receipt.get("human_review") if isinstance(receipt.get("human_review"), dict) else {}
         )
@@ -388,8 +400,8 @@ class ReceiptRepository(BaseRepository):
         )
         merchant_name = as_str(first_present(merchant.get("name"), receipt.get("merchant_name")))
         merchant_normalized = normalize_merchant_name(merchant_name)
-        receipt_date = as_str(receipt.get("date"))
-        currency = as_str(receipt.get("currency")) or "EUR"
+        receipt_date = as_str(compat_receipt_date(receipt))
+        currency = as_str(receipt_currency(receipt)) or "EUR"
         now = utc_now()
 
         with self.connect() as connection:
@@ -461,9 +473,7 @@ class ReceiptRepository(BaseRepository):
                 )
                 category = _review_category(item, description)
                 parser_item_type = parser_item_type_from_item(item)
-                line_total = as_float(
-                    first_present(item.get("line_total"), item.get("total"), item.get("amount"))
-                )
+                line_total = as_float(item_line_total(item))
                 embedding_text = build_item_embedding_text(
                     merchant_name=merchant_name,
                     merchant_normalized=merchant_normalized,
@@ -574,14 +584,7 @@ class ReceiptRepository(BaseRepository):
             clean_receipt.pop("_database", None)
             clean_receipt["items"] = [payload[2] for payload in item_payloads]
             core = receipt_core(clean_receipt)
-            payments = (
-                clean_receipt.get("payments")
-                if isinstance(clean_receipt.get("payments"), list)
-                else []
-            )
-            payment_method = None
-            if payments and isinstance(payments[0], dict):
-                payment_method = as_str(payments[0].get("method"))
+            payment_method = as_str(receipt_payment_method(clean_receipt))
 
             connection.execute(
                 """
@@ -596,12 +599,12 @@ class ReceiptRepository(BaseRepository):
                     merchant_name,
                     merchant_normalized,
                     receipt_date,
-                    as_str(clean_receipt.get("time")),
+                    as_str(compat_receipt_time(clean_receipt)),
                     currency,
-                    as_float(totals.get("subtotal")),
-                    as_float(totals.get("tax_total")),
-                    as_float(totals.get("grand_total")),
-                    as_float(first_present(totals.get("paid_total"), totals.get("grand_total"))),
+                    as_float(receipt_subtotal(clean_receipt)),
+                    as_float(receipt_tax_total(clean_receipt)),
+                    as_float(receipt_grand_total(clean_receipt)),
+                    as_float(receipt_paid_total(clean_receipt)),
                     payment_method,
                     as_str(
                         first_present(

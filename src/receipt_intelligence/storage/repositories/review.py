@@ -6,6 +6,11 @@ import json
 from pathlib import Path
 from typing import Any
 
+from receipt_intelligence.receipt_compat import (
+    validation_for_review,
+    validation_issues,
+)
+
 from receipt_intelligence.storage.fingerprints import (
     duplicate_score_against_row,
     file_sha256,
@@ -64,7 +69,7 @@ def _category_review_reason_codes(receipt: dict[str, Any]) -> set[str]:
 
 def _review_reason_codes(receipt: dict[str, Any]) -> list[str]:
     validation = receipt.get("validation") if isinstance(receipt.get("validation"), dict) else {}
-    issues = validation.get("issues") if isinstance(validation.get("issues"), list) else []
+    issues = validation_issues(validation)
     codes = {
         str(issue.get("code") or "").strip()
         for issue in issues
@@ -156,6 +161,17 @@ class ReviewRepository(BaseRepository):
     ) -> dict[str, Any]:
         core = receipt_core(receipt)
         image_hash = file_sha256(image_path)
+        validation = (
+            receipt.get("validation") if isinstance(receipt.get("validation"), dict) else {}
+        )
+        review_validation = validation_for_review(validation)
+        current_issues = validation_issues(validation)
+        decision = decision or review_validation.get("import_decision")
+        if balanced is None:
+            balanced = review_validation.get("balanced")
+        if difference is None:
+            difference = review_validation.get("difference")
+        issue_count = len(current_issues)
         duplicates = self.find_duplicate_candidates(
             job_id=job_id,
             receipt=receipt,
@@ -486,6 +502,25 @@ class ReviewRepository(BaseRepository):
     @staticmethod
     def _present_queue_row(item: dict[str, Any]) -> dict[str, Any]:
         item["duplicate_candidates"] = _json_list(item.get("duplicate_candidates_json"))
-        item["reason_codes"] = _json_list(item.get("review_reason_codes_json"))
-        item["receipt"] = _json_object(item.get("raw_json"))
+        receipt = _json_object(item.get("raw_json"))
+        core = receipt_core(receipt)
+        validation = (
+            receipt.get("validation") if isinstance(receipt.get("validation"), dict) else {}
+        )
+        review_validation = validation_for_review(validation)
+        issues = validation_issues(validation)
+        item.update(
+            merchant_name=core.get("merchant_name"),
+            merchant_normalized=core.get("merchant_normalized"),
+            receipt_date=core.get("receipt_date"),
+            receipt_time=core.get("receipt_time"),
+            grand_total=core.get("grand_total"),
+            item_count=core.get("item_count"),
+            decision=review_validation.get("import_decision") or item.get("decision"),
+            balanced=review_validation.get("balanced"),
+            difference=review_validation.get("difference"),
+            issue_count=len(issues),
+        )
+        item["reason_codes"] = _review_reason_codes(receipt)
+        item["receipt"] = receipt
         return item

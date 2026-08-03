@@ -6,6 +6,12 @@ import json
 import sqlite3
 from typing import Any
 
+from receipt_intelligence.receipt_compat import (
+    item_line_total,
+    receipt_currency,
+    receipt_date,
+)
+
 from receipt_intelligence.storage.normalization import (
     as_float,
     as_str,
@@ -28,8 +34,8 @@ class ItemRepository(BaseRepository):
         merchant_normalized: str | None,
     ) -> int:
         items = receipt.get("items") if isinstance(receipt.get("items"), list) else []
-        currency = as_str(receipt.get("currency")) or "EUR"
-        receipt_date = as_str(receipt.get("date"))
+        currency = as_str(receipt_currency(receipt)) or "EUR"
+        receipt_date_value = as_str(receipt_date(receipt))
         has_fts = fts_available(connection)
 
         inserted = 0
@@ -48,13 +54,11 @@ class ItemRepository(BaseRepository):
                 )
             )
             category = category_from_item(item, description)
-            line_total = as_float(
-                first_present(item.get("line_total"), item.get("total"), item.get("amount"))
-            )
+            line_total = as_float(item_line_total(item))
             embedding_text = build_item_embedding_text(
                 merchant_name=merchant_name,
                 merchant_normalized=merchant_normalized,
-                receipt_date=receipt_date,
+                receipt_date=receipt_date_value,
                 item=item,
                 description=description,
                 normalized_name=normalized_name,
@@ -125,7 +129,7 @@ class ItemRepository(BaseRepository):
                         item_id,
                         receipt_id,
                         " ".join(value for value in [merchant_name, merchant_normalized] if value),
-                        receipt_date,
+                        receipt_date_value,
                         description,
                         normalized_name,
                         category,

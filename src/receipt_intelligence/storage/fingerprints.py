@@ -7,6 +7,13 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from receipt_intelligence.receipt_compat import (
+    item_line_total,
+    receipt_date,
+    receipt_grand_total,
+    receipt_time,
+)
+
 from .normalization import (
     as_float,
     as_str,
@@ -35,27 +42,24 @@ def file_sha256(path: Path | str | None) -> str | None:
 
 def receipt_core(receipt: dict[str, Any]) -> dict[str, Any]:
     merchant = receipt.get("merchant") if isinstance(receipt.get("merchant"), dict) else {}
-    totals = receipt.get("totals") if isinstance(receipt.get("totals"), dict) else {}
     items = receipt.get("items") if isinstance(receipt.get("items"), list) else []
     merchant_name = as_str(first_present(merchant.get("name"), receipt.get("merchant_name")))
     merchant_normalized = normalize_merchant_name(merchant_name)
-    grand_total = as_float(totals.get("grand_total"))
+    grand_total = as_float(receipt_grand_total(receipt))
     item_parts: list[str] = []
     for item in items:
         if not isinstance(item, dict):
             continue
         name = normalize_text(extract_item_description(item))
-        amount = as_float(
-            first_present(item.get("line_total"), item.get("total"), item.get("amount"))
-        )
+        amount = as_float(item_line_total(item))
         if name and amount is not None:
             item_parts.append(f"{name}:{amount:.2f}")
     item_signature = "|".join(item_parts[:80])
     fingerprint = "|".join(
         [
             merchant_normalized or "",
-            as_str(receipt.get("date")) or "",
-            as_str(receipt.get("time")) or "",
+            as_str(receipt_date(receipt)) or "",
+            as_str(receipt_time(receipt)) or "",
             f"{grand_total:.2f}" if grand_total is not None else "",
             str(len(item_parts)),
         ]
@@ -63,8 +67,8 @@ def receipt_core(receipt: dict[str, Any]) -> dict[str, Any]:
     return {
         "merchant_name": merchant_name,
         "merchant_normalized": merchant_normalized,
-        "receipt_date": as_str(receipt.get("date")),
-        "receipt_time": as_str(receipt.get("time")),
+        "receipt_date": as_str(receipt_date(receipt)),
+        "receipt_time": as_str(receipt_time(receipt)),
         "grand_total": grand_total,
         "item_count": len(item_parts),
         "item_signature": item_signature,

@@ -1,5 +1,5 @@
 {
-  "profile_version": "1.0.0",
+  "profile_version": "1.1.0",
   "automatic_patching": true,
   "retain_accepted_partial_corrections": true,
   "max_rounds": 6,
@@ -8,6 +8,9 @@
       "item_sum_source_blocks_v3"
     ],
     "ITEM_PRICES_COMPLETE": [
+      "item_sum_source_blocks_v3"
+    ],
+    "ITEM_DISCOUNT_ARITHMETIC": [
       "item_sum_source_blocks_v3"
     ],
     "ITEM_SUM_RECONCILIATION": [
@@ -38,7 +41,7 @@
     "item_sum_source_blocks_v3": {
       "kind": "source_evidence",
       "prompt_id": "gemma.correction.item_sum_source_blocks",
-      "prompt_version": "1.0.0",
+      "prompt_version": "1.1.0",
       "max_attempts": 2,
       "max_patches": 8
     },

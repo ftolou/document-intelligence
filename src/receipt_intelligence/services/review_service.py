@@ -10,6 +10,13 @@ from typing import Any
 from urllib.parse import unquote, urlparse
 
 from receipt_intelligence.extraction.validation.receipt import validate_receipt
+from receipt_intelligence.receipt_compat import (
+    apply_review_field,
+    apply_review_item_field,
+    is_next_receipt,
+    to_legacy_validation_document,
+    validation_for_review,
+)
 from receipt_intelligence.services.artifact_service import artifact_resource
 from receipt_intelligence.services.semantic_index_service import SemanticIndexUpdater
 from receipt_intelligence.storage.job_store import JobStore
@@ -18,13 +25,6 @@ from receipt_intelligence.storage.receipt_db import ReceiptDatabase
 
 def _deep_copy_json(value: Any) -> Any:
     return json.loads(json.dumps(value, ensure_ascii=False, default=str))
-
-
-def _set_if_present(container: dict[str, Any], key: str, value: Any) -> bool:
-    if value is None:
-        return False
-    container[key] = value
-    return True
 
 
 def _number_or_original(value: Any) -> Any:
@@ -65,59 +65,20 @@ def apply_human_review(
     item_corrections: list[dict[str, Any]],
     review: dict[str, Any],
 ) -> tuple[dict[str, Any], list[str]]:
-    """Apply header and item corrections without conflating row and spend categories."""
+    """Apply review edits to the canonical legacy or next receipt schema."""
+
     updated = _deep_copy_json(receipt)
     changed: list[str] = []
-
-    merchant = updated.setdefault("merchant", {})
-    totals = updated.setdefault("totals", {})
-    mapping: list[tuple[str, dict[str, Any], str, bool]] = [
-        ("merchant_name", merchant, "name", False),
-        ("merchant_address", merchant, "address", False),
-        ("date", updated, "date", False),
-        ("time", updated, "time", False),
-        ("currency", updated, "currency", False),
-        ("document_type", updated, "document_type", False),
-        ("receipt_category", updated, "receipt_category", False),
-        ("receipt_business_category", updated, "receipt_business_category", False),
-        ("subtotal", totals, "subtotal", True),
-        ("tax_total", totals, "tax_total", True),
-        ("grand_total", totals, "grand_total", True),
-        ("paid_total", totals, "paid_total", True),
-        ("change", totals, "change", True),
-    ]
-    for incoming_key, target, target_key, numeric in mapping:
-        if incoming_key not in fields:
+    numeric_header_fields = {"subtotal", "tax_total", "grand_total", "paid_total", "change"}
+    for key, raw_value in fields.items():
+        value = _number_or_original(raw_value) if key in numeric_header_fields else raw_value
+        if value is None:
             continue
-        value = fields.get(incoming_key)
-        if numeric:
-            value = _number_or_original(value)
-        if _set_if_present(target, target_key, value):
-            changed.append(incoming_key)
+        if apply_review_field(updated, key, value):
+            changed.append(key)
 
     items = updated.get("items") if isinstance(updated.get("items"), list) else []
-    item_text_fields = {
-        "description",
-        "raw_description",
-        "product_description",
-        "line_note",
-        "promotion_note",
-        "raw_name",
-        "normalized_name",
-        "category",
-        "parser_item_type",
-        "receipt_row_type",
-        "category_group",
-        "category_key",
-        "category_path",
-        "category_source",
-        "category_reason",
-        "semantic_description",
-        "unit",
-        "vat_rate",
-        "tax_code",
-        "review_status",
-    }
+    next_schema = is_next_receipt(updated)
     item_numeric_fields = {
         "quantity",
         "unit_price",
@@ -129,46 +90,35 @@ def apply_human_review(
         "category_confidence",
     }
     item_bool_fields = {"category_review_required"}
+    ignored_fields = {"index", "item_id", "_db_item_id"}
 
     for correction in item_corrections or []:
         if not isinstance(correction, dict):
             continue
         try:
             index = int(correction.get("index"))
-        except Exception:
+        except (TypeError, ValueError):
             continue
         if index < 0 or index >= len(items) or not isinstance(items[index], dict):
             continue
         item = items[index]
-        for key in sorted(item_text_fields | item_numeric_fields | item_bool_fields):
-            if key not in correction:
+        for key, raw_value in correction.items():
+            if key in ignored_fields:
                 continue
-            value = correction.get(key)
+            value = raw_value
             if key in item_numeric_fields:
                 value = _number_or_original(value)
             elif key in item_bool_fields:
                 value = _bool_or_original(value)
-
-            if key == "description":
-                item["description"] = value
-                item.setdefault("raw_name", value)
-                changed.append(f"items[{index}].description")
-            elif key == "product_description":
-                item["product_description"] = value
-                if not item.get("description"):
-                    item["description"] = value
-                changed.append(f"items[{index}].product_description")
-            elif key == "raw_description":
-                item["raw_description"] = value
-                changed.append(f"items[{index}].raw_description")
-            elif key == "parser_item_type":
-                item["category"] = value
-                item["parser_item_type"] = value
-                changed.append(f"items[{index}].parser_item_type")
+            canonical_key = apply_review_item_field(
+                item,
+                key,
+                value,
+                next_schema=next_schema,
+            )
+            changed.append(f"items[{index}].{canonical_key}")
+            if not next_schema and key == "parser_item_type":
                 changed.append(f"items[{index}].category")
-            else:
-                item[key] = value
-                changed.append(f"items[{index}].{key}")
 
         if "category_group" in correction or "category_key" in correction:
             category_path = _category_path_from_group_key(
@@ -275,7 +225,9 @@ class ReviewService:
             updated["parse_status"] = "partial"
 
         ocr_context, context_source = self.load_ocr_context(job_id)
-        report = validate_receipt(updated, ocr_context)
+        validation_input = to_legacy_validation_document(updated)
+        report = validate_receipt(validation_input, ocr_context)
+        report = validation_for_review(report)
         deterministic_decision = str(report.get("import_decision") or "needs_review")
         issues = [issue for issue in report.get("issues") or [] if isinstance(issue, dict)]
         blocking_issues = [
@@ -370,6 +322,7 @@ class ReviewService:
         validation = (
             receipt.get("validation") if isinstance(receipt.get("validation"), dict) else {}
         )
+        validation = validation_for_review(validation)
         issues = validation.get("issues") if isinstance(validation.get("issues"), list) else []
         result = self.receipt_db.upsert_review_queue(
             job_id=job_id,

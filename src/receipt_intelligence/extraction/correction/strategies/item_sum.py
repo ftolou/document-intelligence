@@ -10,7 +10,7 @@ from ..evidence import money_float, parse_decimal_literal, parse_rows
 
 _MAX_PATCHES = 8
 _MAX_INSERTIONS = 4
-_MAX_REPLACEMENTS = 3
+_MAX_REPLACEMENTS = 8
 _MIN_NAME_SCORE = 0.92
 _MIN_NAME_MARGIN = 0.08
 _PER_UNIT_MARKER = re.compile(
@@ -96,7 +96,9 @@ def validate_item_sum_evidence(answer: Any, transcription: str) -> dict[str, Any
         if not isinstance(block, dict):
             errors.append({"code": "ITEM_BLOCK_NOT_OBJECT", "location": location})
             continue
-        if set(block) != {"source_rows", "name", "line_amount", "unit_price"}:
+        allowed_fields = frozenset({"source_rows", "name", "line_amount", "unit_price"})
+        extended_fields = allowed_fields | {"original_price", "discount_amount"}
+        if frozenset(block) not in {allowed_fields, extended_fields}:
             errors.append({"code": "ITEM_BLOCK_FIELDS_INVALID", "location": location})
         row_ids = validate_rows(block.get("source_rows"), f"{location}.source_rows")
         joined = "\n".join(source[row_id] for row_id in row_ids)
@@ -110,13 +112,24 @@ def validate_item_sum_evidence(answer: Any, transcription: str) -> dict[str, Any
                 errors.append(
                     {"code": "VALUE_NOT_LITERAL_IN_SOURCE_ROWS", "location": f"{location}.{field_name}", "value": value}
                 )
-        unit_price = block.get("unit_price")
-        if unit_price is not None:
-            if not isinstance(unit_price, str) or not unit_price.strip():
-                errors.append({"code": "INVALID_UNIT_PRICE", "location": f"{location}.unit_price"})
-            elif unit_price not in joined:
+        for field_name in ("unit_price", "original_price", "discount_amount"):
+            value = block.get(field_name)
+            if value is None:
+                continue
+            if not isinstance(value, str) or not value.strip():
                 errors.append(
-                    {"code": "VALUE_NOT_LITERAL_IN_SOURCE_ROWS", "location": f"{location}.unit_price", "value": unit_price}
+                    {
+                        "code": f"INVALID_{field_name.upper()}",
+                        "location": f"{location}.{field_name}",
+                    }
+                )
+            elif value not in joined:
+                errors.append(
+                    {
+                        "code": "VALUE_NOT_LITERAL_IN_SOURCE_ROWS",
+                        "location": f"{location}.{field_name}",
+                        "value": value,
+                    }
                 )
 
     for index, group in enumerate(unresolved):
@@ -148,6 +161,22 @@ def _parse_line_amount(value: Any) -> Decimal | None:
         return None
     amount = parse_decimal_literal(text)
     if amount is None or amount < 0:
+        return None
+    return amount
+
+
+def _parse_optional_amount(value: Any, *, positive_magnitude: bool = False) -> Decimal | None:
+    if not isinstance(value, str):
+        return None
+    text = " ".join(value.strip().split())
+    if not text or len(_MONEY_TOKEN.findall(text)) != 1:
+        return None
+    amount = parse_decimal_literal(text)
+    if amount is None:
+        return None
+    if positive_magnitude:
+        amount = abs(amount)
+    elif amount < 0:
         return None
     return amount
 
@@ -263,7 +292,17 @@ def build_item_sum_patch(
         if not isinstance(name, str) or not name.strip():
             rejected.append({"index": index, "reason": "missing_name"})
             continue
-        source_blocks.append({**block, "_amount": amount})
+        source_blocks.append(
+            {
+                **block,
+                "_amount": amount,
+                "_original_price": _parse_optional_amount(block.get("original_price")),
+                "_discount_amount": _parse_optional_amount(
+                    block.get("discount_amount"),
+                    positive_magnitude=True,
+                ),
+            }
+        )
         if amount is None:
             rejected.append(
                 {
@@ -302,22 +341,32 @@ def build_item_sum_patch(
         if current_index is None:
             unmatched.append(source_index)
             continue
-        current_amount = _money(current_items[current_index].get("final_price"))
-        if current_amount is None or not _money_close(current_amount, source_amount):
+        source_rows = ",".join(block.get("source_rows") or [])
+        candidates = (
+            ("final_price", source_amount, block.get("line_amount")),
+            ("original_price", block.get("_original_price"), block.get("original_price")),
+            ("discount_amount", block.get("_discount_amount"), block.get("discount_amount")),
+        )
+        for field_name, source_value, printed_value in candidates:
+            if source_value is None or field_name not in current_items[current_index]:
+                continue
+            current_value = _money(current_items[current_index].get(field_name))
+            if current_value is not None and _money_close(current_value, source_value):
+                continue
             replacements.append(
                 {
                     "op": "replace_value",
                     "reason": (
-                        f"Source rows {','.join(block.get('source_rows') or [])} print "
-                        f"item {block['name']!r} with line amount {block.get('line_amount')!r}."
+                        f"Source rows {source_rows} print item {block['name']!r} "
+                        f"with {field_name} evidence {printed_value!r}."
                     )[:240],
-                    "path": f"/items/{current_index}/final_price",
-                    "value": money_float(source_amount),
+                    "path": f"/items/{current_index}/{field_name}",
+                    "value": money_float(source_value),
                 }
             )
 
     if len(replacements) > _MAX_REPLACEMENTS:
-        return {"patches": []}, {"status": "abstained", "reason": "too_many_price_replacements", "replacement_count": len(replacements)}
+        return {"patches": []}, {"status": "abstained", "reason": "too_many_item_field_replacements", "replacement_count": len(replacements)}
     if len(unmatched) > _MAX_INSERTIONS:
         return {"patches": []}, {"status": "abstained", "reason": "too_many_missing_source_items", "insertion_count": len(unmatched)}
 
@@ -340,8 +389,16 @@ def build_item_sum_patch(
             "final_price": money_float(block["_amount"]),
             "quantity": None,
             "unit": None,
-            "discount_amount": None,
-            "original_price": None,
+            "discount_amount": (
+                money_float(block["_discount_amount"])
+                if block.get("_discount_amount") is not None
+                else None
+            ),
+            "original_price": (
+                money_float(block["_original_price"])
+                if block.get("_original_price") is not None
+                else None
+            ),
         }
         insertions.append(
             {

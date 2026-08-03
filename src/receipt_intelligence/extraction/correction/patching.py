@@ -209,9 +209,11 @@ def target_for_strategy(
         items = receipt.get("items")
         items = items if isinstance(items, list) else []
         value_paths = [
-            f"/items/{index}/final_price"
+            f"/items/{index}/{field_name}"
             for index, item in enumerate(items)
-            if isinstance(item, dict) and "final_price" in item
+            if isinstance(item, dict)
+            for field_name in ("final_price", "original_price", "discount_amount")
+            if field_name in item
         ]
         operations = (["replace_value"] if value_paths else []) + (["insert_array_element"] if isinstance(receipt.get("items"), list) else [])
         return {**base, "permitted_operations": operations, "permitted_value_paths": value_paths, "permitted_array_paths": ["/items"] if isinstance(receipt.get("items"), list) else [], "model_patch_supported": bool(operations)}

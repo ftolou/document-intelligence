@@ -106,6 +106,10 @@ class TranscriptionResult:
         object.__setattr__(self, "canonical_text", canonical_text)
         object.__setattr__(self, "diagnostics", dict(self.diagnostics))
 
+    @property
+    def used_full_image_fallback(self) -> bool:
+        """Whether transcription used a whole-image fallback crop."""
+        return any(crop.is_full_image_fallback for crop in self.crops)
 
 __all__ = [
     "BoundingBox",

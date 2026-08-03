@@ -59,8 +59,9 @@ class ExistingReceiptCategorizationService(ReceiptCategorizationService):
                 model=self._model,
             )
         categorizer = self._categorizer or _load_existing_categorizer()
+        categorization_input = _legacy_categorization_input(request.receipt)
         raw = categorizer(
-            copy.deepcopy(request.receipt),
+            categorization_input,
             ollama_url=self._ollama_url,
             model=self._model,
             num_ctx=self._num_ctx,
@@ -93,6 +94,25 @@ class ExistingReceiptCategorizationService(ReceiptCategorizationService):
             error=str(raw.get("error")) if raw.get("error") else None,
             model=self._model,
         )
+
+
+def _legacy_categorization_input(receipt: dict[str, Any]) -> dict[str, Any]:
+    """Adapt the next item contract to the existing categorizer on an isolated copy."""
+
+    adapted = copy.deepcopy(receipt)
+    items = adapted.get("items") if isinstance(adapted.get("items"), list) else []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name")
+        if isinstance(name, str) and name.strip():
+            if not str(item.get("description") or "").strip():
+                item["description"] = name
+            if not str(item.get("product_description") or "").strip():
+                item["product_description"] = name
+        if item.get("line_total") is None and item.get("final_price") is not None:
+            item["line_total"] = item["final_price"]
+    return adapted
 
 
 _ITEM_CATEGORY_FIELDS = frozenset(

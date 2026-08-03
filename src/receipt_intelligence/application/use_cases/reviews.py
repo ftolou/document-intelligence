@@ -15,6 +15,7 @@ from receipt_intelligence.application.ports.receipts import (
     ReviewWorkflow,
 )
 from receipt_intelligence.application.resources import artifact_reference
+from receipt_intelligence.receipt_compat import to_review_document
 
 
 class ReviewUseCases:
@@ -68,7 +69,7 @@ class ReviewUseCases:
         return {
             "job_id": job_id,
             "receipt_db_id": (database_record or {}).get("id"),
-            "receipt": receipt,
+            "receipt": to_review_document(receipt),
             "review": self._review_service.load_review_record(job_id, receipt),
             "artifacts": artifacts,
             "receipt_image": artifacts.get("receipt_image"),
@@ -305,7 +306,7 @@ class ReviewUseCases:
             "job_id": job_id,
             "review_revision": revision.get("revision"),
         }
-        response_receipt = approved
+        response_receipt = to_review_document(approved)
         imported_receipt_id = db_import.get("receipt_db_id")
         if imported_receipt_id is not None:
             try:

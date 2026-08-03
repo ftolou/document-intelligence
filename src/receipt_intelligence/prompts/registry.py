@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -103,12 +104,52 @@ class PromptRegistry:
                 + ", ".join(sorted(missing))
             )
         text = artifact.template_path.read_text(encoding="utf-8")
-        for name in artifact.required_variables:
+        if not artifact.required_variables:
+            return text
+
+        alternatives = "|".join(
+            re.escape(name)
+            for name in sorted(artifact.required_variables, key=len, reverse=True)
+        )
+        placeholder_pattern = re.compile(
+            r"\{\{(?P<mustache>" + alternatives + r")\}\}"
+            r"|\$\{(?P<braced_dollar>" + alternatives + r")\}"
+            r"|\$(?P<plain_dollar>" + alternatives + r")(?![A-Za-z0-9_])"
+        )
+
+        sentinels: dict[str, str] = {}
+        for index, name in enumerate(artifact.required_variables):
+            sentinel = f"\x1fPROMPT_VARIABLE_{index}\x1f"
+            while sentinel in text:
+                sentinel += "_"
+            sentinels[name] = sentinel
+
+        def replace_with_sentinel(match: re.Match[str]) -> str:
+            name = (
+                match.group("mustache")
+                or match.group("braced_dollar")
+                or match.group("plain_dollar")
+            )
+            return sentinels[name]
+
+        text = placeholder_pattern.sub(replace_with_sentinel, text)
+        unresolved_matches = list(placeholder_pattern.finditer(text))
+        if unresolved_matches:
+            unresolved = sorted(
+                {
+                    match.group("mustache")
+                    or match.group("braced_dollar")
+                    or match.group("plain_dollar")
+                    for match in unresolved_matches
+                }
+            )
+            raise PromptRenderError(
+                "Unresolved prompt variables: " + ", ".join(unresolved)
+            )
+
+        for name, sentinel in sentinels.items():
             replacement = "" if values[name] is None else str(values[name])
-            text = text.replace("{{" + name + "}}", replacement)
-        unresolved = [name for name in artifact.required_variables if "{{" + name + "}}" in text]
-        if unresolved:
-            raise PromptRenderError("Unresolved prompt variables: " + ", ".join(sorted(unresolved)))
+            text = text.replace(sentinel, replacement)
         return text
 
     def _load_manifest(self) -> dict[PromptReference, PromptArtifact]:
