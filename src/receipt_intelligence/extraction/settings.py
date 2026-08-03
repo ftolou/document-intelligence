@@ -113,6 +113,7 @@ DEFAULT_SCALAR_TASKS = (
     "discount_total",
     "payment_method",
     "payment_received",
+    "change_returned",
     "net_amount",
     "vat_amount",
     "vat_lines",

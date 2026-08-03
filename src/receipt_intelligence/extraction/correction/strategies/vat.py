@@ -206,6 +206,20 @@ def _currency(receipt: dict[str, Any]) -> str | None:
     return None
 
 
+def _nested_money(container: Any, key: str) -> Decimal | None:
+    if not isinstance(container, dict):
+        return None
+    value = container.get(key)
+    if isinstance(value, dict):
+        value = value.get(key)
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        return Decimal(str(value)).quantize(Decimal("0.01"))
+    except Exception:
+        return None
+
+
 def _field_map(block: dict[str, Any]) -> dict[str, Decimal]:
     parsed: dict[str, Decimal] = {}
     for field in block.get("fields") or []:
@@ -285,6 +299,8 @@ def build_vat_patch(
     patches: list[dict[str, Any]] = []
     tax = receipt.get("tax")
     tax = tax if isinstance(tax, dict) else {}
+    totals = receipt.get("totals")
+    totals = totals if isinstance(totals, dict) else {}
     if vat_lines:
         patches.append(
             {
@@ -294,6 +310,37 @@ def build_vat_patch(
                 "value": vat_lines,
             }
         )
+
+    aggregate_net_replaced = False
+    if len(vat_lines) == 1:
+        # With a single VAT row, its printed net value is also the receipt's
+        # aggregate net value; no cross-row arithmetic or inference is needed.
+        aggregate_net = Decimal(str(vat_lines[0]["net_amount"])).quantize(Decimal("0.01"))
+        current_net = _nested_money(totals, "net_amount")
+        if current_net is None or current_net != aggregate_net:
+            existing = totals.get("net_amount")
+            if isinstance(existing, dict) and "net_amount" in existing:
+                path = "/totals/net_amount/net_amount"
+                value = money_float(aggregate_net)
+            elif "net_amount" in totals:
+                path = "/totals/net_amount"
+                value = {
+                    "net_amount": money_float(aggregate_net),
+                    "currency": _currency(receipt),
+                }
+            else:
+                path = None
+                value = None
+            if path is not None:
+                patches.append(
+                    {
+                        "op": "replace_value",
+                        "reason": ("Use the literal net amount from the receipt's single VAT row."),
+                        "path": path,
+                        "value": value,
+                    }
+                )
+                aggregate_net_replaced = True
     if aggregate_value is not None:
         current = tax.get("vat_amount")
         if isinstance(current, dict) and "vat_amount" in current:
@@ -324,5 +371,6 @@ def build_vat_patch(
         "status": "patch_built",
         "vat_line_count": len(vat_lines),
         "aggregate_vat_replaced": aggregate_value is not None,
+        "aggregate_net_replaced": aggregate_net_replaced,
         "ignored_blocks": ignored,
     }

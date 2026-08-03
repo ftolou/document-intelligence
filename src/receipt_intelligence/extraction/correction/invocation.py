@@ -15,7 +15,7 @@ from receipt_intelligence.prompts.registry import PromptReference, PromptRegistr
 
 SYSTEM_PROMPT = PromptReference("gemma.system.receipt_interpreter", "1.0.0")
 JSON_REPAIR_PROMPT = PromptReference("gemma.correction.json_repair", "1.0.0")
-_FENCE = re.compile(r"^```(?:json)?\\s*|\\s*```$", re.IGNORECASE)
+_FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE)
 
 
 class SourceEvidenceInvoker(Protocol):

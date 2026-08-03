@@ -13,6 +13,7 @@ import receipt_intelligence.settings as settings
 from receipt_intelligence.application.ports import OcrEngine, OcrRequest
 from receipt_intelligence.extraction import ExtractionRequest
 from receipt_intelligence.pipeline.integrated_receipt_pipeline import run_receipt_extraction
+from receipt_intelligence.receipt_compat import validation_for_review
 from receipt_intelligence.services.artifact_service import artifact_resource
 from receipt_intelligence.services.review_service import ReviewService
 from receipt_intelligence.storage.job_store import JobStore
@@ -272,6 +273,7 @@ class JobProcessingService:
         child = self.store.get(child_id) or {}
         result = child.get("result") if isinstance(child.get("result"), dict) else {}
         report = result.get("report") if isinstance(result.get("report"), dict) else {}
+        report = validation_for_review(report)
         artifacts = result.get("artifacts") if isinstance(result.get("artifacts"), dict) else {}
         return {
             "child_job_id": child_id,

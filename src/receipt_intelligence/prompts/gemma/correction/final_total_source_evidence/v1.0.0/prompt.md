@@ -16,6 +16,7 @@ Return exactly one JSON object matching OUTPUT_SCHEMA.
 6. An unlabeled or currency-only amount associated with payment or change is not the final purchase total.
 7. Do not add, subtract, compare, reconcile, verify, or infer amounts. Do not use item sums, discounts, VAT, payment minus change, or any other arithmetic.
 8. Return `unresolved` only when no explicit final-purchase-total label exists, or when multiple explicit final-purchase-total labels contain conflicting amounts and the source does not distinguish which one is final.
+9. If `Summe 60,47` is followed by a currency-only payment line such as `Euro 60,50` and `Rückgeld 0,03`, select the explicitly labelled `Summe 60,47`; the later currency-only amount is tendered payment, not the purchase total.
 
 ## OUTPUT RULES
 

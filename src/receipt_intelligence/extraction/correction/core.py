@@ -474,7 +474,19 @@ def run_correction_coordinator(
                         current_validation,
                         candidate_validation,
                         targeted_codes=targeted_codes,
+                        allow_partial_improvement=(profile.retain_accepted_partial_corrections),
                     )
+                    candidate_checks = {
+                        str(candidate_check.get("code")): candidate_check
+                        for candidate_check in candidate_validation.get("checks") or []
+                        if isinstance(candidate_check, dict) and candidate_check.get("code")
+                    }
+                    resolved_target_codes = {
+                        target_code
+                        for target_code in targeted_codes
+                        if (candidate_checks.get(target_code) or {}).get("status")
+                        in {"passed", "observed"}
+                    }
                     attempt_record.update(
                         {
                             "candidate_validation_status": candidate_validation.get("status"),
@@ -483,6 +495,10 @@ def run_correction_coordinator(
                             ),
                             "accepted": improves,
                             "rejection_reasons": rejection_reasons,
+                            "resolved_target_codes": sorted(resolved_target_codes),
+                            "partially_improved_target_codes": sorted(
+                                targeted_codes - resolved_target_codes if improves else set()
+                            ),
                         }
                     )
                     if improves:
@@ -507,7 +523,7 @@ def run_correction_coordinator(
                                 "normalization": copy.deepcopy(normalization),
                             }
                         )
-                        corrected_target_codes.update(targeted_codes)
+                        corrected_target_codes.update(resolved_target_codes)
                         attempt_record.update(
                             {
                                 "status": "accepted",

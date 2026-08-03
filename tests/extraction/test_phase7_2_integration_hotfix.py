@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
 from receipt_intelligence.extraction.contracts.presentation import CategorizationRequest
-from receipt_intelligence.extraction.correction.patching import target_for_strategy
+from receipt_intelligence.extraction.correction.acceptance import evaluate_candidate
+from receipt_intelligence.extraction.correction.invocation import _strip_code_fences
+from receipt_intelligence.extraction.correction.patching import apply_patch, target_for_strategy
 from receipt_intelligence.extraction.correction.profile import load_correction_profile
 from receipt_intelligence.extraction.correction.strategies.item_sum import (
     build_item_sum_patch,
     validate_item_sum_evidence,
 )
+from receipt_intelligence.extraction.correction.strategies.vat import build_vat_patch
 from receipt_intelligence.extraction.presentation.categorization import (
     ExistingReceiptCategorizationService,
 )
@@ -122,12 +126,28 @@ def test_explicit_aggregate_discount_is_retained() -> None:
     assert changes
 
 
+def test_explicit_receipt_level_coupon_discount_is_retained() -> None:
+    schema = {
+        "type": "object",
+        "properties": {"discount_total": {"type": ["number", "null"]}},
+    }
+    answer, changes = normalize_task_answer(
+        task_name="discount_total",
+        answer={"discount_total": 0.63},
+        schema=schema,
+        evidence="R0029 :: ZU BEZAHLEN 38,02\nR0030 :: Rabatt-Coupon EUR 0,63",
+    )
+    assert answer["discount_total"] == 0.63
+    assert not changes
+
+
 def test_default_scalar_tasks_cover_review_relevant_receipt_fields() -> None:
     assert {
         "receipt_number",
         "net_amount",
         "payment_method",
         "payment_received",
+        "change_returned",
     } <= set(DEFAULT_SCALAR_TASKS)
 
 
@@ -135,8 +155,12 @@ def test_item_discount_arithmetic_routes_to_extended_item_evidence_strategy() ->
     profile = load_correction_profile(
         Path("src/receipt_intelligence/extraction/correction/config/production.json")
     )
-    assert profile.profile_version == "1.1.0"
+    assert profile.profile_version == "1.2.0"
     assert profile.routes["ITEM_DISCOUNT_ARITHMETIC"] == ("item_sum_source_blocks_v3",)
+    assert profile.routes["NET_PLUS_VAT_RECONCILIATION"] == (
+        "vat_source_evidence_v9",
+        "final_total_source_evidence_v2_4",
+    )
     assert profile.strategies["item_sum_source_blocks_v3"].prompt_version == "1.1.0"
 
 
@@ -211,6 +235,153 @@ def test_item_evidence_builds_bounded_discount_arithmetic_patch() -> None:
         max_patches=8,
     )
     assert set(by_path) <= set(target["permitted_value_paths"])
+
+
+def test_ikea_missing_items_update_truncated_unpriced_item_without_duplicate() -> None:
+    receipt = {
+        "items": [
+            {"name": "GLIMMA N Teel dn", "final_price": 2.49},
+            {"name": "TRATT Kerzlösch Alum", "final_price": 1.99},
+            {"name": "GUBBRÖRA Backpins", "final_price": 0.69},
+            {"name": "KOPPLA Mfstd 3/S", "final_price": 4.99},
+            {"name": "SKOGHALL Hak selbstk", "final_price": 5.99},
+            {"name": "FIXA Schr/Dü", "final_price": 4.99},
+            {"name": "FENOMEN Bikerze dn", "final_price": 3.49},
+            {"name": "OFTAST Desstel", "final_price": None},
+        ]
+    }
+    names_and_amounts = [
+        ("GLIMMA N Teel dn 100", "2,49"),
+        ("TRATT Kerzlösch Alum", "1,99"),
+        ("GUBBRÖRA Backpins", "0,69"),
+        ("KOPPLA Mfstd 3/S", "4,99"),
+        ("SKOGHALL Hak selbstk", "5,99"),
+        ("FIXA Schr/Dü 260", "4,99"),
+        ("FENOMEN Bikerze dn 5", "3,49"),
+        ("OFTAST Desstel 19 we", "5,88"),
+        ("LACK N Wareg 30x26 w", "11,98"),
+        ("PERSBY Wareg 79x26 w", "17,98"),
+    ]
+    answer = {
+        "item_blocks": [
+            {
+                "source_rows": [f"R{index:04d}"],
+                "name": name,
+                "line_amount": amount,
+                "unit_price": None,
+            }
+            for index, (name, amount) in enumerate(names_and_amounts, start=1)
+        ],
+        "unresolved_candidate_rows": [],
+    }
+
+    patch, diagnostics = build_item_sum_patch(answer, receipt)
+    by_path = {entry["path"]: entry for entry in patch["patches"]}
+    assert by_path["/items/7/final_price"]["value"] == 5.88
+    insertions = [entry for entry in patch["patches"] if entry["op"] == "insert_array_element"]
+    assert [entry["value"]["name"] for entry in insertions] == [
+        "LACK N Wareg 30x26 w",
+        "PERSBY Wareg 79x26 w",
+    ]
+    assert diagnostics["matches"][7]["method"] == "ordered_token_prefix"
+
+    corrected = apply_patch(receipt, patch)
+    assert len(corrected["items"]) == 10
+    assert all(item["final_price"] is not None for item in corrected["items"])
+    assert round(sum(item["final_price"] for item in corrected["items"]), 2) == 60.47
+
+
+def test_ikea_item_recovery_is_retained_as_bounded_partial_improvement() -> None:
+    def validation(difference: float) -> dict:
+        return {
+            "summary": {
+                "error_count": 0,
+                "review_count": 2,
+                "failed": 2,
+                "skipped": 3,
+            },
+            "checks": [
+                {
+                    "code": "ITEM_SUM_RECONCILIATION",
+                    "status": "failed",
+                    "severity": "review",
+                    "values": {
+                        "direct_difference": difference,
+                        "absolute_direct_difference": abs(difference),
+                    },
+                },
+                {
+                    "code": "VAT_LINES_GROSS_RECONCILIATION",
+                    "status": "failed",
+                    "severity": "review",
+                    "values": {"difference": -0.03},
+                },
+            ],
+        }
+
+    accepted, reasons = evaluate_candidate(
+        validation(-35.87),
+        validation(-0.03),
+        targeted_codes={"ITEM_SUM_RECONCILIATION"},
+        allow_partial_improvement=True,
+    )
+    assert accepted is True
+    assert reasons == []
+
+    accepted, reasons = evaluate_candidate(
+        validation(-35.87),
+        validation(-0.03),
+        targeted_codes={"ITEM_SUM_RECONCILIATION"},
+    )
+    assert accepted is False
+    assert reasons == ["target_not_resolved:ITEM_SUM_RECONCILIATION:status=failed"]
+
+
+def test_single_vat_row_can_repair_explicit_aggregate_net_amount() -> None:
+    answer = {
+        "vat_evidence_blocks": [
+            {
+                "context_rows": ["R0036"],
+                "source_row": "R0037",
+                "row_label": "0",
+                "fields": [
+                    {"role": "rate_percent", "value": "19,0"},
+                    {"role": "net_amount", "value": "50,82"},
+                    {"role": "vat_amount", "value": "9,65"},
+                ],
+            }
+        ],
+        "unresolved_candidate_rows": [],
+    }
+    receipt = {
+        "receipt_metadata": {"currency": "EUR"},
+        "tax": {
+            "vat_amount": {"vat_amount": 9.65, "currency": "EUR"},
+            "vat_lines": [],
+        },
+        "totals": {"net_amount": {"net_amount": 9.65, "currency": "EUR"}},
+    }
+    patch, diagnostics = build_vat_patch(answer, receipt)
+    by_path = {entry["path"]: entry["value"] for entry in patch["patches"]}
+    assert by_path["/totals/net_amount/net_amount"] == 50.82
+    assert diagnostics["aggregate_net_replaced"] is True
+
+
+def test_markdown_json_fences_are_removed_without_repair() -> None:
+    payload = '{"status":"resolved"}'
+    assert _strip_code_fences(f"```json\n{payload}\n```") == payload
+
+
+def test_final_total_schema_patterns_are_backend_compatible() -> None:
+    path = Path(
+        "src/receipt_intelligence/prompts/gemma/correction/"
+        "final_total_source_evidence/v1.0.0/schema.json"
+    )
+    schema = json.loads(path.read_text(encoding="utf-8"))
+    resolved = schema["oneOf"][0]["properties"]
+    for field in ("label_text", "value_text"):
+        pattern = resolved[field]["pattern"]
+        assert pattern.startswith("^") and pattern.endswith("$")
 
 
 def test_finalization_metadata_snapshot_marks_final_stage_done() -> None:

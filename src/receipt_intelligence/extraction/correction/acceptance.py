@@ -52,13 +52,47 @@ def _status_count(validation: dict[str, Any], name: str) -> int:
     return int(summary.get(name) or 0)
 
 
+_RESIDUAL_FIELDS = {
+    "ITEM_SUM_RECONCILIATION": ("absolute_direct_difference",),
+    "PRE_DISCOUNT_TOTAL_RECONCILIATION": ("difference",),
+    "NET_PLUS_VAT_RECONCILIATION": ("difference",),
+    "VAT_LINE_SUM_RECONCILIATION": ("difference",),
+    "VAT_LINES_GROSS_RECONCILIATION": ("difference",),
+    "PAYMENT_CHANGE_RECONCILIATION": ("difference",),
+}
+
+
+def _numeric_residual(check: dict[str, Any]) -> float | None:
+    values = check.get("values")
+    values = values if isinstance(values, dict) else {}
+    for field in _RESIDUAL_FIELDS.get(str(check.get("code")), ()):
+        value = values.get(field)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        return abs(float(value))
+    return None
+
+
+def _failed_target_improved(before: dict[str, Any], after: dict[str, Any]) -> bool:
+    if before.get("status") != "failed" or after.get("status") != "failed":
+        return False
+    before_residual = _numeric_residual(before)
+    after_residual = _numeric_residual(after)
+    return (
+        before_residual is not None
+        and after_residual is not None
+        and after_residual < before_residual
+    )
+
+
 def evaluate_candidate(
     before: dict[str, Any],
     after: dict[str, Any],
     *,
     targeted_codes: Iterable[str],
+    allow_partial_improvement: bool = False,
 ) -> tuple[bool, list[str]]:
-    """Require target resolution and reject all deterministic regressions."""
+    """Require target progress and reject all deterministic regressions."""
     reasons: list[str] = []
     before_map = _check_map(before)
     after_map = _check_map(after)
@@ -66,8 +100,12 @@ def evaluate_candidate(
     after_failed = failed_codes(after)
 
     for code in sorted(set(str(value) for value in targeted_codes)):
-        status = (after_map.get(code) or {}).get("status")
-        if status not in {"passed", "observed"}:
+        after_check = after_map.get(code) or {}
+        status = after_check.get("status")
+        partially_improved = allow_partial_improvement and _failed_target_improved(
+            before_map.get(code) or {}, after_check
+        )
+        if status not in {"passed", "observed"} and not partially_improved:
             reasons.append(f"target_not_resolved:{code}:status={status}")
 
     regressed_passed = sorted(

@@ -564,6 +564,7 @@ class ReviewService:
         final_receipt_path: Path,
     ) -> dict[str, Any]:
         receipt = json.loads(final_receipt_path.read_text(encoding="utf-8"))
+        report = validation_for_review(report)
         issues = report.get("issues") if isinstance(report.get("issues"), list) else []
         return self.receipt_db.upsert_review_queue(
             job_id=job_id,

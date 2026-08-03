@@ -13,6 +13,7 @@ _MAX_PATCHES = 8
 _MAX_INSERTIONS = 4
 _MAX_REPLACEMENTS = 8
 _MIN_NAME_SCORE = 0.92
+_MIN_MISSING_PRICE_NAME_SCORE = 0.88
 _MIN_NAME_MARGIN = 0.08
 _PER_UNIT_MARKER = re.compile(
     r"(?:/|\bpro\b|\bper\b)\s*(?:kg|g|l|ml|cl|m|cm|stk|st|stück|piece)\b",
@@ -213,6 +214,17 @@ def _money_close(left: Decimal, right: Decimal) -> bool:
     return abs(left - right) <= Decimal("0.01")
 
 
+def _ordered_token_prefix(left: str, right: str) -> bool:
+    """Recognize a uniquely extended/truncated item name without reordering tokens."""
+
+    left_tokens = left.split()
+    right_tokens = right.split()
+    shorter, longer = sorted((left_tokens, right_tokens), key=len)
+    return (
+        len(shorter) >= 2 and len(longer) - len(shorter) <= 2 and longer[: len(shorter)] == shorter
+    )
+
+
 def _match_blocks(
     source_blocks: Sequence[dict[str, Any]],
     current_items: Sequence[dict[str, Any]],
@@ -234,6 +246,29 @@ def _match_blocks(
         if exact:
             selected, score, method = exact[0], 1.0, "exact"
         else:
+            prefix = [
+                index
+                for index in candidates
+                if _ordered_token_prefix(source_name, current_names[index])
+            ]
+            if len(prefix) == 1:
+                selected = prefix[0]
+                score = difflib.SequenceMatcher(None, source_name, current_names[selected]).ratio()
+                method = "ordered_token_prefix"
+                matches[source_index] = selected
+                available.remove(selected)
+                last_index = selected
+                diagnostics.append(
+                    {
+                        "source_index": source_index,
+                        "source_name": block.get("name"),
+                        "current_index": selected,
+                        "current_name": current_items[selected].get("name"),
+                        "method": method,
+                        "score": round(score, 4),
+                    }
+                )
+                continue
             scored = sorted(
                 (
                     difflib.SequenceMatcher(None, source_name, current_names[index]).ratio(),
@@ -247,7 +282,12 @@ def _match_blocks(
                 continue
             best_score, selected = scored[0]
             second_score = scored[1][0] if len(scored) > 1 else 0.0
-            if best_score < _MIN_NAME_SCORE or best_score - second_score < _MIN_NAME_MARGIN:
+            current_item = current_items[selected]
+            missing_price = (
+                isinstance(current_item, dict) and _money(current_item.get("final_price")) is None
+            )
+            minimum_score = _MIN_MISSING_PRICE_NAME_SCORE if missing_price else _MIN_NAME_SCORE
+            if best_score < minimum_score or best_score - second_score < _MIN_NAME_MARGIN:
                 diagnostics.append(
                     {
                         "source_index": source_index,
@@ -258,7 +298,8 @@ def _match_blocks(
                     }
                 )
                 continue
-            score, method = best_score, "fuzzy_unique"
+            score = best_score
+            method = "missing_price_fuzzy_unique" if missing_price else "fuzzy_unique"
         matches[source_index] = selected
         available.remove(selected)
         last_index = selected

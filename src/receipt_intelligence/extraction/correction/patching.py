@@ -261,14 +261,21 @@ def target_for_strategy(
             "model_patch_supported": bool(operations),
         }
     if strategy_id == "vat_source_evidence_v9":
-        paths = ["/tax/vat_lines", "/tax/vat_amount"]
+        paths = ["/tax/vat_lines", "/tax/vat_amount", "/totals/net_amount"]
         tax = receipt.get("tax")
+        totals = receipt.get("totals")
         if (
             isinstance(tax, dict)
             and isinstance(tax.get("vat_amount"), dict)
             and "vat_amount" in tax["vat_amount"]
         ):
             paths.append("/tax/vat_amount/vat_amount")
+        if (
+            isinstance(totals, dict)
+            and isinstance(totals.get("net_amount"), dict)
+            and "net_amount" in totals["net_amount"]
+        ):
+            paths.append("/totals/net_amount/net_amount")
         return {
             **base,
             "permitted_operations": ["replace_value"],

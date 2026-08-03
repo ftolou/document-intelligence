@@ -1,5 +1,5 @@
 {
-  "profile_version": "1.1.0",
+  "profile_version": "1.2.0",
   "automatic_patching": true,
   "retain_accepted_partial_corrections": true,
   "max_rounds": 6,
@@ -31,6 +31,7 @@
       "final_total_source_evidence_v2_4"
     ],
     "NET_PLUS_VAT_RECONCILIATION": [
+      "vat_source_evidence_v9",
       "final_total_source_evidence_v2_4"
     ],
     "PAYMENT_CHANGE_RECONCILIATION": [

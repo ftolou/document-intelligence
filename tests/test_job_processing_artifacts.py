@@ -9,6 +9,10 @@ from receipt_intelligence.services.job_processing import JobProcessingService
 class _Store:
     def __init__(self) -> None:
         self.registered: list[str] = []
+        self.jobs: dict[str, dict] = {}
+
+    def get(self, job_id: str) -> dict | None:
+        return self.jobs.get(job_id)
 
     def register_artifact(
         self, job_id: str, key: str, path: Path, category: str | None = None
@@ -60,3 +64,35 @@ def test_key_artifacts_omit_missing_legacy_files_for_next_pipeline(tmp_path: Pat
     assert "llm_prompt" not in artifacts
     assert "llm_raw" not in artifacts
     assert "ocr_context" not in artifacts
+
+
+def test_batch_summary_adapts_next_validation_report() -> None:
+    service = JobProcessingService.__new__(JobProcessingService)
+    service.store = _Store()
+    service.store.jobs["job-1"] = {
+        "state": "completed",
+        "result": {
+            "report": {
+                "status": "review_required",
+                "metrics": {
+                    "item_sum": 24.63,
+                    "final_purchase_total": 60.5,
+                },
+                "checks": [
+                    {
+                        "code": "ITEM_PRICES_COMPLETE",
+                        "status": "failed",
+                        "severity": "review",
+                        "message": "One item has no price.",
+                    }
+                ],
+            },
+            "artifacts": {},
+        },
+    }
+
+    item = service._batch_item_from_job("job-1", Path("ikea.jpg"))
+    assert item["decision"] == "needs_review"
+    assert item["balanced"] is False
+    assert item["difference"] == -35.87
+    assert item["issue_count"] == 1

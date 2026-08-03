@@ -61,11 +61,11 @@
         },
         "label_text": {
           "type": "string",
-          "pattern": ".*\\S.*"
+          "pattern": "^.*\\S.*$"
         },
         "value_text": {
           "type": "string",
-          "pattern": ".*\\S.*"
+          "pattern": "^.*\\S.*$"
         }
       }
     },

@@ -11,6 +11,7 @@ _NULL_PLACEHOLDERS = frozenset({"", "-", "?", "n/a", "na", "none", "null", "unkn
 _CURRENCY = re.compile(r"^[A-Z]{3}$")
 _AGGREGATE_DISCOUNT = re.compile(
     r"\b(?:rabatt(?:e)?\s*(?:gesamt|summe)|gesamt(?:er|e|es)?\s*rabatt|gesamtrabatt|"
+    r"rabatt[-\s]*coupon|"
     r"discount\s*(?:total|sum)|total\s*discount|total\s*savings|"
     r"ersparnis\s*(?:gesamt|summe)|sie\s+sparen)\b",
     re.IGNORECASE,
