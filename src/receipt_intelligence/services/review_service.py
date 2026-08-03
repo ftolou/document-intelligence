@@ -21,7 +21,7 @@ from receipt_intelligence.services.artifact_service import artifact_resource
 from receipt_intelligence.services.semantic_index_service import SemanticIndexUpdater
 from receipt_intelligence.storage.job_store import JobStore
 from receipt_intelligence.storage.receipt_db import ReceiptDatabase
-
+from receipt_intelligence.domain.categorization_taxonomy import fashion_category_path
 
 def _deep_copy_json(value: Any) -> Any:
     return json.loads(json.dumps(value, ensure_ascii=False, default=str))
@@ -52,6 +52,9 @@ def _bool_or_original(value: Any) -> Any:
 def _category_path_from_group_key(group: Any, key: Any) -> str | None:
     group_text = str(group or "").strip()
     key_text = str(key or "").strip()
+    canonical_path = fashion_category_path(key_text)
+    if canonical_path:
+        return canonical_path
     if not group_text and not key_text:
         return None
     if group_text and key_text:

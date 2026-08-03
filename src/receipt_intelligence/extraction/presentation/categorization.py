@@ -119,6 +119,8 @@ _ITEM_CATEGORY_FIELDS = frozenset(
     {
         "category_key",
         "category_group",
+        "category_path",
+        "category_taxonomy_version",
         "category_confidence",
         "category_confidence_raw",
         "category_confidence_calibrated",
@@ -137,6 +139,7 @@ _MERCHANT_CATEGORY_FIELDS = frozenset(
         "category_confidence",
         "category_reason",
         "category_source",
+        "category_taxonomy_version",
     }
 )
 

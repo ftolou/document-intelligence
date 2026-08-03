@@ -1,20 +1,46 @@
-"""Compatibility observability exports and lightweight timing helpers.
+"""Observability public API with dependency-safe lazy exports."""
 
-New workflows publish typed application events through ``EventSink`` ports.
-Concrete persistence implementations live under ``adapters.observability``.
-"""
+from __future__ import annotations
 
-from receipt_intelligence.application.ports.llm import ModelCallMetrics
-from receipt_intelligence.observability.jsonl import JsonlEventWriter
-from receipt_intelligence.observability.query import QueryTelemetrySink
-from receipt_intelligence.observability.readiness import build_readiness_report
-from receipt_intelligence.observability.timing import elapsed_ms, utc_now_iso
+from importlib import import_module
+from typing import TYPE_CHECKING, Any
 
-__all__ = [
-    "JsonlEventWriter",
-    "ModelCallMetrics",
-    "QueryTelemetrySink",
-    "build_readiness_report",
-    "elapsed_ms",
-    "utc_now_iso",
-]
+if TYPE_CHECKING:
+    from receipt_intelligence.application.ports.llm import ModelCallMetrics
+    from receipt_intelligence.observability.jsonl import JsonlEventWriter
+    from receipt_intelligence.observability.query import QueryTelemetrySink
+    from receipt_intelligence.observability.readiness import build_readiness_report
+    from receipt_intelligence.observability.timing import elapsed_ms, utc_now_iso
+
+_EXPORTS: dict[str, tuple[str, str]] = {
+    "JsonlEventWriter": ("receipt_intelligence.observability.jsonl", "JsonlEventWriter"),
+    "ModelCallMetrics": ("receipt_intelligence.application.ports.llm", "ModelCallMetrics"),
+    "QueryTelemetrySink": (
+        "receipt_intelligence.observability.query",
+        "QueryTelemetrySink",
+    ),
+    "build_readiness_report": (
+        "receipt_intelligence.observability.readiness",
+        "build_readiness_report",
+    ),
+    "elapsed_ms": ("receipt_intelligence.observability.timing", "elapsed_ms"),
+    "utc_now_iso": ("receipt_intelligence.observability.timing", "utc_now_iso"),
+}
+
+__all__ = list(_EXPORTS)
+
+
+def __getattr__(name: str) -> Any:
+    """Resolve one observability symbol without importing readiness at package load."""
+
+    target = _EXPORTS.get(name)
+    if target is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module_name, attribute_name = target
+    value = getattr(import_module(module_name), attribute_name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(__all__))

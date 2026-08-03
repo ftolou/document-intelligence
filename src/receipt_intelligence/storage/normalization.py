@@ -5,7 +5,10 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime
 from typing import Any
-
+from receipt_intelligence.domain.categorization_taxonomy import (
+    canonical_item_category_key,
+    fashion_category_path,
+)
 from receipt_intelligence.utils.text import normalize_text
 
 _WORD_RE = re.compile(r"[\wäöüÄÖÜß]+", re.UNICODE)
@@ -191,6 +194,14 @@ def _specific_category_from_aliases(description: str) -> str | None:
     return None
 
 
+def _canonical_spending_category(value: Any) -> str | None:
+    text = as_str(value)
+    if not text:
+        return None
+    key = canonical_item_category_key(text)
+    return fashion_category_path(key) or text
+
+
 def category_from_item(item: dict[str, Any], description: str) -> str | None:
     alias_category = _specific_category_from_aliases(description)
     if alias_category:
@@ -203,18 +214,18 @@ def category_from_item(item: dict[str, Any], description: str) -> str | None:
         item.get("category_path"),
     )
     if explicit and not _is_parser_item_type(explicit):
-        return str(explicit)
+        return _canonical_spending_category(explicit)
 
     group = as_str(item.get("category_group"))
     key = as_str(item.get("category_key"))
     if key and not _is_parser_item_type(key):
-        return key
+        return _canonical_spending_category(key)
     if group and not _is_parser_item_type(group):
         return group
 
     legacy = item.get("category")
     if legacy and not _is_parser_item_type(legacy):
-        return str(legacy)
+        return _canonical_spending_category(legacy)
     return None
 
 

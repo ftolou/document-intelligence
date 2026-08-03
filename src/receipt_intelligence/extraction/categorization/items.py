@@ -24,10 +24,20 @@ from receipt_intelligence.application.ports.llm import (
     LlmGateway,
     coerce_generation_result,
 )
+from receipt_intelligence.domain.categorization_taxonomy import (
+    FASHION_ITEM_TAXONOMY,
+    FASHION_MERCHANT_TAXONOMY,
+    ITEM_TAXONOMY_VERSION,
+    MERCHANT_TAXONOMY_VERSION,
+    SPECIFIC_FASHION_ITEM_KEYS,
+    canonical_item_category_key,
+    canonical_merchant_category_key,
+    normalize_taxonomy_key,
+)
 from receipt_intelligence.extraction.parsing.llm_parser import ollama_generate
 from receipt_intelligence.prompts import render_prompt_template
 
-CATEGORY_SCHEMA_VERSION = "v14_14_item_categories_1"
+CATEGORY_SCHEMA_VERSION = "v14_14_item_categories_2"
 
 CATEGORY_TAXONOMY: list[dict[str, str]] = [
     {
@@ -105,11 +115,7 @@ CATEGORY_TAXONOMY: list[dict[str, str]] = [
         "group": "Health",
         "description": "Medication-like OTC, pharmacy, health products",
     },
-    {
-        "key": "clothing_shoes",
-        "group": "Clothing",
-        "description": "Clothing, shoes, sportswear, fashion accessories",
-    },
+    *FASHION_ITEM_TAXONOMY,
     {
         "key": "electronics",
         "group": "Electronics",
@@ -141,7 +147,7 @@ MERCHANT_TAXONOMY: list[dict[str, str]] = [
     {"key": "restaurant_cafe", "description": "Restaurant, takeaway, cafe or prepared-food seller"},
     {"key": "bakery", "description": "Bakery or pastry shop"},
     {"key": "pharmacy_health", "description": "Pharmacy, drugstore or health retailer"},
-    {"key": "clothing_shoes", "description": "Clothing, footwear or fashion retailer"},
+    *FASHION_MERCHANT_TAXONOMY,
     {"key": "home_furniture", "description": "Furniture, home goods or household retailer"},
     {"key": "electronics", "description": "Electronics, appliance or device retailer"},
     {"key": "fuel", "description": "Fuel station or vehicle charging merchant"},
@@ -485,9 +491,10 @@ def _safe_text(value: Any, limit: int = 180) -> str:
 
 
 def _taxonomy_text() -> str:
-    lines = ["key|group|meaning"]
+    lines = ["key|group|path|meaning"]
     for row in CATEGORY_TAXONOMY:
-        lines.append(f"{row['key']}|{row['group']}|{row['description']}")
+        path = row.get("path") or row["key"]
+        lines.append(f"{row['key']}|{row['group']}|{path}|{row['description']}")
     return "\n".join(lines)
 
 
@@ -542,6 +549,99 @@ def _items_for_prompt(receipt: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
+def _categorization_output_schema() -> dict[str, Any]:
+    """Return the formal JSON Schema embedded in the categorization prompt."""
+
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": CATEGORY_SCHEMA_VERSION,
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "schema_version",
+            "taxonomy_version",
+            "merchant_taxonomy_version",
+            "merchant_classification",
+            "items",
+            "warnings",
+        ],
+        "properties": {
+            "schema_version": {"const": CATEGORY_SCHEMA_VERSION},
+            "taxonomy_version": {"const": ITEM_TAXONOMY_VERSION},
+            "merchant_taxonomy_version": {"const": MERCHANT_TAXONOMY_VERSION},
+            "merchant_classification": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["category_key", "confidence", "reason"],
+                "properties": {
+                    "category_key": {
+                        "type": "string",
+                        "enum": sorted(VALID_MERCHANT_CATEGORY_KEYS),
+                    },
+                    "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+                    "reason": {"type": "string"},
+                },
+            },
+            "items": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": [
+                        "item_index",
+                        "category_key",
+                        "confidence",
+                        "text_certainty",
+                        "evidence_terms",
+                        "reason",
+                    ],
+                    "properties": {
+                        "item_index": {"type": "integer", "minimum": 0},
+                        "category_key": {
+                            "type": "string",
+                            "enum": sorted(VALID_CATEGORY_KEYS),
+                        },
+                        "confidence": {
+                            "type": "number",
+                            "minimum": 0.0,
+                            "maximum": 1.0,
+                        },
+                        "text_certainty": {
+                            "type": "string",
+                            "enum": sorted(VALID_TEXT_CERTAINTY),
+                        },
+                        "evidence_terms": {
+                            "type": "array",
+                            "maxItems": 8,
+                            "items": {"type": "string"},
+                        },
+                        "reason": {"type": "string"},
+                    },
+                },
+            },
+            "warnings": {"type": "array", "items": {"type": "string"}},
+        },
+    }
+
+
+def _categorization_envelope_warnings(obj: dict[str, Any]) -> list[str]:
+    warnings: list[str] = []
+    if obj.get("schema_version") != CATEGORY_SCHEMA_VERSION:
+        warnings.append(
+            "Categorizer returned an unexpected schema_version; deterministic coercion applied."
+        )
+    if obj.get("taxonomy_version") != ITEM_TAXONOMY_VERSION:
+        warnings.append(
+            "Categorizer returned an unexpected taxonomy_version; v2 taxonomy enforcement applied."
+        )
+    if obj.get("merchant_taxonomy_version") != MERCHANT_TAXONOMY_VERSION:
+        warnings.append(
+            "Categorizer returned an unexpected merchant_taxonomy_version; "
+            "v2 merchant taxonomy enforcement applied."
+        )
+    return warnings
+
+
 def build_categorization_prompt(receipt: dict[str, Any]) -> str:
     merchant = receipt.get("merchant") if isinstance(receipt.get("merchant"), dict) else {}
     context = {
@@ -557,27 +657,7 @@ def build_categorization_prompt(receipt: dict[str, Any]) -> str:
         ),
     }
     items = _items_for_prompt(receipt)
-    schema = {
-        "schema_version": CATEGORY_SCHEMA_VERSION,
-        "merchant_classification": {
-            "category_key": "one merchant taxonomy key",
-            "confidence": 0.0,
-            "reason": "short reason based on merchant name/address and item pattern",
-        },
-        "items": [
-            {
-                "item_index": 0,
-                "description": "same item description from input",
-                "category_key": "one taxonomy key",
-                "category_group": "taxonomy group",
-                "confidence": 0.0,
-                "text_certainty": "explicit|contextual|incomplete_or_unfamiliar|ambiguous",
-                "evidence_terms": ["exact words copied from the item input"],
-                "reason": "short reason based only on explicit item/merchant evidence",
-            }
-        ],
-        "warnings": [],
-    }
+    schema = _categorization_output_schema()
     return render_prompt_template(
         "item_categorization.txt",
         TAXONOMY_TEXT=_taxonomy_text(),
@@ -596,8 +676,12 @@ def _coerce_merchant_classification(
     if not isinstance(raw, dict):
         warnings.append("LLM categorizer returned no merchant_classification object.")
         raw = {}
-    key = str(raw.get("category_key") or "unknown").strip().lower()
-    key = key.replace(" ", "_").replace("-", "_")
+    raw_key = normalize_taxonomy_key(raw.get("category_key") or "unknown")
+    key = canonical_merchant_category_key(raw_key)
+    if key != raw_key:
+        warnings.append(
+            f"Mapped legacy merchant category_key '{raw_key}' to taxonomy v2 key '{key}'."
+        )
     if key not in VALID_MERCHANT_CATEGORY_KEYS:
         warnings.append(f"Unknown merchant category_key '{key}'; using unknown.")
         key = "unknown"
@@ -607,6 +691,7 @@ def _coerce_merchant_classification(
             "confidence": _normalize_confidence(raw.get("confidence"), 0.0),
             "reason": _safe_text(raw.get("reason"), 300),
             "source": "llm_first",
+            "taxonomy_version": MERCHANT_TAXONOMY_VERSION,
         },
         warnings,
     )
@@ -636,8 +721,13 @@ def _coerce_categories(
         if idx < 0 or idx >= item_count:
             warnings.append(f"Skipping category row with out-of-range item_index={idx}.")
             continue
-        key = str(raw.get("category_key") or "unknown").strip().lower()
-        key = key.replace(" ", "_").replace("-", "_")
+        raw_key = normalize_taxonomy_key(raw.get("category_key") or "unknown")
+        key = canonical_item_category_key(raw_key)
+        if key != raw_key:
+            warnings.append(
+                f"Mapped legacy category_key '{raw_key}' to taxonomy v2 key '{key}' "
+                f"for item_index={idx}."
+            )
         if key not in VALID_CATEGORY_KEYS:
             warnings.append(f"Unknown category_key '{key}' for item_index={idx}; using unknown.")
             key = "unknown"
@@ -647,6 +737,13 @@ def _coerce_categories(
         confidence = _normalize_confidence(raw.get("confidence"), 0.0)
         text_certainty = _normalize_text_certainty(raw.get("text_certainty"))
         evidence_terms = _normalize_evidence_terms(raw.get("evidence_terms"))
+        if key in SPECIFIC_FASHION_ITEM_KEYS and text_certainty != "explicit":
+            warnings.append(
+                f"Downgraded contextual fashion subtype '{key}' to fashion_unknown "
+                f"for item_index={idx}."
+            )
+            key = "fashion_unknown"
+            tax = TAXONOMY_BY_KEY[key]
         calibration = calibrate_category_assignment(
             item=original_items[idx] if idx < len(original_items) else {},
             category_key=key,
@@ -661,6 +758,8 @@ def _coerce_categories(
             "item_index": idx,
             "category_key": key,
             "category_group": tax["group"],
+            "category_path": str(tax.get("path") or key),
+            "category_taxonomy_version": ITEM_TAXONOMY_VERSION,
             "category_confidence": calibration["category_confidence"],
             "category_confidence_raw": calibration["category_confidence_raw"],
             "category_confidence_calibrated": calibration["category_confidence_calibrated"],
@@ -694,6 +793,8 @@ def _coerce_categories(
                     "item_index": idx,
                     "category_key": "unknown",
                     "category_group": TAXONOMY_BY_KEY["unknown"]["group"],
+                    "category_path": "unknown",
+                    "category_taxonomy_version": ITEM_TAXONOMY_VERSION,
                     "category_confidence": calibration["category_confidence"],
                     "category_confidence_raw": calibration["category_confidence_raw"],
                     "category_confidence_calibrated": calibration["category_confidence_calibrated"],
@@ -728,6 +829,10 @@ def merge_categories_into_receipt(
         if isinstance(idx, int) and 0 <= idx < len(items) and isinstance(items[idx], dict):
             items[idx]["category_key"] = cat.get("category_key")
             items[idx]["category_group"] = cat.get("category_group")
+            items[idx]["category_path"] = cat.get("category_path")
+            items[idx]["category_taxonomy_version"] = cat.get(
+                "category_taxonomy_version"
+            ) or ITEM_TAXONOMY_VERSION
             items[idx]["category_confidence"] = cat.get("category_confidence")
             items[idx]["category_confidence_raw"] = cat.get("category_confidence_raw")
             items[idx]["category_confidence_calibrated"] = cat.get("category_confidence_calibrated")
@@ -753,9 +858,14 @@ def merge_categories_into_receipt(
     merchant["category_confidence"] = merchant_classification.get("confidence")
     merchant["category_reason"] = merchant_classification.get("reason")
     merchant["category_source"] = merchant_classification.get("source")
+    merchant["category_taxonomy_version"] = merchant_classification.get(
+        "taxonomy_version"
+    ) or MERCHANT_TAXONOMY_VERSION
     out["merchant"] = merchant
     out["categorization"] = {
         "schema_version": CATEGORY_SCHEMA_VERSION,
+        "taxonomy_version": ITEM_TAXONOMY_VERSION,
+        "merchant_taxonomy_version": MERCHANT_TAXONOMY_VERSION,
         "app_version": get_app_version(),
         "status": status,
         "mode": "llm_first",
@@ -780,7 +890,14 @@ def merge_categories_into_receipt(
         },
         "warnings": warnings or [],
         "duration_seconds": duration_seconds,
-        "taxonomy": [{"key": r["key"], "group": r["group"]} for r in CATEGORY_TAXONOMY],
+        "taxonomy": [
+            {
+                "key": r["key"],
+                "group": r["group"],
+                "path": r.get("path") or r["key"],
+            }
+            for r in CATEGORY_TAXONOMY
+        ],
     }
     return out
 
@@ -803,6 +920,8 @@ def unknown_categories_for_receipt(
                 "item_index": idx,
                 "category_key": "unknown",
                 "category_group": TAXONOMY_BY_KEY["unknown"]["group"],
+                "category_path": "unknown",
+                "category_taxonomy_version": ITEM_TAXONOMY_VERSION,
                 "category_confidence": calibration["category_confidence"],
                 "category_confidence_raw": calibration["category_confidence_raw"],
                 "category_confidence_calibrated": calibration["category_confidence_calibrated"],
@@ -831,8 +950,7 @@ def recalibrate_existing_categorized_receipt(receipt: dict[str, Any]) -> dict[st
     for item in items:
         if not isinstance(item, dict):
             continue
-        key = str(item.get("category_key") or "unknown").strip().lower()
-        key = key.replace(" ", "_").replace("-", "_")
+        key = canonical_item_category_key(item.get("category_key") or "unknown")
         if key not in VALID_CATEGORY_KEYS:
             key = "unknown"
         raw_conf = item.get("category_confidence_raw", item.get("category_confidence", 0.0))
@@ -848,6 +966,8 @@ def recalibrate_existing_categorized_receipt(receipt: dict[str, Any]) -> dict[st
         )
         item["category_key"] = key
         item["category_group"] = TAXONOMY_BY_KEY[key]["group"]
+        item["category_path"] = str(TAXONOMY_BY_KEY[key].get("path") or key)
+        item["category_taxonomy_version"] = ITEM_TAXONOMY_VERSION
         item["category_confidence"] = calibration["category_confidence"]
         item["category_confidence_raw"] = calibration["category_confidence_raw"]
         item["category_confidence_calibrated"] = calibration["category_confidence_calibrated"]
@@ -859,9 +979,23 @@ def recalibrate_existing_categorized_receipt(receipt: dict[str, Any]) -> dict[st
             "category_unsupported_evidence_terms"
         ]
     out["items"] = items
+    merchant = out.get("merchant") if isinstance(out.get("merchant"), dict) else {}
+    if merchant:
+        merchant = dict(merchant)
+        merchant_key = canonical_merchant_category_key(
+            merchant.get("category_key") or "unknown"
+        )
+        if merchant_key not in VALID_MERCHANT_CATEGORY_KEYS:
+            merchant_key = "unknown"
+        merchant["category_key"] = merchant_key
+        merchant["category_taxonomy_version"] = MERCHANT_TAXONOMY_VERSION
+        out["merchant"] = merchant
     cat = out.get("categorization") if isinstance(out.get("categorization"), dict) else {}
     cat = dict(cat)
     cat["app_version"] = get_app_version()
+    cat["schema_version"] = CATEGORY_SCHEMA_VERSION
+    cat["taxonomy_version"] = ITEM_TAXONOMY_VERSION
+    cat["merchant_taxonomy_version"] = MERCHANT_TAXONOMY_VERSION
     cat["category_review_count"] = sum(
         1 for item in items if isinstance(item, dict) and item.get("category_review_required")
     )
@@ -959,6 +1093,7 @@ def categorize_receipt_items_llm(
         )
         raw = generation.text
         parsed = parse_json_from_llm(generation)
+        warnings.extend(_categorization_envelope_warnings(parsed))
         original_items = [item for item in (receipt.get("items") or []) if isinstance(item, dict)]
         merchant_classification, merchant_warnings = _coerce_merchant_classification(parsed)
         merchant = receipt.get("merchant") if isinstance(receipt.get("merchant"), dict) else {}
@@ -1047,6 +1182,8 @@ def write_categorization_artifacts(
         paths["categorization_result"],
         {
             "schema_version": CATEGORY_SCHEMA_VERSION,
+            "taxonomy_version": ITEM_TAXONOMY_VERSION,
+            "merchant_taxonomy_version": MERCHANT_TAXONOMY_VERSION,
             "app_version": get_app_version(),
             "status": result.get("status"),
             "categories": result.get("categories") or [],
