@@ -204,17 +204,19 @@ class JobProcessingService:
 
         artifacts = {
             "receipt_image": artifact_resource(job_id, image_path) if image_path.exists() else None,
-            "ocr_json": artifact_resource(job_id, ocr_json_path),
+            "ocr_json": artifact_resource(job_id, ocr_json_path)
+            if ocr_json_path.exists()
+            else None,
             "final_receipt": artifact_resource(job_id, final_path),
-            "final_receipt_reconciled": artifact_resource(
-                job_id, Path(paths["receipt_final_reconciled"])
-            ),
+            "final_receipt_reconciled": optional("receipt_final_reconciled"),
             "final_receipt_categorized": optional("receipt_final_categorized"),
-            "validation_report": artifact_resource(job_id, Path(paths["validation_report"])),
-            "llm_prompt": artifact_resource(job_id, Path(paths["llm_main_prompt"])),
-            "llm_raw": artifact_resource(job_id, Path(paths["llm_main_raw"])),
-            "ocr_context": artifact_resource(job_id, Path(paths["ocr_context"])),
-            "pipeline_meta": artifact_resource(job_id, Path(paths["pipeline_meta"])),
+            "validation_report": optional("validation_report"),
+            "llm_prompt": optional("llm_main_prompt"),
+            "llm_raw": optional("llm_main_raw"),
+            "ocr_context": optional("ocr_context"),
+            "pipeline_meta": optional("pipeline_meta"),
+            "stage_trace": optional("stage_trace"),
+            "extraction_metrics": optional("extraction_metrics"),
             "visual_evidence": optional("visual_evidence"),
             "region_reocr": optional("region_reocr"),
             "right_column_reocr": optional("right_column_reocr"),

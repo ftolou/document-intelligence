@@ -310,6 +310,11 @@ function renderReceiptSummary(receipt) {
     return;
   }
 
+  const processView = globalThis.ReceiptProcessView;
+  if (processView && typeof processView.normalizeReceiptForProcessView === 'function') {
+    receipt = processView.normalizeReceiptForProcessView(receipt);
+  }
+
   const currency = receipt.currency || 'EUR';
   const merchant = receipt.merchant || {};
   const totals = receipt.totals || {};
@@ -335,6 +340,7 @@ function renderReceiptSummary(receipt) {
           ['Name', escapeHtml(formatPlain(merchant.name))],
           ['Address', escapeHtml(formatPlain(merchant.address)).replaceAll('\n', '<br>')],
           ['Tax ID', escapeHtml(formatPlain(merchant.tax_id))],
+          ['Receipt no.', escapeHtml(formatPlain(receipt.receipt_number))],
           ['Date', escapeHtml(formatPlain(receipt.date))],
           ['Time', escapeHtml(formatPlain(receipt.time))],
           ['Currency', escapeHtml(formatPlain(currency))],
