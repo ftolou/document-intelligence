@@ -335,6 +335,9 @@ def run_correction_coordinator(
                 continue
 
             previous_errors: list[dict[str, Any]] = []
+            # TODO(correction-optimization): Before re-enabling retries, cache valid
+            # source evidence per receipt/strategy and make retries feedback-aware.
+            # Never repeat an identical deterministic model request.
             for attempt in range(1, strategy.max_attempts + 1):
                 prefix = (
                     f"90_correction_round_{round_index:02d}_"

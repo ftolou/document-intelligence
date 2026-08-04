@@ -1050,7 +1050,7 @@ def ollama_generate(
     ollama_url: str,
     model: str,
     prompt: str,
-    num_ctx: int = 24384,
+    num_ctx: int = 16384,
     num_predict: int = 8192,
     temperature: float = 0.0,
     keep_alive: str | None = None,
@@ -1380,7 +1380,7 @@ def run_llm_main_parser(
     ollama_url: str,
     model: str,
     max_lines: int = 260,
-    num_ctx: int = 24384,
+    num_ctx: int = 16384,
     num_predict: int = 8192,
     keep_alive: str | None = None,
     timeout: float = 240.0,
@@ -1571,7 +1571,7 @@ def main() -> int:
     parser.add_argument("--ollama-url", default="http://localhost:11434")
     parser.add_argument("--model", default="gemma4:latest")
     parser.add_argument("--max-lines", type=int, default=260)
-    parser.add_argument("--num-ctx", type=int, default=24384)
+    parser.add_argument("--num-ctx", type=int, default=16384)
     parser.add_argument("--num-predict", type=int, default=8192)
     parser.add_argument("--keep-alive", default="10m")
     parser.add_argument("--timeout", type=float, default=240.0)

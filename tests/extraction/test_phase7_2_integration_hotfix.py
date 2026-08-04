@@ -4,6 +4,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from receipt_intelligence.extraction.config import ExtractionConfig
 from receipt_intelligence.extraction.contracts.presentation import CategorizationRequest
 from receipt_intelligence.extraction.correction.acceptance import evaluate_candidate
 from receipt_intelligence.extraction.correction.invocation import _strip_code_fences
@@ -17,7 +18,11 @@ from receipt_intelligence.extraction.correction.strategies.vat import build_vat_
 from receipt_intelligence.extraction.presentation.categorization import (
     ExistingReceiptCategorizationService,
 )
-from receipt_intelligence.extraction.settings import DEFAULT_SCALAR_TASKS
+from receipt_intelligence.extraction.settings import (
+    DEFAULT_SCALAR_TASKS,
+    CorrectionSettings,
+    PipelineSettings,
+)
 from receipt_intelligence.extraction.stages.publish import _completed_finalization_trace
 from receipt_intelligence.extraction.structured.normalization import normalize_task_answer
 
@@ -155,13 +160,44 @@ def test_item_discount_arithmetic_routes_to_extended_item_evidence_strategy() ->
     profile = load_correction_profile(
         Path("src/receipt_intelligence/extraction/correction/config/production.json")
     )
-    assert profile.profile_version == "1.2.0"
+    assert profile.profile_version == "1.3.0"
     assert profile.routes["ITEM_DISCOUNT_ARITHMETIC"] == ("item_sum_source_blocks_v3",)
     assert profile.routes["NET_PLUS_VAT_RECONCILIATION"] == (
         "vat_source_evidence_v9",
         "final_total_source_evidence_v2_4",
     )
     assert profile.strategies["item_sum_source_blocks_v3"].prompt_version == "1.1.0"
+    assert {strategy.max_attempts for strategy in profile.strategies.values()} == {1}
+
+
+def test_correction_thinking_is_strategy_specific() -> None:
+    settings = CorrectionSettings()
+
+    assert settings.item_sum_think is True
+    assert settings.vat_think is False
+    assert settings.final_total_think is False
+
+
+def test_gemma_stages_share_one_context_size(tmp_path: Path) -> None:
+    config = ExtractionConfig(
+        ocr_json_path=tmp_path / "ocr.json",
+        result_dir=tmp_path / "results",
+        run_id="ctx-test",
+        ollama_url="http://ollama",
+        model="gemma4",
+        source_image_path=tmp_path / "receipt.png",
+        num_ctx=16384,
+        categorization_num_ctx=8192,
+    )
+    grouped = PipelineSettings.from_extraction_config(
+        config,
+        transcription_model="qwen3-vl",
+    )
+
+    assert config.categorization_num_ctx == 16384
+    assert grouped.parsing.num_ctx == 16384
+    assert grouped.correction.num_ctx == 16384
+    assert grouped.categorization.num_ctx == 16384
 
 
 def test_item_evidence_builds_bounded_discount_arithmetic_patch() -> None:

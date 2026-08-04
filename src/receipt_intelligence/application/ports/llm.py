@@ -69,7 +69,7 @@ class GenerationRequest:
     prompt: str
     operation: str = "generation"
     attempt: int = 1
-    num_ctx: int = 24384
+    num_ctx: int = 16384
     num_predict: int = 8192
     temperature: float = 0.0
     keep_alive: str | None = None

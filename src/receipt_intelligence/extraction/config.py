@@ -35,7 +35,7 @@ class ExtractionConfig:
     spatial_canvas_width: int = 112
 
     max_lines_for_llm: int = 220
-    num_ctx: int = 24384
+    num_ctx: int = 16384
     num_predict: int = 8192
     keep_alive: str | None = None
     llm_timeout_seconds: float = 300.0
@@ -51,7 +51,7 @@ class ExtractionConfig:
     correction_enabled: bool = True
     categorization_enabled: bool = True
     categorization_model: str | None = None
-    categorization_num_ctx: int = 8192
+    categorization_num_ctx: int = 16384
     categorization_num_predict: int = 4096
     categorization_timeout_seconds: float = 180.0
     categorization_format_json: bool = True
@@ -71,6 +71,9 @@ class ExtractionConfig:
         object.__setattr__(self, "result_dir", Path(self.result_dir))
         if self.source_image_path is not None:
             object.__setattr__(self, "source_image_path", Path(self.source_image_path))
+        # Gemma-backed stages deliberately share one context size. Ollama treats
+        # differing context sizes as different runners, even for the same model.
+        object.__setattr__(self, "categorization_num_ctx", self.num_ctx)
         if not 72 <= self.spatial_canvas_width <= 160:
             raise ValueError("spatial_canvas_width must be between 72 and 160")
 

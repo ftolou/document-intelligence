@@ -5,7 +5,7 @@
       "id": "gemma.correction.final_total_source_evidence",
       "version": "1.0.0",
       "template": "gemma/correction/final_total_source_evidence/v1.0.0/prompt.md",
-      "sha256": "430dde2b2aecb1f8dfa9e4500d4c49b6b670e10765cfcb905cfad5050dfadcd4",
+      "sha256": "8f7a1aed04b482bdd3a453c33b30e0b7e68410358646826c61230d21f9712690",
       "required_variables": [
         "source_evidence",
         "output_schema"
@@ -16,7 +16,7 @@
         "description": "V2.4 source-only final-purchase-total selection for bounded total correction."
       },
       "schema": "gemma/correction/final_total_source_evidence/v1.0.0/schema.json",
-      "schema_sha256": "dc63df9d629510c34e3eed5d7fa0b60a60decd2f2784eb4217a0d8f04a05ccf3"
+      "schema_sha256": "9c0c661910c23e599f13ae328d73967650399257d1161147028ab86daa01b0a4"
     },
     {
       "id": "gemma.correction.item_sum_source_blocks",

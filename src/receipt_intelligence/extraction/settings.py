@@ -176,7 +176,9 @@ class CorrectionSettings:
     keep_alive: str | None = "10m"
     temperature: float = 0.0
     seed: int = 42
-    think: bool = True
+    item_sum_think: bool = True
+    vat_think: bool = False
+    final_total_think: bool = False
     item_sum_num_predict: int = 6144
     vat_num_predict: int = 6144
     final_total_num_predict: int = 2048
@@ -203,7 +205,7 @@ class CorrectionSettings:
 class CategorizationSettings:
     enabled: bool = True
     model: str | None = None
-    num_ctx: int = 8192
+    num_ctx: int = 16384
     num_predict: int = 4096
     timeout_seconds: float = 180.0
     format_json: bool = True
@@ -291,11 +293,13 @@ class PipelineSettings:
                 enabled=config.correction_enabled,
                 ollama_url=config.ollama_url,
                 model=config.model,
+                num_ctx=config.num_ctx,
+                keep_alive=config.keep_alive or "10m",
             ),
             categorization=CategorizationSettings(
                 enabled=config.categorization_enabled,
                 model=config.categorization_model,
-                num_ctx=config.categorization_num_ctx,
+                num_ctx=config.num_ctx,
                 num_predict=config.categorization_num_predict,
                 timeout_seconds=config.categorization_timeout_seconds,
                 format_json=config.categorization_format_json,

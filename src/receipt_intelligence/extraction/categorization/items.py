@@ -1016,7 +1016,7 @@ def categorize_receipt_items_llm(
     *,
     ollama_url: str,
     model: str,
-    num_ctx: int = 8192,
+    num_ctx: int = 16384,
     num_predict: int = 4096,
     keep_alive: str | None = None,
     timeout: float = 180.0,
@@ -1224,7 +1224,7 @@ def categorize_receipt_file(
     run_id: str | None,
     ollama_url: str,
     model: str,
-    num_ctx: int = 8192,
+    num_ctx: int = 16384,
     num_predict: int = 4096,
     keep_alive: str | None = None,
     timeout: float = 180.0,
@@ -1260,7 +1260,7 @@ def main() -> int:
     parser.add_argument("--run-id", default=None)
     parser.add_argument("--ollama-url", default="http://localhost:11434")
     parser.add_argument("--model", default="gemma4:latest")
-    parser.add_argument("--num-ctx", type=int, default=8192)
+    parser.add_argument("--num-ctx", type=int, default=16384)
     parser.add_argument("--num-predict", type=int, default=4096)
     parser.add_argument("--timeout", type=float, default=180.0)
     parser.add_argument("--keep-alive", default="")

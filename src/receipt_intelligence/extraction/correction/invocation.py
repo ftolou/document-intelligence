@@ -52,6 +52,7 @@ class PromptBoundSourceEvidenceInvoker(SourceEvidenceInvoker):
             output_schema=json.dumps(schema, ensure_ascii=False, indent=2),
         )
         num_predict = self._num_predict(strategy.strategy_id)
+        think = self._think(strategy.strategy_id)
         generated = self.gateway.generate(
             ChatGenerationRequest(
                 model=self.settings.model,
@@ -60,7 +61,7 @@ class PromptBoundSourceEvidenceInvoker(SourceEvidenceInvoker):
                 response_json_schema=None,
                 operation=f"receipt_correction_{strategy.strategy_id}",
                 attempt=attempt,
-                think=self.settings.think,
+                think=think,
                 num_ctx=self.settings.num_ctx,
                 num_predict=num_predict,
                 temperature=self.settings.temperature,
@@ -175,6 +176,15 @@ class PromptBoundSourceEvidenceInvoker(SourceEvidenceInvoker):
             return self.settings.final_total_num_predict
         raise ValueError(f"Unknown correction strategy: {strategy_id}")
 
+    def _think(self, strategy_id: str) -> bool:
+        if strategy_id == "item_sum_source_blocks_v3":
+            return self.settings.item_sum_think
+        if strategy_id == "vat_source_evidence_v9":
+            return self.settings.vat_think
+        if strategy_id == "final_total_source_evidence_v2_4":
+            return self.settings.final_total_think
+        raise ValueError(f"Unknown correction strategy: {strategy_id}")
+
     def _result(
         self,
         strategy: StrategyConfig,
@@ -203,7 +213,7 @@ class PromptBoundSourceEvidenceInvoker(SourceEvidenceInvoker):
                 "schema_delivery": "embedded_once_in_prompt",
                 "ollama_format_field": False,
                 "current_structured_result_supplied_to_model": False,
-                "think": self.settings.think,
+                "think": self._think(strategy.strategy_id),
                 "temperature": self.settings.temperature,
                 "seed": self.settings.seed,
                 "num_ctx": self.settings.num_ctx,
