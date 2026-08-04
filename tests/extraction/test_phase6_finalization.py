@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 from receipt_intelligence.extraction.contracts.presentation import (
     CategorizationResult,
@@ -14,6 +15,7 @@ from receipt_intelligence.extraction.presentation.artifacts import (
 from receipt_intelligence.extraction.presentation.finalization import (
     CompatibilityFinalizationService,
 )
+from receipt_intelligence.extraction.workflow import _refresh_finalization_observability
 
 
 def test_finalization_writes_compatible_artifacts_and_aliases(tmp_path) -> None:
@@ -110,3 +112,47 @@ def test_finalization_metadata_records_safety_invariants(tmp_path) -> None:
     assert safety["read_only_validation"] is True
     assert safety["no_generic_correction_fallback"] is True
     assert result.pipeline_metadata["validation"]["failed_codes"] == ["ITEM_SUM_RECONCILIATION"]
+
+
+def test_completed_workflow_refreshes_finalization_trace_metadata(tmp_path) -> None:
+    validation = ValidationReport.from_legacy(
+        {"status": "valid", "checks": [], "import_decision": "valid"}
+    )
+    categorization = CategorizationResult(
+        status=CategorizationStatus.DISABLED,
+        receipt={"items": [], "totals": {"grand_total": 1.0}},
+    )
+    service = CompatibilityFinalizationService(
+        artifact_store=CompatibilityFilesystemArtifactStore(tmp_path),
+        app_version="test-version",
+    )
+    result = service.finalize(
+        FinalizationRequest(
+            run_id="r3",
+            receipt=categorization.receipt,
+            validation=validation,
+            categorization=categorization,
+            stage_trace=({"stage": "next_finalize", "status": "running"},),
+        )
+    )
+    finalization = SimpleNamespace(next_finalization=result, pipeline_meta=None)
+    context = SimpleNamespace(
+        finalized=finalization,
+        stage_trace=[
+            {
+                "stage": "next_finalize",
+                "status": "done",
+                "finished_at": "2026-08-04T08:00:00.000Z",
+                "duration_ms": 12.5,
+            }
+        ],
+        available_paths=result.paths,
+    )
+
+    _refresh_finalization_observability(context)
+
+    refreshed = finalization.next_finalization.pipeline_metadata["workflow"]["stage_trace"]
+    assert refreshed[0]["status"] == "done"
+    assert refreshed[0]["duration_ms"] == 12.5
+    persisted = json.loads((tmp_path / "r3_pipeline_meta.json").read_text())
+    assert persisted["workflow"]["stage_trace"] == refreshed

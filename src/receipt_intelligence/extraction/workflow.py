@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Iterable
+from dataclasses import replace
 
 from receipt_intelligence.application.events import ExtractionRunEvent
 from receipt_intelligence.extraction.artifacts import copy_alias, save_json
@@ -59,6 +60,7 @@ class ReceiptExtractionWorkflow:
                 raise
             self._persist_observability(context, status="running")
 
+        _refresh_finalization_observability(context)
         self._persist_observability(context, status="completed")
         return context
 
@@ -95,3 +97,25 @@ class ReceiptExtractionWorkflow:
 
 def _phase_value(phase: ExtractionPhase | None) -> str | None:
     return phase.value if phase is not None else None
+
+
+def _refresh_finalization_observability(context: ExtractionContext) -> None:
+    """Replace the in-stage metadata snapshot with the completed workflow trace."""
+
+    finalization = context.finalized
+    if finalization is None or finalization.next_finalization is None:
+        return
+    result = finalization.next_finalization
+    metadata = dict(result.pipeline_metadata)
+    workflow = dict(metadata.get("workflow") or {})
+    workflow["stage_trace"] = [dict(entry) for entry in context.stage_trace]
+    workflow["stage_count"] = len(context.stage_trace)
+    workflow["stages"] = [str(entry.get("stage") or "") for entry in context.stage_trace]
+    metadata["workflow"] = workflow
+    updated = replace(result, pipeline_metadata=metadata)
+    finalization.next_finalization = updated
+    finalization.pipeline_meta = metadata
+    for key in ("pipeline_meta", "latest_pipeline_meta"):
+        path = context.available_paths.get(key)
+        if path is not None:
+            save_json(path, metadata)

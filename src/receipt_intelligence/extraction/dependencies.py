@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from receipt_intelligence.application.ports import (
     EventSink,
     LlmGateway,
     ModelLifecycleCoordinator,
+    NullEventSink,
     VlmEngine,
 )
 from receipt_intelligence.extraction.services.correction import ReceiptCorrectionService
@@ -24,6 +25,7 @@ class ExtractionDependencies:
     vlm_engine: VlmEngine
     model_lifecycle: ModelLifecycleCoordinator
     event_sink: EventSink
+    model_call_event_sink: EventSink = field(default_factory=NullEventSink)
     transcription_service: TranscriptionService | None = None
     structured_extraction_service: StructuredExtractionService | None = None
     validation_service: ReceiptValidationService | None = None

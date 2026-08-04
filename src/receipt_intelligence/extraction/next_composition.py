@@ -5,6 +5,9 @@ from __future__ import annotations
 from dataclasses import replace
 
 from receipt_intelligence.adapters.chat import OllamaChatGateway
+from receipt_intelligence.adapters.llm import ObservedChatGateway, ObservedMultimodalGateway
+from receipt_intelligence.adapters.multimodal import OllamaMultimodalGateway
+from receipt_intelligence.application.model_call_context import ModelCallContext
 from receipt_intelligence.composition import build_extraction_dependencies
 from receipt_intelligence.extraction.config import ExtractionConfig
 from receipt_intelligence.extraction.correction.artifacts import (
@@ -37,9 +40,24 @@ def build_next_extraction_dependencies(
         config,
         transcription_model=resolve_transcription_model(),
     )
+    dependencies = build_extraction_dependencies(config)
+    call_context = ModelCallContext(
+        trace_id=config.run_id,
+        job_id=config.run_id,
+    )
+    chat_gateway = ObservedChatGateway(
+        OllamaChatGateway(config.ollama_url),
+        dependencies.model_call_event_sink,
+        default_context=call_context,
+    )
+    multimodal_gateway = ObservedMultimodalGateway(
+        OllamaMultimodalGateway(config.ollama_url),
+        dependencies.model_call_event_sink,
+        default_context=call_context,
+    )
     validation_service = build_deterministic_validation_service(grouped.validation)
     correction_service = build_specialist_correction_service(
-        gateway=OllamaChatGateway(config.ollama_url),
+        gateway=chat_gateway,
         prompts=default_prompt_registry(),
         validation_service=validation_service,
         settings=grouped.correction,
@@ -48,9 +66,15 @@ def build_next_extraction_dependencies(
         ),
     )
     return replace(
-        build_extraction_dependencies(config),
-        transcription_service=build_canonical_transcription_service(grouped),
-        structured_extraction_service=build_gemma_structured_extraction_service(grouped),
+        dependencies,
+        transcription_service=build_canonical_transcription_service(
+            grouped,
+            multimodal_gateway=multimodal_gateway,
+        ),
+        structured_extraction_service=build_gemma_structured_extraction_service(
+            grouped,
+            gateway=chat_gateway,
+        ),
         validation_service=validation_service,
         correction_service=correction_service,
     )

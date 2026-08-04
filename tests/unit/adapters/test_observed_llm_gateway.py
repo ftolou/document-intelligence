@@ -1,15 +1,28 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import pytest
 
-from receipt_intelligence.adapters.llm import ObservedLlmGateway
+from receipt_intelligence.adapters.llm import (
+    ObservedChatGateway,
+    ObservedLlmGateway,
+    ObservedMultimodalGateway,
+)
 from receipt_intelligence.application.model_call_context import bind_model_call_context
+from receipt_intelligence.application.ports.chat import (
+    ChatGenerationRequest,
+    ChatGenerationResult,
+)
 from receipt_intelligence.application.ports.llm import (
     GenerationRequest,
     GenerationResult,
     ModelCallMetrics,
+)
+from receipt_intelligence.application.ports.multimodal import (
+    MultimodalGenerationRequest,
+    MultimodalGenerationResult,
 )
 from receipt_intelligence.application.query_diagnostics import capture_query_diagnostics
 
@@ -42,6 +55,36 @@ class SuccessfulGateway:
 class FailingGateway:
     def generate(self, request: GenerationRequest) -> GenerationResult:
         raise RuntimeError("provider unavailable")
+
+
+class SuccessfulChatGateway:
+    def generate(self, request: ChatGenerationRequest) -> ChatGenerationResult:
+        return ChatGenerationResult(
+            text='{"items": []}',
+            metrics=ModelCallMetrics(
+                provider="ollama",
+                endpoint="generate",
+                model=request.model,
+                request_duration_ms=75.0,
+                prompt_eval_count=500,
+                eval_count=40,
+            ),
+        )
+
+
+class SuccessfulMultimodalGateway:
+    def generate(self, request: MultimodalGenerationRequest) -> MultimodalGenerationResult:
+        return MultimodalGenerationResult(
+            text="TOTAL 12,34",
+            metrics=ModelCallMetrics(
+                provider="ollama",
+                endpoint="generate",
+                model=request.model,
+                request_duration_ms=90.0,
+                prompt_eval_count=600,
+                eval_count=30,
+            ),
+        )
 
 
 def test_observed_gateway_publishes_tokens_timing_and_context() -> None:
@@ -107,3 +150,58 @@ def test_observed_gateway_captures_prompt_and_raw_response_when_query_logging_is
     assert records[1]["event"] == "llm.response"
     assert records[1]["response_text"] == '{"ok": true}'
     assert records[1]["metrics"]["eval_count"] == 120
+
+
+def test_observed_chat_gateway_publishes_thinking_and_context() -> None:
+    sink = RecordingSink()
+    gateway = ObservedChatGateway(SuccessfulChatGateway(), sink)
+
+    with bind_model_call_context(trace_id="receipt-trace", job_id="receipt-job"):
+        gateway.generate(
+            ChatGenerationRequest(
+                model="gemma4",
+                system_prompt="system",
+                user_prompt="receipt rows",
+                operation="receipt_structured_items",
+                think=True,
+                num_ctx=16384,
+            )
+        )
+
+    record = sink.records[0]
+    assert record["trace_id"] == "receipt-trace"
+    assert record["job_id"] == "receipt-job"
+    assert record["operation"] == "receipt_structured_items"
+    assert record["input_tokens"] == 500
+    assert record["output_tokens"] == 40
+    assert record["input_characters"] == len("systemreceipt rows")
+    assert record["configured_context_window"] == 16384
+    assert record["attributes"] == {
+        "modality": "chat",
+        "think": True,
+        "system_prompt_characters": len("system"),
+    }
+
+
+def test_observed_multimodal_gateway_publishes_image_metadata() -> None:
+    sink = RecordingSink()
+    gateway = ObservedMultimodalGateway(SuccessfulMultimodalGateway(), sink)
+
+    gateway.generate(
+        MultimodalGenerationRequest(
+            model="qwen3-vl",
+            prompt="transcribe",
+            image_paths=(Path("receipt.png"),),
+            operation="receipt_transcription",
+        )
+    )
+
+    record = sink.records[0]
+    assert record["operation"] == "receipt_transcription"
+    assert record["input_tokens"] == 600
+    assert record["output_tokens"] == 30
+    assert record["attributes"] == {
+        "modality": "multimodal",
+        "think": False,
+        "image_count": 1,
+    }

@@ -49,6 +49,7 @@ def build_extraction_dependencies(config: ExtractionConfig) -> ExtractionDepende
             start_command=config.ollama_start_command,
         ),
         event_sink=extraction_event_sink,
+        model_call_event_sink=model_call_sink,
     )
 
 

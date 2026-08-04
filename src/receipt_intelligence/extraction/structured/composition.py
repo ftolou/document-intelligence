@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from receipt_intelligence.adapters.chat import OllamaChatGateway
+from receipt_intelligence.application.ports.chat import ChatGateway
 from receipt_intelligence.extraction.settings import ParsingSettings, PipelineSettings
 from receipt_intelligence.extraction.structured.service import GemmaStructuredExtractionService
 from receipt_intelligence.extraction.structured.task_runner import GemmaTaskRunner
@@ -15,6 +16,7 @@ def build_gemma_structured_extraction_service(
     settings: PipelineSettings | ParsingSettings,
     *,
     result_dir: Path | None = None,
+    gateway: ChatGateway | None = None,
 ) -> GemmaStructuredExtractionService:
     if isinstance(settings, PipelineSettings):
         parsing = settings.parsing
@@ -27,7 +29,7 @@ def build_gemma_structured_extraction_service(
     prompts = default_prompt_registry()
     return GemmaStructuredExtractionService(
         task_runner=GemmaTaskRunner(
-            gateway=OllamaChatGateway(parsing.ollama_url),
+            gateway=gateway or OllamaChatGateway(parsing.ollama_url),
             prompts=prompts,
             settings=parsing,
         ),
