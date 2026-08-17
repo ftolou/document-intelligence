@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import sqlite3
 from collections.abc import Sequence
 from pathlib import Path
@@ -88,7 +89,9 @@ class SQLiteModelCallRepository:
             rows = connection.execute(
                 f"""
                 SELECT mc.*, p.currency, p.input_price_per_million,
-                       p.output_price_per_million
+                       p.cached_input_price_per_million,
+                       p.cache_write_input_price_per_million,
+                       p.output_price_per_million, p.pricing_source, p.effective_from
                 FROM model_calls mc
                 LEFT JOIN model_pricing p
                   ON p.provider = mc.provider AND p.model = COALESCE(mc.model, '')
@@ -151,7 +154,9 @@ class SQLiteModelCallRepository:
             rows = connection.execute(
                 f"""
                 SELECT mc.*, p.currency, p.input_price_per_million,
-                       p.output_price_per_million
+                       p.cached_input_price_per_million,
+                       p.cache_write_input_price_per_million,
+                       p.output_price_per_million, p.pricing_source, p.effective_from
                 FROM model_calls mc
                 LEFT JOIN model_pricing p
                   ON p.provider = mc.provider AND p.model = COALESCE(mc.model, '')
@@ -168,16 +173,73 @@ class SQLiteModelCallRepository:
             rows = connection.execute(
                 """
                 SELECT provider, model, currency, input_price_per_million,
-                       output_price_per_million, updated_at
+                       cached_input_price_per_million,
+                       cache_write_input_price_per_million,
+                       output_price_per_million, pricing_source, effective_from, updated_at
                 FROM model_pricing
                 ORDER BY provider, model
                 """
             ).fetchall()
-        return [dict(row) for row in rows]
+        return [_pricing_row(dict(row)) for row in rows]
+
+    def list_models(self) -> list[dict[str, Any]]:
+        with self.connections.connect_read_only() as connection:
+            observed_rows = connection.execute(
+                """
+                SELECT provider, model, COUNT(*) AS call_count, MAX(recorded_at) AS last_seen_at
+                FROM model_calls
+                WHERE model IS NOT NULL AND trim(model) <> ''
+                GROUP BY provider, model
+                ORDER BY MAX(recorded_at) DESC
+                """
+            ).fetchall()
+            pricing_rows = connection.execute(
+                """
+                SELECT provider, model
+                FROM model_pricing
+                ORDER BY provider, model
+                """
+            ).fetchall()
+
+        catalog: dict[tuple[str, str], dict[str, Any]] = {}
+        for row in observed_rows:
+            provider = str(row["provider"])
+            model = str(row["model"])
+            catalog[(provider, model)] = {
+                **_model_identity(provider, model),
+                "observed": True,
+                "call_count": int(row["call_count"] or 0),
+                "last_seen_at": row["last_seen_at"],
+                "has_pricing": False,
+            }
+        for row in pricing_rows:
+            provider = str(row["provider"])
+            model = str(row["model"])
+            entry = catalog.setdefault(
+                (provider, model),
+                {
+                    **_model_identity(provider, model),
+                    "observed": False,
+                    "call_count": 0,
+                    "last_seen_at": None,
+                    "has_pricing": False,
+                },
+            )
+            entry["has_pricing"] = True
+
+        return sorted(
+            catalog.values(),
+            key=lambda item: (
+                not bool(item["observed"]),
+                str(item["provider_display_name"]),
+                str(item["model_display_name"]),
+            ),
+        )
 
     def upsert_pricing(self, pricing: ModelPricingInput) -> dict[str, Any]:
         provider = _required_text(pricing.provider, "provider")
         model = _required_text(pricing.model, "model")
+        provider, model = self._canonical_model_identity(provider, model)
         currency = _required_text(pricing.currency, "currency").upper()
         if len(currency) != 3:
             raise ValueError("currency must be a three-letter code such as EUR or USD.")
@@ -185,35 +247,87 @@ class SQLiteModelCallRepository:
             pricing.input_price_per_million,
             "input_price_per_million",
         )
+        cached_input_price = _optional_nonnegative_price(
+            pricing.cached_input_price_per_million,
+            "cached_input_price_per_million",
+        )
+        cache_write_input_price = _optional_nonnegative_price(
+            pricing.cache_write_input_price_per_million,
+            "cache_write_input_price_per_million",
+        )
         output_price = _nonnegative_price(
             pricing.output_price_per_million,
             "output_price_per_million",
         )
+        pricing_source = str(pricing.pricing_source or "manual").strip() or "manual"
+        effective_from = str(pricing.effective_from or "").strip() or None
         updated_at = utc_now_iso()
         with self.connections.connect() as connection:
             connection.execute(
                 """
                 INSERT INTO model_pricing(
                     provider, model, currency, input_price_per_million,
-                    output_price_per_million, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                    cached_input_price_per_million,
+                    cache_write_input_price_per_million,
+                    output_price_per_million, pricing_source, effective_from, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(provider, model) DO UPDATE SET
                     currency=excluded.currency,
                     input_price_per_million=excluded.input_price_per_million,
+                    cached_input_price_per_million=excluded.cached_input_price_per_million,
+                    cache_write_input_price_per_million=excluded.cache_write_input_price_per_million,
                     output_price_per_million=excluded.output_price_per_million,
+                    pricing_source=excluded.pricing_source,
+                    effective_from=excluded.effective_from,
                     updated_at=excluded.updated_at
                 """,
-                (provider, model, currency, input_price, output_price, updated_at),
+                (
+                    provider,
+                    model,
+                    currency,
+                    input_price,
+                    cached_input_price,
+                    cache_write_input_price,
+                    output_price,
+                    pricing_source,
+                    effective_from,
+                    updated_at,
+                ),
             )
             connection.commit()
-        return {
-            "provider": provider,
-            "model": model,
-            "currency": currency,
-            "input_price_per_million": input_price,
-            "output_price_per_million": output_price,
-            "updated_at": updated_at,
-        }
+        return _pricing_row(
+            {
+                "provider": provider,
+                "model": model,
+                "currency": currency,
+                "input_price_per_million": input_price,
+                "cached_input_price_per_million": cached_input_price,
+                "cache_write_input_price_per_million": cache_write_input_price,
+                "output_price_per_million": output_price,
+                "pricing_source": pricing_source,
+                "effective_from": effective_from,
+                "updated_at": updated_at,
+            }
+        )
+
+    def _canonical_model_identity(self, provider: str, model: str) -> tuple[str, str]:
+        target = _model_identity_key(provider, model)
+        with self.connections.connect_read_only() as connection:
+            rows = connection.execute(
+                """
+                SELECT DISTINCT provider, model
+                FROM model_calls
+                WHERE model IS NOT NULL AND trim(model) <> ''
+                """
+            ).fetchall()
+        matches = [
+            (str(row["provider"]), str(row["model"]))
+            for row in rows
+            if _model_identity_key(str(row["provider"]), str(row["model"])) == target
+        ]
+        if len(matches) == 1:
+            return matches[0]
+        return provider.strip().lower(), model.strip()
 
 
 def _where_clause(filters: ModelCallFilter) -> tuple[str, tuple[object, ...]]:
@@ -235,22 +349,56 @@ def _where_clause(filters: ModelCallFilter) -> tuple[str, tuple[object, ...]]:
 
 
 def _row_to_call(row: Any) -> dict[str, Any]:
-    input_tokens = row["input_tokens"]
-    output_tokens = row["output_tokens"]
+    input_tokens = _optional_int(row["input_tokens"])
+    output_tokens = _optional_int(row["output_tokens"])
+    attributes = _json_object(row["attributes_json"])
+    cached_input_tokens = _bounded_component(
+        _optional_int(attributes.get("cached_input_tokens")),
+        input_tokens,
+    )
+    remaining_after_cached = (
+        max(0, int(input_tokens or 0) - int(cached_input_tokens or 0))
+        if input_tokens is not None
+        else None
+    )
+    cache_write_input_tokens = _bounded_component(
+        _optional_int(attributes.get("cache_write_input_tokens")),
+        remaining_after_cached,
+    )
+    standard_input_tokens = (
+        max(
+            0,
+            int(input_tokens or 0)
+            - int(cached_input_tokens or 0)
+            - int(cache_write_input_tokens or 0),
+        )
+        if input_tokens is not None
+        else None
+    )
+    reasoning_output_tokens = _optional_int(attributes.get("reasoning_output_tokens"))
+
     input_price = row["input_price_per_million"]
+    cached_input_price = row["cached_input_price_per_million"]
+    cache_write_input_price = row["cache_write_input_price_per_million"]
     output_price = row["output_price_per_million"]
-    estimated_cost: float | None = None
-    if input_price is not None and output_price is not None:
-        estimated_cost = (
-            float(input_tokens or 0) * float(input_price)
-            + float(output_tokens or 0) * float(output_price)
-        ) / 1_000_000.0
+    estimated_cost, cost_breakdown, missing_price_components = _estimated_cost(
+        standard_input_tokens=standard_input_tokens,
+        cached_input_tokens=cached_input_tokens,
+        cache_write_input_tokens=cache_write_input_tokens,
+        output_tokens=output_tokens,
+        input_price=input_price,
+        cached_input_price=cached_input_price,
+        cache_write_input_price=cache_write_input_price,
+        output_price=output_price,
+    )
+
     generation_duration_ms = row["generation_duration_ms"]
     generated_rate: float | None = None
     if output_tokens is not None and generation_duration_ms not in (None, 0):
         generated_rate = float(output_tokens) / (float(generation_duration_ms) / 1000.0)
     provider = str(row["provider"])
     model = str(row["model"] or "unknown")
+    identity = _model_identity(provider, model)
     return {
         "call_id": row["call_id"],
         "recorded_at": row["recorded_at"],
@@ -262,6 +410,9 @@ def _row_to_call(row: Any) -> dict[str, Any]:
         "operation": row["operation"],
         "provider": provider,
         "model": row["model"],
+        "provider_display_name": identity["provider_display_name"],
+        "model_display_name": identity["model_display_name"],
+        "display_name": identity["display_name"],
         "model_key": f"{provider}/{model}",
         "endpoint": row["endpoint"],
         "status": row["status"],
@@ -272,7 +423,11 @@ def _row_to_call(row: Any) -> dict[str, Any]:
         "prompt_evaluation_duration_ms": row["prompt_evaluation_duration_ms"],
         "generation_duration_ms": generation_duration_ms,
         "input_tokens": input_tokens,
+        "standard_input_tokens": standard_input_tokens,
+        "cached_input_tokens": cached_input_tokens,
+        "cache_write_input_tokens": cache_write_input_tokens,
         "output_tokens": output_tokens,
+        "reasoning_output_tokens": reasoning_output_tokens,
         "total_tokens": int(input_tokens or 0) + int(output_tokens or 0),
         "input_characters": row["input_characters"],
         "output_characters": row["output_characters"],
@@ -284,10 +439,120 @@ def _row_to_call(row: Any) -> dict[str, Any]:
             round(generated_rate, 2) if generated_rate is not None else None
         ),
         "estimated_cost": round(estimated_cost, 8) if estimated_cost is not None else None,
+        "estimated_cost_breakdown": cost_breakdown,
+        "missing_price_components": missing_price_components,
         "currency": row["currency"],
         "input_price_per_million": input_price,
+        "cached_input_price_per_million": cached_input_price,
+        "cache_write_input_price_per_million": cache_write_input_price,
         "output_price_per_million": output_price,
+        "pricing_source": row["pricing_source"],
+        "pricing_effective_from": row["effective_from"],
     }
+
+
+def _estimated_cost(
+    *,
+    standard_input_tokens: int | None,
+    cached_input_tokens: int | None,
+    cache_write_input_tokens: int | None,
+    output_tokens: int | None,
+    input_price: Any,
+    cached_input_price: Any,
+    cache_write_input_price: Any,
+    output_price: Any,
+) -> tuple[float | None, dict[str, float] | None, list[str]]:
+    components = (
+        ("standard_input", int(standard_input_tokens or 0), input_price),
+        ("cached_input", int(cached_input_tokens or 0), cached_input_price),
+        ("cache_write_input", int(cache_write_input_tokens or 0), cache_write_input_price),
+        ("output", int(output_tokens or 0), output_price),
+    )
+    missing = [name for name, tokens, price in components if tokens > 0 and price is None]
+    if missing:
+        return None, None, missing
+    if not any(tokens > 0 for _, tokens, _ in components):
+        return 0.0, {name: 0.0 for name, _, _ in components}, []
+
+    breakdown: dict[str, float] = {}
+    total = 0.0
+    for name, tokens, price in components:
+        component_cost = (float(tokens) * float(price or 0.0)) / 1_000_000.0
+        breakdown[name] = round(component_cost, 8)
+        total += component_cost
+    return total, breakdown, []
+
+
+def _pricing_row(row: dict[str, Any]) -> dict[str, Any]:
+    provider = str(row.get("provider") or "")
+    model = str(row.get("model") or "")
+    return {**row, **_model_identity(provider, model)}
+
+
+def _model_identity(provider: str, model: str) -> dict[str, str]:
+    provider_display = _provider_display_name(provider)
+    model_display = _model_display_name(provider, model)
+    return {
+        "provider": provider,
+        "model": model,
+        "provider_display_name": provider_display,
+        "model_display_name": model_display,
+        "display_name": f"{provider_display} — {model_display}",
+    }
+
+
+def _provider_display_name(provider: str) -> str:
+    normalized = str(provider or "").strip().lower()
+    return {
+        "openai": "OpenAI",
+        "ollama": "Ollama",
+    }.get(normalized, str(provider or "").strip() or "Unknown")
+
+
+def _model_display_name(provider: str, model: str) -> str:
+    normalized_provider = str(provider or "").strip().lower()
+    normalized_model = str(model or "").strip()
+    if normalized_provider == "openai" and normalized_model.lower().startswith("gpt-"):
+        suffix = normalized_model[4:]
+        parts = suffix.split("-")
+        if parts:
+            version = parts[0]
+            tier = " ".join(part.capitalize() for part in parts[1:])
+            return f"GPT-{version}{f' {tier}' if tier else ''}"
+    return normalized_model or "Unknown"
+
+
+def _model_identity_key(provider: str, model: str) -> tuple[str, str]:
+    compact = lambda value: re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
+    return compact(provider), compact(model)
+
+
+def _json_object(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return dict(value)
+    try:
+        payload = json.loads(str(value or "{}"))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _bounded_component(value: int | None, maximum: int | None) -> int | None:
+    if value is None:
+        return 0 if maximum is not None else None
+    if maximum is None:
+        return value
+    return max(0, min(int(value), int(maximum)))
+
+
+def _optional_int(value: Any) -> int | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 0 else None
 
 
 def _group_records(records: Sequence[dict[str, Any]], key: str) -> list[dict[str, Any]]:
@@ -341,6 +606,12 @@ def _nonnegative_price(value: float, name: str) -> float:
     if not math.isfinite(parsed) or parsed < 0:
         raise ValueError(f"{name} must be a finite non-negative number.")
     return parsed
+
+
+def _optional_nonnegative_price(value: float | None, name: str) -> float | None:
+    if value is None:
+        return None
+    return _nonnegative_price(value, name)
 
 
 __all__ = ["SQLiteModelCallRepository"]
