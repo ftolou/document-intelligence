@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from flask import Blueprint, Response, current_app, jsonify
 
 from receipt_intelligence.web.dependencies import get_app_services
@@ -16,9 +18,7 @@ def index():
     static_folder = current_app.static_folder
     if not static_folder:
         return current_app.send_static_file("index.html")
-    index_path = current_app.open_resource(str(static_folder) + "/index.html")
-    with index_path as handle:
-        html = handle.read().decode("utf-8")
+    html = (Path(static_folder) / "index.html").read_text(encoding="utf-8")
     marker = '<script src="/app.js"></script>'
     extension = marker + '\n  <script src="/model_pricing.js"></script>'
     if marker in html and "/model_pricing.js" not in html:
