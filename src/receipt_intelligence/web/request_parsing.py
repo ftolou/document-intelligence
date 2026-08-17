@@ -36,6 +36,16 @@ def form_float(name: str, default: float) -> float:
 def build_options_from_request() -> dict[str, Any]:
     """Read parser/runtime options from the current Flask request form."""
     return {
+        "extraction_backend": (
+            request.form.get("extraction_backend") or settings.EXTRACTION_BACKEND
+        )
+        .strip()
+        .lower(),
+        "openai_model": settings.OPENAI_RECEIPT_MODEL,
+        "openai_reasoning_effort": settings.OPENAI_RECEIPT_REASONING_EFFORT,
+        "openai_image_detail": settings.OPENAI_RECEIPT_IMAGE_DETAIL,
+        "openai_max_output_tokens": settings.OPENAI_RECEIPT_MAX_OUTPUT_TOKENS,
+        "openai_timeout_seconds": settings.OPENAI_RECEIPT_TIMEOUT_SECONDS,
         "ollama_url": settings.OLLAMA_URL,
         "model": request.form.get("model") or settings.OLLAMA_MODEL,
         "num_ctx": form_int("num_ctx", settings.NUM_CTX),

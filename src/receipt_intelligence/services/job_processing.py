@@ -58,6 +58,12 @@ class JobProcessingService:
                 run_id=job_id,
                 ollama_url=options["ollama_url"],
                 model=options["model"],
+                extraction_backend=options["extraction_backend"],
+                openai_model=options["openai_model"],
+                openai_reasoning_effort=options["openai_reasoning_effort"],
+                openai_image_detail=options["openai_image_detail"],
+                openai_max_output_tokens=options["openai_max_output_tokens"],
+                openai_timeout_seconds=options["openai_timeout_seconds"],
                 tolerance=options["validation_tolerance"],
                 ocr_lang=options["ocr_lang"],
                 ocr_device=options["ocr_device"],
@@ -180,6 +186,9 @@ class JobProcessingService:
             "categorization_result": optional("categorization_result"),
             "categorization_prompt": optional("categorization_prompt"),
             "categorization_raw": optional("categorization_raw"),
+            "openai_model_raw": optional("openai_model_raw"),
+            "openai_api_response": optional("openai_api_response"),
+            "openai_run_metadata": optional("openai_run_metadata"),
         }
         return {key: value for key, value in artifacts.items() if value}
 

@@ -46,6 +46,14 @@
         <div class="llm-box">
           <h2>Receipt extraction models</h2>
           <div class="grid">
+            <div class="field full">
+              <label for="extraction_backend">Extraction engine</label>
+              <select name="extraction_backend" id="extraction_backend">
+                <option value="local_specialized" selected>Local — Paddle + Qwen + Gemma</option>
+                <option value="openai_one_shot">OpenAI — one-shot multimodal</option>
+              </select>
+              <small>OpenAI uses the full image in one model request; its model, reasoning effort, and image detail are server-managed from <code>.env</code>. Local controls below are ignored in OpenAI mode.</small>
+            </div>
             <div class="field">
               <label>Ollama URL</label>
               <input id="ollama_url" disabled />
@@ -117,7 +125,7 @@
 
         <div class="form-actions">
           <button id="run-button" type="submit">Run parser</button>
-          <small class="v14-note">Paddle geometry, Qwen transcription, and Gemma extraction run as one image-first pipeline.</small>
+          <small class="v14-note">Local mode uses Paddle/Qwen/Gemma. OpenAI mode uses one full-image structured-output request, then deterministic validation and category calibration.</small>
         </div>
       </form>
     </section>

@@ -1496,7 +1496,7 @@ async function poll(jobId) {
 
 function collectParserOptionsForBatch() {
   const data = new FormData();
-  for (const el of uploadForm.querySelectorAll('input[name]')) {
+  for (const el of uploadForm.querySelectorAll('input[name], select[name]')) {
     if (el.name === 'file') continue;
     if (el.type === 'checkbox') {
       if (el.checked) data.append(el.name, 'on');

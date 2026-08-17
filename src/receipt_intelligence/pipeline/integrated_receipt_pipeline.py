@@ -20,7 +20,14 @@ def run_receipt_extraction(
     *,
     dependencies: ExtractionDependencies | None = None,
 ) -> dict[str, Any]:
-    """Run one receipt image through the canonical extraction workflow."""
+    """Run one receipt image through the selected extraction backend."""
+
+    if request.extraction_backend == "openai_one_shot":
+        from receipt_intelligence.extraction.openai_one_shot import (
+            run_openai_one_shot_extraction,
+        )
+
+        return run_openai_one_shot_extraction(request)
 
     context = ExtractionContext(
         config=request,

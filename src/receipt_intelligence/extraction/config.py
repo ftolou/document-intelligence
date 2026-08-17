@@ -25,6 +25,13 @@ class ExtractionConfig:
     ollama_url: str
     model: str
 
+    extraction_backend: str = "local_specialized"
+    openai_model: str = "gpt-5.6-luna"
+    openai_reasoning_effort: str = "medium"
+    openai_image_detail: str = "high"
+    openai_max_output_tokens: int = 12000
+    openai_timeout_seconds: float = 180.0
+
     tolerance: float = 0.03
     max_crops: int = 4
     ocr_lang: str = "german"
@@ -48,15 +55,30 @@ class ExtractionConfig:
     def __post_init__(self) -> None:
         object.__setattr__(self, "source_image_path", Path(self.source_image_path))
         object.__setattr__(self, "result_dir", Path(self.result_dir))
+        backend = str(self.extraction_backend or "").strip().lower()
+        object.__setattr__(self, "extraction_backend", backend)
         # Gemma-backed stages deliberately share one context size. Ollama treats
         # differing context sizes as different runners, even for the same model.
         object.__setattr__(self, "categorization_num_ctx", self.num_ctx)
         if not self.run_id.strip():
             raise ValueError("run_id must not be empty")
-        if not self.model.strip():
-            raise ValueError("model must not be empty")
-        if not self.ollama_url.strip():
-            raise ValueError("ollama_url must not be empty")
+        if backend not in {"local_specialized", "openai_one_shot"}:
+            raise ValueError(f"Unsupported extraction_backend: {backend!r}")
+        if backend == "local_specialized":
+            if not self.model.strip():
+                raise ValueError("model must not be empty")
+            if not self.ollama_url.strip():
+                raise ValueError("ollama_url must not be empty")
+        if backend == "openai_one_shot" and not self.openai_model.strip():
+            raise ValueError("openai_model must not be empty")
+        if self.openai_reasoning_effort not in {"none", "minimal", "low", "medium", "high"}:
+            raise ValueError("openai_reasoning_effort must be none/minimal/low/medium/high")
+        if self.openai_image_detail not in {"low", "high", "auto"}:
+            raise ValueError("openai_image_detail must be low/high/auto")
+        if self.openai_max_output_tokens < 1:
+            raise ValueError("openai_max_output_tokens must be positive")
+        if self.openai_timeout_seconds <= 0:
+            raise ValueError("openai_timeout_seconds must be positive")
         if self.max_crops < 1:
             raise ValueError("max_crops must be positive")
 

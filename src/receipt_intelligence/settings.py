@@ -41,6 +41,15 @@ LLM_TIMEOUT_SECONDS = float(os.getenv("LLM_TIMEOUT_SECONDS", "300"))
 LLM_JSON_RETRY_COUNT = int(os.getenv("LLM_JSON_RETRY_COUNT", "1"))
 OLLAMA_FORMAT_JSON = os.getenv("OLLAMA_FORMAT_JSON", "1").lower() in {"1", "true", "yes"}
 
+EXTRACTION_BACKEND = os.getenv("EXTRACTION_BACKEND", "local_specialized").strip().lower()
+OPENAI_RECEIPT_MODEL = os.getenv("OPENAI_RECEIPT_MODEL", "gpt-5.6-luna").strip()
+OPENAI_RECEIPT_REASONING_EFFORT = (
+    os.getenv("OPENAI_RECEIPT_REASONING_EFFORT", "medium").strip().lower()
+)
+OPENAI_RECEIPT_IMAGE_DETAIL = os.getenv("OPENAI_RECEIPT_IMAGE_DETAIL", "high").strip().lower()
+OPENAI_RECEIPT_MAX_OUTPUT_TOKENS = int(os.getenv("OPENAI_RECEIPT_MAX_OUTPUT_TOKENS", "12000"))
+OPENAI_RECEIPT_TIMEOUT_SECONDS = float(os.getenv("OPENAI_RECEIPT_TIMEOUT_SECONDS", "180"))
+
 # RAG semantic item-embedding index. The index is derived and rebuildable;
 # approved receipt data in SQLite remains the source of truth.
 RAG_EMBEDDING_ENABLED = os.getenv("RAG_EMBEDDING_ENABLED", "1").lower() in {
