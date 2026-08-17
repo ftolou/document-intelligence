@@ -41,7 +41,8 @@ def model_call_list():
 
 @model_calls_bp.get("/api/model-pricing")
 def model_pricing_list():
-    return jsonify({"pricing": get_app_services().model_calls.pricing()})
+    use_cases = get_app_services().model_calls
+    return jsonify({"pricing": use_cases.pricing(), "models": use_cases.models()})
 
 
 @model_calls_bp.put("/api/model-pricing")
