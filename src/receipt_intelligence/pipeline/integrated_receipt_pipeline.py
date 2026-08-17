@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import time
 import warnings
 from collections.abc import Callable
 from pathlib import Path
@@ -13,6 +14,7 @@ from receipt_intelligence.extraction.config import ExtractionRequest
 from receipt_intelligence.extraction.context import ExtractionContext
 from receipt_intelligence.extraction.dependencies import ExtractionDependencies
 from receipt_intelligence.extraction.factory import build_extraction_workflow
+from receipt_intelligence.observability.timing import utc_now_iso
 
 
 def run_receipt_extraction(
@@ -23,11 +25,51 @@ def run_receipt_extraction(
     """Run one receipt image through the selected extraction backend."""
 
     if request.extraction_backend == "openai_one_shot":
+        from receipt_intelligence.extraction.openai_observability import (
+            build_observed_openai_client,
+            publish_openai_extraction_metrics,
+        )
         from receipt_intelligence.extraction.openai_one_shot import (
             run_openai_one_shot_extraction,
         )
 
-        return run_openai_one_shot_extraction(request)
+        started_at = utc_now_iso()
+        started = time.perf_counter()
+        try:
+            client = build_observed_openai_client(request)
+            result = run_openai_one_shot_extraction(request, client=client)
+        except Exception as exc:
+            publish_openai_extraction_metrics(
+                request,
+                status="failed",
+                started_at=started_at,
+                duration_ms=(time.perf_counter() - started) * 1000.0,
+                stages=(),
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            raise
+
+        observability = (
+            result.get("observability") if isinstance(result.get("observability"), dict) else {}
+        )
+        stage_trace = observability.get("stage_trace")
+        stages = tuple(value for value in stage_trace if isinstance(value, dict)) if isinstance(stage_trace, list) else ()
+        metrics_path = publish_openai_extraction_metrics(
+            request,
+            status="completed",
+            started_at=started_at,
+            duration_ms=(time.perf_counter() - started) * 1000.0,
+            stages=stages,
+        )
+        paths = dict(result.get("paths") or {})
+        paths["extraction_metrics"] = metrics_path
+        result["paths"] = paths
+        result["observability"] = {
+            **observability,
+            "stage_trace": [dict(value) for value in stages],
+            "metrics_path": metrics_path,
+        }
+        return result
 
     context = ExtractionContext(
         config=request,
