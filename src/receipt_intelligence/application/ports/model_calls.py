@@ -24,6 +24,10 @@ class ModelPricingInput:
     currency: str
     input_price_per_million: float
     output_price_per_million: float
+    cached_input_price_per_million: float | None = None
+    cache_write_input_price_per_million: float | None = None
+    pricing_source: str | None = None
+    effective_from: str | None = None
 
 
 class ModelCallRepository(Protocol):
@@ -40,6 +44,8 @@ class ModelCallRepository(Protocol):
     ) -> list[dict[str, Any]]: ...
 
     def list_pricing(self) -> list[dict[str, Any]]: ...
+
+    def list_models(self) -> list[dict[str, Any]]: ...
 
     def upsert_pricing(self, pricing: ModelPricingInput) -> dict[str, Any]: ...
 
