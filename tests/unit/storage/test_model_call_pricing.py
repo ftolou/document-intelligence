@@ -35,6 +35,51 @@ def test_migration_seeds_current_luna_cache_aware_pricing(tmp_path: Path) -> Non
     assert row["effective_from"] == "2026-07-30"
 
 
+def test_migration_repairs_legacy_display_name_and_pre_reduction_luna_price(
+    tmp_path: Path,
+) -> None:
+    database = ReceiptDatabase(tmp_path / "legacy-pricing.db")
+    with database.connect() as connection:
+        connection.execute(
+            "DELETE FROM model_pricing WHERE provider='openai' AND model='gpt-5.6-luna'"
+        )
+        connection.execute(
+            """
+            INSERT INTO model_pricing(
+                provider, model, currency, input_price_per_million,
+                output_price_per_million, updated_at
+            ) VALUES ('OpenAI', 'GPT-5.6 Luna', 'EUR', 1, 6, '2026-08-17T17:00:00Z')
+            """
+        )
+        connection.execute("DELETE FROM schema_migrations WHERE version=10")
+        connection.execute("UPDATE schema_meta SET value='9' WHERE key='schema_version'")
+        connection.commit()
+
+    database.migrations.migrate()
+
+    with database.connect() as connection:
+        rows = connection.execute(
+            """
+            SELECT provider, model, currency, input_price_per_million,
+                   cached_input_price_per_million,
+                   cache_write_input_price_per_million,
+                   output_price_per_million
+            FROM model_pricing
+            WHERE lower(provider)='openai'
+            """
+        ).fetchall()
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["provider"] == "openai"
+    assert row["model"] == "gpt-5.6-luna"
+    assert row["currency"] == "USD"
+    assert row["input_price_per_million"] == pytest.approx(0.20)
+    assert row["cached_input_price_per_million"] == pytest.approx(0.02)
+    assert row["cache_write_input_price_per_million"] == pytest.approx(0.25)
+    assert row["output_price_per_million"] == pytest.approx(1.20)
+
+
 def test_openai_cost_uses_standard_cache_read_cache_write_and_output_rates(
     tmp_path: Path,
 ) -> None:
