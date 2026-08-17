@@ -51,7 +51,7 @@ class ModelCallUseCases:
             ModelPricingInput(
                 provider=str(payload.get("provider") or ""),
                 model=str(payload.get("model") or ""),
-                currency=str(payload.get("currency") or "USD"),
+                currency=str(payload.get("currency") or "EUR"),
                 input_price_per_million=float(payload.get("input_price_per_million") or 0),
                 output_price_per_million=float(payload.get("output_price_per_million") or 0),
                 cached_input_price_per_million=(
