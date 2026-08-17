@@ -7,6 +7,8 @@ adopt databases created by older versions of the application without data loss.
 from __future__ import annotations
 
 import json
+import math
+import re
 import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -14,7 +16,7 @@ from pathlib import Path
 
 from receipt_intelligence.storage.connection import SQLiteConnectionFactory
 
-LATEST_SCHEMA_VERSION = 9
+LATEST_SCHEMA_VERSION = 10
 
 
 @dataclass(frozen=True)
@@ -88,6 +90,7 @@ class MigrationRunner:
             Migration(7, "model_call_observability", self._apply_model_call_observability),
             Migration(8, "approved_analytics_boundary", self._apply_approved_analytics_boundary),
             Migration(9, "review_workspace", self._apply_review_workspace),
+            Migration(10, "cache_aware_model_pricing", self._apply_cache_aware_model_pricing),
         ]
 
     def _apply_sql(self, connection: sqlite3.Connection, filename: str) -> None:
@@ -188,6 +191,157 @@ class MigrationRunner:
             },
         )
         self._apply_sql(connection, "009_review_workspace.sql")
+
+    def _apply_cache_aware_model_pricing(self, connection: sqlite3.Connection) -> None:
+        self._add_missing_columns(
+            connection,
+            "model_pricing",
+            {
+                "cached_input_price_per_million": "REAL",
+                "cache_write_input_price_per_million": "REAL",
+                "pricing_source": "TEXT",
+                "effective_from": "TEXT",
+            },
+        )
+        self._canonicalize_legacy_model_pricing(connection)
+        self._seed_current_luna_pricing(connection)
+
+    def _canonicalize_legacy_model_pricing(self, connection: sqlite3.Connection) -> None:
+        observed = [
+            (str(row["provider"]), str(row["model"]))
+            for row in connection.execute(
+                """
+                SELECT DISTINCT provider, model
+                FROM model_calls
+                WHERE model IS NOT NULL AND trim(model) <> ''
+                """
+            ).fetchall()
+        ]
+        pricing_rows = connection.execute(
+            "SELECT rowid, provider, model FROM model_pricing"
+        ).fetchall()
+        for row in pricing_rows:
+            provider = str(row["provider"])
+            model = str(row["model"])
+            key = self._model_identity_key(provider, model)
+            candidates = [value for value in observed if self._model_identity_key(*value) == key]
+            if key == self._model_identity_key("openai", "gpt-5.6-luna"):
+                candidates = [("openai", "gpt-5.6-luna")]
+            if len(candidates) != 1:
+                continue
+            canonical_provider, canonical_model = candidates[0]
+            if (provider, model) == (canonical_provider, canonical_model):
+                continue
+            duplicate = connection.execute(
+                "SELECT 1 FROM model_pricing WHERE provider=? AND model=?",
+                (canonical_provider, canonical_model),
+            ).fetchone()
+            if duplicate is not None:
+                connection.execute("DELETE FROM model_pricing WHERE rowid=?", (row["rowid"],))
+            else:
+                connection.execute(
+                    "UPDATE model_pricing SET provider=?, model=? WHERE rowid=?",
+                    (canonical_provider, canonical_model, row["rowid"]),
+                )
+
+    def _seed_current_luna_pricing(self, connection: sqlite3.Connection) -> None:
+        provider = "openai"
+        model = "gpt-5.6-luna"
+        current = connection.execute(
+            """
+            SELECT input_price_per_million, cached_input_price_per_million,
+                   cache_write_input_price_per_million, output_price_per_million,
+                   currency, pricing_source, effective_from
+            FROM model_pricing
+            WHERE provider=? AND model=?
+            """,
+            (provider, model),
+        ).fetchone()
+
+        official_input = 0.20
+        official_cached = 0.02
+        official_cache_write = 0.25
+        official_output = 1.20
+        official_source = "openai_official_2026-07-30"
+        official_effective_from = "2026-07-30"
+
+        if current is None:
+            connection.execute(
+                """
+                INSERT INTO model_pricing(
+                    provider, model, currency, input_price_per_million,
+                    cached_input_price_per_million,
+                    cache_write_input_price_per_million,
+                    output_price_per_million, pricing_source, effective_from, updated_at
+                ) VALUES (?, ?, 'USD', ?, ?, ?, ?, ?, ?, datetime('now'))
+                """,
+                (
+                    provider,
+                    model,
+                    official_input,
+                    official_cached,
+                    official_cache_write,
+                    official_output,
+                    official_source,
+                    official_effective_from,
+                ),
+            )
+            return
+
+        input_price = float(current["input_price_per_million"] or 0.0)
+        output_price = float(current["output_price_per_million"] or 0.0)
+        uses_pre_reduction_luna_price = math.isclose(input_price, 1.0) and math.isclose(
+            output_price, 6.0
+        )
+        if uses_pre_reduction_luna_price:
+            connection.execute(
+                """
+                UPDATE model_pricing
+                SET currency='USD', input_price_per_million=?,
+                    cached_input_price_per_million=?,
+                    cache_write_input_price_per_million=?,
+                    output_price_per_million=?, pricing_source=?, effective_from=?,
+                    updated_at=datetime('now')
+                WHERE provider=? AND model=?
+                """,
+                (
+                    official_input,
+                    official_cached,
+                    official_cache_write,
+                    official_output,
+                    official_source,
+                    official_effective_from,
+                    provider,
+                    model,
+                ),
+            )
+            return
+
+        cached_price = current["cached_input_price_per_million"]
+        cache_write_price = current["cache_write_input_price_per_million"]
+        pricing_source = current["pricing_source"] or "manual_legacy"
+        connection.execute(
+            """
+            UPDATE model_pricing
+            SET cached_input_price_per_million=COALESCE(cached_input_price_per_million, ?),
+                cache_write_input_price_per_million=COALESCE(cache_write_input_price_per_million, ?),
+                pricing_source=COALESCE(pricing_source, ?),
+                updated_at=datetime('now')
+            WHERE provider=? AND model=?
+            """,
+            (
+                float(cached_price) if cached_price is not None else input_price * 0.10,
+                float(cache_write_price) if cache_write_price is not None else input_price * 1.25,
+                pricing_source,
+                provider,
+                model,
+            ),
+        )
+
+    @staticmethod
+    def _model_identity_key(provider: str, model: str) -> tuple[str, str]:
+        compact = lambda value: re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
+        return compact(provider), compact(model)
 
     def _apply_reviewed_product_semantics(self, connection: sqlite3.Connection) -> None:
         self._add_missing_columns(
