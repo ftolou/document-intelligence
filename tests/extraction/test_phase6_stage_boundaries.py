@@ -19,15 +19,15 @@ def _class_assignments(path: Path, class_name: str) -> dict[str, str]:
     raise AssertionError(f"Class {class_name} not found in {path}")
 
 
-def test_phase6_stages_form_expected_inactive_boundary() -> None:
+def test_categorization_and_finalization_form_canonical_boundary() -> None:
     root = Path(__file__).resolve().parents[2]
     categorize = _class_assignments(
         root / "src/receipt_intelligence/extraction/stages/categorize.py",
         "CategorizationStage",
     )
     finalize = _class_assignments(
-        root / "src/receipt_intelligence/extraction/stages/publish.py",
-        "NextFinalizationStage",
+        root / "src/receipt_intelligence/extraction/stages/finalize.py",
+        "FinalizationStage",
     )
     assert categorize["input_phase"] == "CORRECTED"
     assert categorize["output_phase"] == "CATEGORIZED"

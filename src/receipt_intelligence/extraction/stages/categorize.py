@@ -1,11 +1,11 @@
-"""Inactive next-pipeline stage for optional post-validation categorization."""
+"""Optional post-validation categorization stage."""
 
 from __future__ import annotations
 
 from receipt_intelligence.extraction.context import ExtractionContext
 from receipt_intelligence.extraction.contracts.presentation import CategorizationRequest
 from receipt_intelligence.extraction.presentation.categorization import (
-    ExistingReceiptCategorizationService,
+    ReceiptCategorizationAdapter,
 )
 from receipt_intelligence.extraction.services.categorization import ReceiptCategorizationService
 from receipt_intelligence.extraction.state import (
@@ -16,7 +16,7 @@ from receipt_intelligence.extraction.state import (
 
 
 class CategorizationStage:
-    name = "next_categorization"
+    name = "categorization"
     input_phase = ExtractionPhase.CORRECTED
     output_phase = ExtractionPhase.CATEGORIZED
 
@@ -27,7 +27,7 @@ class CategorizationStage:
         correction = context.require_correction().result
         if correction is None:
             raise StageContractError("CategorizationStage requires correction result.")
-        service = self._service or ExistingReceiptCategorizationService(
+        service = self._service or ReceiptCategorizationAdapter(
             llm_gateway=context.dependencies.llm_gateway,
             ollama_url=context.config.ollama_url,
             model=context.config.categorization_model or context.config.model,
@@ -51,9 +51,7 @@ class CategorizationStage:
         )
         if context.finalized is None:
             context.finalized = FinalizationArtifacts()
-        context.finalized.next_categorization = result
-        context.finalized.categorization_result = result.to_dict()
-        context.finalized.categorized_receipt = result.receipt
+        context.finalized.categorization = result
         context.emit(
             self.name,
             "done" if result.status.value not in {"error"} else "error",

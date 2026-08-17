@@ -12,12 +12,9 @@ python-dotenv==1.1.1
 # Keep NumPy below 2.3 for SciPy/sklearn/paddlex compatibility.
 numpy==2.2.6
 
-# PaddleOCR stack for the application OCR runtime.
+# PaddleOCR stack used locally for text-region geometry.
 paddlepaddle==3.2.0
 paddleocr>=3.0.0,<4.0.0
-
-# PaddleOCR-VL is mandatory and runs in the separate receipt-vlm service.
-# Its GPU-specific dependencies are pinned in requirements/vlm-gpu-cu126.txt.
 
 # RAG-SQL graph orchestration and typed validation.
 langgraph==1.2.7

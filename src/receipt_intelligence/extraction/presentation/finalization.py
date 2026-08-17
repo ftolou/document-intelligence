@@ -135,7 +135,7 @@ def _pipeline_metadata(request: FinalizationRequest, *, app_version: str) -> Jso
         else {}
     )
     metadata: JsonObject = {
-        "schema_version": "next_pipeline_meta_1",
+        "schema_version": "receipt_pipeline_meta_1",
         "app_version": app_version,
         "architecture": (
             "Paddle geometry -> Qwen canonical transcription -> Gemma scalar/item extraction "
@@ -143,7 +143,7 @@ def _pipeline_metadata(request: FinalizationRequest, *, app_version: str) -> Jso
             "-> optional item categorization -> final publication"
         ),
         "workflow": {
-            "name": "NextReceiptExtractionWorkflow",
+            "name": "ReceiptExtractionWorkflow",
             "staged_execution": True,
             "stage_count": len(stage_trace),
             "stages": [str(value.get("stage") or "") for value in stage_trace],

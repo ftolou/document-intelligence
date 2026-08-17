@@ -45,7 +45,7 @@ class PaddleTextDetectionEngine(TextDetectionEngine):
                 polygon=polygon,
                 score=score,
             )
-            for index, (polygon, score) in enumerate(zip(polygons, scores), start=1)
+            for index, (polygon, score) in enumerate(zip(polygons, scores, strict=True), start=1)
         )
         return TextDetectionResult(
             regions=regions,

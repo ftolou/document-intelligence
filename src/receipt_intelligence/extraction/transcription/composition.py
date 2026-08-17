@@ -1,4 +1,4 @@
-"""Composition helper for the inactive next-pipeline transcription subsystem."""
+"""Composition helper for canonical receipt transcription."""
 
 from __future__ import annotations
 

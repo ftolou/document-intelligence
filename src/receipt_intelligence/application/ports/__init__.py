@@ -1,8 +1,6 @@
 """Stable application ports implemented by infrastructure adapters.
 
 Exports are resolved lazily so a service imports only the port modules it uses.
-This keeps the standalone VLM process independent from LLM, persistence, and
-query-observability contracts during startup.
 """
 
 from __future__ import annotations
@@ -42,17 +40,11 @@ if TYPE_CHECKING:
         ModelCallRepository,
         ModelPricingInput,
     )
-    from receipt_intelligence.application.ports.model_lifecycle import (
-        ModelLifecycleCoordinator,
-        ModelLifecycleRequest,
-        NoOpModelLifecycleCoordinator,
-    )
     from receipt_intelligence.application.ports.multimodal import (
         MultimodalGateway,
         MultimodalGenerationRequest,
         MultimodalGenerationResult,
     )
-    from receipt_intelligence.application.ports.ocr import OcrEngine, OcrRequest
     from receipt_intelligence.application.ports.receipts import (
         ReceiptEditor,
         ReceiptRepository,
@@ -68,7 +60,6 @@ if TYPE_CHECKING:
         TextDetectionRequest,
         TextDetectionResult,
     )
-    from receipt_intelligence.application.ports.vlm import VlmEngine, VlmRequest
 
     _TYPE_EXPORTS = (
         ArtifactKind,
@@ -95,11 +86,6 @@ if TYPE_CHECKING:
         ModelCallFilter,
         ModelCallRepository,
         ModelPricingInput,
-        ModelLifecycleCoordinator,
-        ModelLifecycleRequest,
-        NoOpModelLifecycleCoordinator,
-        OcrEngine,
-        OcrRequest,
         ReceiptEditor,
         ReceiptRepository,
         ReviewApplier,
@@ -111,8 +97,6 @@ if TYPE_CHECKING:
         TextDetectionEngine,
         TextDetectionRequest,
         TextDetectionResult,
-        VlmEngine,
-        VlmRequest,
     )
 
 _EXPORTS: dict[str, tuple[str, str]] = {
@@ -140,14 +124,6 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "ModelCallFilter": ("model_calls", "ModelCallFilter"),
     "ModelCallRepository": ("model_calls", "ModelCallRepository"),
     "ModelPricingInput": ("model_calls", "ModelPricingInput"),
-    "ModelLifecycleCoordinator": ("model_lifecycle", "ModelLifecycleCoordinator"),
-    "ModelLifecycleRequest": ("model_lifecycle", "ModelLifecycleRequest"),
-    "NoOpModelLifecycleCoordinator": (
-        "model_lifecycle",
-        "NoOpModelLifecycleCoordinator",
-    ),
-    "OcrEngine": ("ocr", "OcrEngine"),
-    "OcrRequest": ("ocr", "OcrRequest"),
     "ReceiptEditor": ("receipts", "ReceiptEditor"),
     "ReceiptRepository": ("receipts", "ReceiptRepository"),
     "ReviewApplier": ("receipts", "ReviewApplier"),
@@ -159,8 +135,6 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "TextDetectionEngine": ("text_detection", "TextDetectionEngine"),
     "TextDetectionRequest": ("text_detection", "TextDetectionRequest"),
     "TextDetectionResult": ("text_detection", "TextDetectionResult"),
-    "VlmEngine": ("vlm", "VlmEngine"),
-    "VlmRequest": ("vlm", "VlmRequest"),
 }
 
 __all__ = list(_EXPORTS)

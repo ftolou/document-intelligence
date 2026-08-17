@@ -15,14 +15,14 @@ from receipt_intelligence.adapters.observability import (
 from receipt_intelligence.adapters.storage.sqlite.model_calls import (
     SQLiteModelCallRepository,
 )
-from receipt_intelligence.application.ports import EventSink, JobDispatcher, OcrEngine
+from receipt_intelligence.application.ports import EventSink, JobDispatcher
 from receipt_intelligence.application.use_cases.jobs import JobUseCases
 from receipt_intelligence.application.use_cases.model_calls import ModelCallUseCases
 from receipt_intelligence.application.use_cases.query import AskReceipts, ReceiptQueryExecutor
 from receipt_intelligence.application.use_cases.receipts import ReceiptUseCases
 from receipt_intelligence.application.use_cases.reviews import ReviewUseCases
 from receipt_intelligence.application.use_cases.runtime import RuntimeUseCases
-from receipt_intelligence.composition import build_job_dispatcher, build_ocr_engine
+from receipt_intelligence.composition import build_job_dispatcher
 from receipt_intelligence.runtime.paths import RuntimePaths
 from receipt_intelligence.services.database_receipt_editor import DatabaseReceiptEditor
 from receipt_intelligence.services.job_processing import JobProcessingService
@@ -61,7 +61,6 @@ def init_app_services(
     query_telemetry: EventSink | None = None,
     receipt_query_service: ReceiptQueryExecutor | None = None,
     runtime_paths: RuntimePaths | None = None,
-    ocr_engine: OcrEngine | None = None,
     job_dispatcher: JobDispatcher | None = None,
 ) -> AppServices:
     resolved_paths = runtime_paths or settings.RUNTIME_PATHS
@@ -98,11 +97,7 @@ def init_app_services(
         semantic_index_updater=semantic_index_updater,
     )
     resolved_editor = DatabaseReceiptEditor(resolved_database, resolved_review_service)
-    processor = JobProcessingService(
-        resolved_store,
-        resolved_database,
-        ocr_engine=ocr_engine or build_ocr_engine(),
-    )
+    processor = JobProcessingService(resolved_store, resolved_database)
     owns_dispatcher = job_dispatcher is None
     resolved_dispatcher = job_dispatcher or build_job_dispatcher(
         resolved_store,

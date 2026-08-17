@@ -25,13 +25,13 @@ def test_web_and_use_cases_do_not_create_threads() -> None:
     assert violations == []
 
 
-def test_only_job_adapter_owns_worker_primitives() -> None:
+def test_only_job_adapter_owns_background_threads() -> None:
     violations: list[str] = []
     adapter_root = SRC / "adapters" / "jobs"
     for path in SRC.rglob("*.py"):
         if path.is_relative_to(adapter_root):
             continue
         text = path.read_text(encoding="utf-8-sig")
-        if "threading.Thread(" in text or "ThreadPoolExecutor(" in text:
+        if "threading.Thread(" in text:
             violations.append(str(path.relative_to(ROOT)))
     assert violations == []

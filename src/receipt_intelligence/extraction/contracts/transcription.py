@@ -15,7 +15,6 @@ BoundingBox = tuple[float, float, float, float]
 class TranscriptionRequest:
     source_image_path: Path
     run_id: str
-    legacy_ocr_json_path: Path | None = None
 
     def __post_init__(self) -> None:
         run_id = str(self.run_id or "").strip()
@@ -23,8 +22,6 @@ class TranscriptionRequest:
             raise ValueError("TranscriptionRequest.run_id must not be empty.")
         object.__setattr__(self, "source_image_path", Path(self.source_image_path))
         object.__setattr__(self, "run_id", run_id)
-        if self.legacy_ocr_json_path is not None:
-            object.__setattr__(self, "legacy_ocr_json_path", Path(self.legacy_ocr_json_path))
 
 
 @dataclass(frozen=True, slots=True)

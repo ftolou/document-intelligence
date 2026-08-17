@@ -19,7 +19,7 @@ The use-case registry is assembled in `web/dependencies.py` and exposes only:
 - `AskReceipts`
 - `RuntimeUseCases`
 
-Concrete `JobStore`, `ReceiptDatabase`, OCR engines, and processing services are
+Concrete `JobStore`, `ReceiptDatabase`, model gateways, and processing services are
 owned by the composition boundary and are not exposed to blueprints.
 
 ## Resource references

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run scoped quality checks for the refactored application modules."""
+"""Run repository quality checks for the canonical application runtime."""
 
 from __future__ import annotations
 
@@ -10,37 +10,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TARGETS = [
-    "src/receipt_intelligence/application",
-    "src/receipt_intelligence/adapters",
-    "src/receipt_intelligence/composition.py",
-    "src/receipt_intelligence/vlm_client_composition.py",
-    "src/receipt_intelligence/rag",
-    "src/receipt_intelligence/rag_sql",
-    "src/receipt_intelligence/observability",
-    "src/receipt_intelligence/web",
-    "src/receipt_intelligence/services/artifact_service.py",
-    "src/receipt_intelligence/services/job_processing.py",
-    "src/receipt_intelligence/services/review_service.py",
-    "src/receipt_intelligence/storage",
-    "src/receipt_intelligence/runtime",
-    "src/receipt_intelligence/services/ollama_control.py",
-    "src/receipt_intelligence/extraction/__init__.py",
-    "src/receipt_intelligence/extraction/artifacts.py",
-    "src/receipt_intelligence/extraction/config.py",
-    "src/receipt_intelligence/extraction/compatibility.py",
-    "src/receipt_intelligence/extraction/context.py",
-    "src/receipt_intelligence/extraction/state.py",
-    "src/receipt_intelligence/extraction/factory.py",
-    "src/receipt_intelligence/extraction/stages",
-    "src/receipt_intelligence/extraction/support.py",
-    "src/receipt_intelligence/extraction/workflow.py",
-    "src/receipt_intelligence/extraction/evidence/__init__.py",
-    "src/receipt_intelligence/extraction/parsing/__init__.py",
-    "src/receipt_intelligence/extraction/validation/__init__.py",
-    "src/receipt_intelligence/extraction/repair/__init__.py",
-    "src/receipt_intelligence/extraction/categorization/__init__.py",
-    "src/receipt_intelligence/pipeline/integrated_receipt_pipeline.py",
-    "scripts/run_receipt_folder.py",
+    "src/receipt_intelligence",
+    "scripts/run_receipt_pipeline.py",
     "scripts/run_receipt_images_folder.py",
     "tests",
     "scripts/run_tests.py",
@@ -50,7 +21,6 @@ TARGETS = [
     "scripts/check_security_boundaries.py",
     "scripts/check_configuration_contracts.py",
     "scripts/check_model_boundaries.py",
-    "scripts/check_vlm_architecture.py",
     "scripts/check_extraction_state_boundaries.py",
     "scripts/check_persistence_boundaries.py",
     "scripts/check_application_boundaries.py",
@@ -70,7 +40,6 @@ commands = [
     [sys.executable, "scripts/check_security_boundaries.py"],
     [sys.executable, "scripts/check_configuration_contracts.py"],
     [sys.executable, "scripts/check_model_boundaries.py"],
-    [sys.executable, "scripts/check_vlm_architecture.py"],
     [sys.executable, "scripts/check_extraction_state_boundaries.py"],
     [sys.executable, "scripts/check_persistence_boundaries.py"],
     [sys.executable, "scripts/check_application_boundaries.py"],
@@ -78,30 +47,8 @@ commands = [
     [sys.executable, "scripts/check_rag_sql_composition.py"],
     [sys.executable, "scripts/check_observability_boundaries.py"],
     [sys.executable, "scripts/check_model_call_observability.py"],
-    [sys.executable, "-m", "pytest", "-q", "services/receipt-vlm/tests"],
     [sys.executable, "-m", "ruff", "check", *TARGETS],
     [sys.executable, "-m", "ruff", "format", "--check", *TARGETS],
-    [
-        sys.executable,
-        "-m",
-        "ruff",
-        "check",
-        "--config",
-        "services/receipt-vlm/pyproject.toml",
-        "services/receipt-vlm/src",
-        "services/receipt-vlm/tests",
-    ],
-    [
-        sys.executable,
-        "-m",
-        "ruff",
-        "format",
-        "--check",
-        "--config",
-        "services/receipt-vlm/pyproject.toml",
-        "services/receipt-vlm/src",
-        "services/receipt-vlm/tests",
-    ],
 ]
 
 for command in commands:

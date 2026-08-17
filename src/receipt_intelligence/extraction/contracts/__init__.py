@@ -1,4 +1,4 @@
-"""Typed contracts exchanged by the next receipt-extraction stages."""
+"""Typed contracts exchanged by receipt-extraction stages."""
 
 from receipt_intelligence.extraction.contracts.common import (
     JsonObject,

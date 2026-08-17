@@ -1,4 +1,4 @@
-"""Read-only deterministic validation engine for the next extraction pipeline."""
+"""Read-only deterministic validation engine for receipt extraction."""
 
 from receipt_intelligence.extraction.validation.composition import (
     build_deterministic_validation_service,

@@ -274,6 +274,83 @@ def to_review_document(receipt: JsonObject) -> JsonObject:
     return result
 
 
+def to_canonical_validation_document(receipt: JsonObject) -> JsonObject:
+    """Normalize saved legacy or canonical receipts for the active validator."""
+
+    if is_next_receipt(receipt):
+        return copy.deepcopy(receipt)
+
+    result = copy.deepcopy(receipt)
+    currency = receipt_currency(receipt) or "EUR"
+    result["receipt_metadata"] = {
+        "date": receipt_date(receipt),
+        "time": receipt_time(receipt),
+        "currency": currency,
+        "receipt_number": receipt_number(receipt),
+    }
+    legacy_totals = _object(receipt.get("totals"))
+    grand_total = receipt_grand_total(receipt)
+    subtotal = receipt_subtotal(receipt)
+    result["totals"] = {
+        "final_purchase_total": {
+            "final_purchase_total": grand_total,
+            "currency": currency,
+        },
+        "net_amount": {"net_amount": subtotal, "currency": currency},
+    }
+    discount_total = first_present(
+        scalar_value(legacy_totals.get("discount_total"), "discount_total"),
+        receipt.get("discount_total"),
+    )
+    result["discount"] = {
+        "discount_total": {
+            "discount_total": discount_total,
+            "currency": currency,
+        }
+    }
+    result["payment"] = {
+        "payment_method": receipt_payment_method(receipt),
+        "payment_received": {
+            "payment_received": receipt_paid_total(receipt),
+            "currency": currency,
+        },
+        "change_returned": {
+            "change_returned": receipt_change(receipt),
+            "currency": currency,
+        },
+    }
+
+    legacy_taxes = receipt.get("taxes") if isinstance(receipt.get("taxes"), list) else []
+    vat_lines = []
+    for row in legacy_taxes:
+        if not isinstance(row, dict):
+            continue
+        vat_lines.append(
+            {
+                "rate_percent": row.get("rate"),
+                "net_amount": row.get("net"),
+                "vat_amount": row.get("tax"),
+                "source_rows": copy.deepcopy(row.get("source_line_ids") or []),
+            }
+        )
+    result["tax"] = {
+        "vat_amount": {
+            "vat_amount": receipt_tax_total(receipt),
+            "currency": currency,
+        },
+        "vat_lines": vat_lines,
+    }
+
+    canonical_items = []
+    for item in _items(receipt):
+        normalized = copy.deepcopy(item)
+        normalized["name"] = item_description(item)
+        normalized["final_price"] = item_line_total(item)
+        canonical_items.append(normalized)
+    result["items"] = canonical_items
+    return result
+
+
 def to_legacy_validation_document(receipt: JsonObject) -> JsonObject:
     """Project a next receipt into the legacy read-only validator contract."""
 
@@ -470,6 +547,7 @@ __all__ = [
     "receipt_time",
     "scalar_value",
     "to_legacy_validation_document",
+    "to_canonical_validation_document",
     "to_review_document",
     "validation_for_review",
     "validation_issues",

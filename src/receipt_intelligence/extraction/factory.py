@@ -1,24 +1,29 @@
-"""Composition root for the default extraction workflow."""
+"""Composition root for the receipt extraction workflow."""
 
 from receipt_intelligence.extraction.stages import (
+    CategorizationStage,
+    CorrectionStage,
     FinalizationStage,
-    MainParsingStage,
     PreparationStage,
-    RepairAndCorrectionStage,
-    SpatialOverviewStage,
-    VisualEvidenceStage,
+    StructuredExtractionStage,
+    TranscriptionStage,
+    ValidationStage,
 )
 from receipt_intelligence.extraction.workflow import ReceiptExtractionWorkflow
 
 
-def build_default_extraction_workflow() -> ReceiptExtractionWorkflow:
+def build_extraction_workflow() -> ReceiptExtractionWorkflow:
     return ReceiptExtractionWorkflow(
         [
             PreparationStage(),
-            VisualEvidenceStage(),
-            SpatialOverviewStage(),
-            MainParsingStage(),
-            RepairAndCorrectionStage(),
+            TranscriptionStage(),
+            StructuredExtractionStage(),
+            ValidationStage(),
+            CorrectionStage(),
+            CategorizationStage(),
             FinalizationStage(),
         ]
     )
+
+
+__all__ = ["build_extraction_workflow"]

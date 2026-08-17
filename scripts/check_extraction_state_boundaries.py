@@ -9,24 +9,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 EXTRACTION = ROOT / "src" / "receipt_intelligence" / "extraction"
 STAGES = EXTRACTION / "stages"
-
 errors: list[str] = []
 
 context_text = (EXTRACTION / "context.py").read_text(encoding="utf-8")
 if "def require(" in context_text:
-    errors.append("ExtractionContext must not expose the string-based require(attribute) API.")
-
-for path in sorted(STAGES.glob("*.py")):
-    text = path.read_text(encoding="utf-8")
-    if ".require(" in text:
-        errors.append(f"{path.relative_to(ROOT)} still uses string-based context.require().")
+    errors.append("ExtractionContext must not expose string-based require(attribute).")
 
 required_artifacts = {
     "PreparedArtifacts",
-    "VisualArtifacts",
-    "OverviewArtifacts",
-    "ParsingArtifacts",
-    "RepairArtifacts",
+    "TranscriptionArtifacts",
+    "StructuredExtractionArtifacts",
+    "ValidationArtifacts",
+    "CorrectionArtifacts",
     "FinalizationArtifacts",
 }
 state_tree = ast.parse((EXTRACTION / "state.py").read_text(encoding="utf-8"))
@@ -37,11 +31,12 @@ if missing:
 
 expected_stages = {
     "prepare.py": ("ExtractionPhase.CREATED", "ExtractionPhase.PREPARED"),
-    "visual.py": ("ExtractionPhase.PREPARED", "ExtractionPhase.VISUAL_READY"),
-    "overview.py": ("ExtractionPhase.VISUAL_READY", "ExtractionPhase.OVERVIEW_READY"),
-    "parse.py": ("ExtractionPhase.OVERVIEW_READY", "ExtractionPhase.PARSED"),
-    "repair.py": ("ExtractionPhase.PARSED", "ExtractionPhase.REPAIRED"),
-    "finalize.py": ("ExtractionPhase.REPAIRED", "ExtractionPhase.FINALIZED"),
+    "transcribe.py": ("ExtractionPhase.PREPARED", "ExtractionPhase.TRANSCRIBED"),
+    "extract.py": ("ExtractionPhase.TRANSCRIBED", "ExtractionPhase.EXTRACTED"),
+    "validate.py": ("ExtractionPhase.EXTRACTED", "ExtractionPhase.VALIDATED"),
+    "correct.py": ("ExtractionPhase.VALIDATED", "ExtractionPhase.CORRECTED"),
+    "categorize.py": ("ExtractionPhase.CORRECTED", "ExtractionPhase.CATEGORIZED"),
+    "finalize.py": ("ExtractionPhase.CATEGORIZED", "ExtractionPhase.FINALIZED"),
 }
 for filename, (input_phase, output_phase) in expected_stages.items():
     text = (STAGES / filename).read_text(encoding="utf-8")
@@ -50,24 +45,9 @@ for filename, (input_phase, output_phase) in expected_stages.items():
     if f"output_phase = {output_phase}" not in text:
         errors.append(f"{filename} does not declare output phase {output_phase}.")
 
-legacy_fields = {
-    "visual_result",
-    "visual_evidence",
-    "llm_result",
-    "receipt",
-    "ocr_context",
-    "report",
-    "final_receipt",
-    "final_report",
-    "categorized_receipt",
-}
-context_tree = ast.parse(context_text)
-for node in ast.walk(context_tree):
-    if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-        if node.target.id in legacy_fields:
-            errors.append(
-                f"ExtractionContext still stores ungrouped stage field {node.target.id!r}."
-            )
+for obsolete in ("VisualArtifacts", "OverviewArtifacts", "ParsingArtifacts", "RepairArtifacts"):
+    if obsolete in defined_classes:
+        errors.append(f"Legacy extraction artifact remains: {obsolete}")
 
 if errors:
     for error in errors:

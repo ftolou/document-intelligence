@@ -1,4 +1,4 @@
-"""Typed application service for the v7.8 specialist correction coordinator."""
+"""Typed application service for specialist correction coordination."""
 
 from __future__ import annotations
 

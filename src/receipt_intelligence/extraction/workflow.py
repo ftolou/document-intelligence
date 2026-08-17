@@ -103,9 +103,11 @@ def _refresh_finalization_observability(context: ExtractionContext) -> None:
     """Replace the in-stage metadata snapshot with the completed workflow trace."""
 
     finalization = context.finalized
-    if finalization is None or finalization.next_finalization is None:
+    if finalization is None or finalization.result is None:
         return
-    result = finalization.next_finalization
+    result = finalization.result
+    if result is None:
+        return
     metadata = dict(result.pipeline_metadata)
     workflow = dict(metadata.get("workflow") or {})
     workflow["stage_trace"] = [dict(entry) for entry in context.stage_trace]
@@ -113,8 +115,7 @@ def _refresh_finalization_observability(context: ExtractionContext) -> None:
     workflow["stages"] = [str(entry.get("stage") or "") for entry in context.stage_trace]
     metadata["workflow"] = workflow
     updated = replace(result, pipeline_metadata=metadata)
-    finalization.next_finalization = updated
-    finalization.pipeline_meta = metadata
+    finalization.result = updated
     for key in ("pipeline_meta", "latest_pipeline_meta"):
         path = context.available_paths.get(key)
         if path is not None:

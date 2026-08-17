@@ -1,10 +1,4 @@
 # Local development override.
-# Use with:
-#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --no-build
-#
-# This bind-mounts source code into the already-built images so Python changes
-# only require a service restart, not a 25 GB CUDA/Paddle image rebuild.
-
 services:
   receipt-app:
     volumes:
@@ -12,21 +6,4 @@ services:
       - ./var:/app/var
       - ${MODEL_CACHE_ROOT:-./model_cache}/paddleocr:/root/.paddleocr
       - ${MODEL_CACHE_ROOT:-./model_cache}/paddlex:/root/.paddlex
-      - ${MODEL_CACHE_ROOT:-./model_cache}/huggingface:/root/.cache/huggingface
-      - ${MODEL_CACHE_ROOT:-./model_cache}/torch:/root/.cache/torch
-      - ${MODEL_CACHE_ROOT:-./model_cache}/paddle:/root/.cache/paddle
-
-  receipt-vlm:
-    working_dir: /app
-    environment:
-      PYTHONPATH: /app/src
-    command: [ "python", "-m", "receipt_vlm_service.app" ]
-    volumes:
-      - ./services/receipt-vlm/src:/app/src:ro
-      - ./VERSION:/app/VERSION:ro
-      - ./var:/app/var
-      - ${MODEL_CACHE_ROOT:-./model_cache}/paddleocr:/root/.paddleocr
-      - ${MODEL_CACHE_ROOT:-./model_cache}/paddlex:/root/.paddlex
-      - ${MODEL_CACHE_ROOT:-./model_cache}/huggingface:/root/.cache/huggingface
-      - ${MODEL_CACHE_ROOT:-./model_cache}/torch:/root/.cache/torch
       - ${MODEL_CACHE_ROOT:-./model_cache}/paddle:/root/.cache/paddle

@@ -1,17 +1,15 @@
-# Screenshot Guide
+# Screenshot guide
 
-Capture these screenshots after running the app locally. Store them in `docs/screenshots/` before publishing the repository or preparing an application package.
+Capture screenshots after running the app locally and store them in `docs/screenshots/`.
 
-Recommended screenshots:
+Recommended views:
 
-1. `01-home.png` — app landing page with upload and batch sections.
-2. `02-live-pipeline.png` — running job with timeline/progress.
-3. `03-extracted-receipt.png` — merchant, totals, items, taxes, validation issues.
-4. `04-human-review.png` — editable review fields and approval controls.
-5. `05-artifacts.png` — artifact links after a completed job.
-6. `06-batch-summary.png` — batch table with decisions and issue counts.
-7. `07-regression-report.png` — generated Markdown or JSON/CSV report.
-8. `08-docker-compose.png` — running `receipt-app` and `receipt-vlm` containers.
-9. `09-github-actions.png` — CI workflow result if published on GitHub.
-
-For the element/KI Manager application, the most important screenshots are human review, artifacts, architecture, and regression report.
+1. App landing page with upload and batch sections.
+2. Running image-first extraction with timeline and progress.
+3. Extracted merchant, totals, items, taxes, and validation issues.
+4. Human-review fields and approval controls.
+5. Artifact links after a completed job.
+6. Batch summary with decisions and issue counts.
+7. Regression report.
+8. Docker Compose with the `receipt-app` container.
+9. CI workflow results.

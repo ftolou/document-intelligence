@@ -106,7 +106,7 @@ async function loadConfig() {
   if (!res.ok) throw new Error(`Config load failed: ${res.status}`);
   appConfig = await res.json();
 
-  for (const key of ['ollama_url', 'model', 'num_ctx', 'num_predict', 'ocr_lang', 'ocr_device', 'vlm_backend', 'vlm_service_url', 'categorization_model', 'categorization_num_ctx', 'categorization_num_predict']) {
+  for (const key of ['ollama_url', 'model', 'transcription_model', 'num_ctx', 'num_predict', 'ocr_lang', 'ocr_device', 'max_crops', 'categorization_model', 'categorization_num_ctx', 'categorization_num_predict']) {
     const input = document.getElementById(key);
     if (input && appConfig[key] !== undefined) input.value = appConfig[key];
   }
@@ -120,6 +120,10 @@ async function loadConfig() {
     askReceiptsLogHelpEl.textContent = `Off by default. Enabled queries are saved to ${appConfig.ask_receipts_json_log_dir}. Logs contain full prompts, model responses, diagnostics, and errors.`;
   }
   syncCategorizationCheckboxFromConfig();
+  const correction = document.getElementById('correction_enabled');
+  if (correction && appConfig.correction_enabled !== undefined) {
+    correction.checked = Boolean(appConfig.correction_enabled);
+  }
   updateAppVersionFromConfig();
 }
 

@@ -1,4 +1,4 @@
-"""Paddle-geometry/Qwen transcription implementation for the next pipeline."""
+"""Paddle-geometry and Qwen transcription implementation."""
 
 from receipt_intelligence.extraction.transcription.canonical import (
     build_canonical_rows,

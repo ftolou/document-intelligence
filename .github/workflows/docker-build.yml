@@ -3,11 +3,6 @@ name: Docker Build
 on:
   workflow_dispatch:
     inputs:
-      build_vlm_runtime:
-        description: "Build heavy CUDA/PaddleOCR-VL runtime image"
-        required: true
-        type: boolean
-        default: false
       push_images:
         description: "Push images to GHCR"
         required: true
@@ -32,8 +27,6 @@ jobs:
           owner="${GITHUB_REPOSITORY_OWNER,,}"
           echo "app_runtime=ghcr.io/$owner/receipt-app-runtime:py311" >> "$GITHUB_OUTPUT"
           echo "app=ghcr.io/$owner/paddle-gemma-receipt-app:latest" >> "$GITHUB_OUTPUT"
-          echo "vlm_runtime=ghcr.io/$owner/receipt-vlm-runtime:cu126" >> "$GITHUB_OUTPUT"
-          echo "vlm=ghcr.io/$owner/paddle-gemma-receipt-vlm:gpu-python-cu126" >> "$GITHUB_OUTPUT"
 
       - name: Login to GHCR
         if: ${{ inputs.push_images }}
@@ -66,29 +59,3 @@ jobs:
           load: ${{ !inputs.push_images }}
           cache-from: type=gha,scope=app-image
           cache-to: type=gha,mode=max,scope=app-image
-
-      - name: Build VLM runtime
-        if: ${{ inputs.build_vlm_runtime }}
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/Dockerfile.vlm-runtime-cu126
-          tags: ${{ steps.names.outputs.vlm_runtime }}
-          push: ${{ inputs.push_images }}
-          load: ${{ !inputs.push_images }}
-          cache-from: type=gha,scope=vlm-runtime
-          cache-to: type=gha,mode=max,scope=vlm-runtime
-
-      - name: Build VLM image
-        if: ${{ inputs.build_vlm_runtime }}
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/Dockerfile.vlm-app
-          build-args: |
-            VLM_RUNTIME_IMAGE=${{ steps.names.outputs.vlm_runtime }}
-          tags: ${{ steps.names.outputs.vlm }}
-          push: ${{ inputs.push_images }}
-          load: ${{ !inputs.push_images }}
-          cache-from: type=gha,scope=vlm-image
-          cache-to: type=gha,mode=max,scope=vlm-image

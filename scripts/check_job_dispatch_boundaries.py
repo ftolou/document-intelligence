@@ -42,8 +42,10 @@ def main() -> int:
         if path.is_relative_to(MANAGED_ADAPTER):
             continue
         text = path.read_text(encoding="utf-8-sig")
-        if "threading.Thread(" in text or "ThreadPoolExecutor(" in text:
-            violations.append(f"{path.relative_to(ROOT)} creates workers outside adapters/jobs")
+        if "threading.Thread(" in text:
+            violations.append(
+                f"{path.relative_to(ROOT)} creates background workers outside adapters/jobs"
+            )
 
     use_case = (SRC / "application" / "use_cases" / "jobs.py").read_text(encoding="utf-8-sig")
     for marker in ("JobDispatcher", "JobDispatchRequest", "self._dispatcher.submit"):

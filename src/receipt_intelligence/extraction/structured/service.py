@@ -40,7 +40,7 @@ class GemmaStructuredExtractionService(StructuredExtractionService):
 
     def extract(self, request: StructuredExtractionRequest) -> StructuredExtractionResult:
         started = time.perf_counter()
-        work_dir = self._result_dir / f"{request.run_id}_next_structured_extraction"
+        work_dir = self._result_dir / f"{request.run_id}_structured_extraction"
         work_dir.mkdir(parents=True, exist_ok=True)
         evidence = request.transcription.canonical_text
         selected = () if self._settings.skip_scalars else self._settings.scalar_tasks
@@ -101,8 +101,8 @@ class GemmaStructuredExtractionService(StructuredExtractionService):
             missing_scalar_tasks=missing,
             diagnostics=diagnostics,
             artifacts=(
-                StageArtifact(name="next_structured_receipt", path=receipt_path),
-                StageArtifact(name="next_structured_extraction_report", path=report_path),
+                StageArtifact(name="structured_receipt", path=receipt_path),
+                StageArtifact(name="structured_extraction_report", path=report_path),
             ),
         )
 

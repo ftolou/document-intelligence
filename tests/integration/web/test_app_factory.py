@@ -112,10 +112,6 @@ def test_health_config_and_database_summary_are_available() -> None:
                 "receipt_intelligence.services.runtime_information.settings.READINESS_PROBE_OLLAMA",
                 False,
             ),
-            patch(
-                "receipt_intelligence.services.runtime_information.settings.READINESS_PROBE_VLM",
-                False,
-            ),
         ):
             readiness = client.get("/api/readiness")
         assert readiness.status_code == 200

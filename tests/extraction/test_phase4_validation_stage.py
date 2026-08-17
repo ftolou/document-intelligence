@@ -1,16 +1,8 @@
-from pathlib import Path
+from receipt_intelligence.extraction.factory import build_extraction_workflow
 
 
-def test_validation_stage_remains_inactive() -> None:
-    stage_source = Path("src/receipt_intelligence/extraction/stages/validate.py").read_text(
-        encoding="utf-8"
-    )
-    assert 'name = "next_validation"' in stage_source
-    assert "input_phase = ExtractionPhase.EXTRACTED" in stage_source
-    assert "output_phase = ExtractionPhase.VALIDATED" in stage_source
+def test_validation_stage_is_active_in_the_canonical_workflow() -> None:
+    workflow = build_extraction_workflow()
+    stages = [stage.name for stage in workflow.stages]
 
-    factory_path = Path("src/receipt_intelligence/extraction/factory.py")
-    if factory_path.exists():
-        factory_source = factory_path.read_text(encoding="utf-8")
-        assert "ValidationStage" not in factory_source
-        assert "next_validation" not in factory_source
+    assert stages[3] == "validation"

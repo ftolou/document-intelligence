@@ -6,6 +6,16 @@ import sqlite3
 from pathlib import Path
 
 
+class ClosingSQLiteConnection(sqlite3.Connection):
+    """Commit or roll back a context-managed transaction, then release the file handle."""
+
+    def __exit__(self, exc_type, exc_value, traceback) -> bool:
+        try:
+            return bool(super().__exit__(exc_type, exc_value, traceback))
+        finally:
+            self.close()
+
+
 class SQLiteConnectionFactory:
     """Create consistently configured SQLite connections.
 
@@ -18,7 +28,7 @@ class SQLiteConnectionFactory:
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
 
     def connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.database_path)
+        connection = sqlite3.connect(self.database_path, factory=ClosingSQLiteConnection)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
         return connection
@@ -30,7 +40,12 @@ class SQLiteConnectionFactory:
         if not database_path.exists():
             raise FileNotFoundError(f"Receipt database does not exist: {database_path}")
         uri = f"{database_path.as_uri()}?mode=ro"
-        connection = sqlite3.connect(uri, uri=True, timeout=timeout_seconds)
+        connection = sqlite3.connect(
+            uri,
+            uri=True,
+            timeout=timeout_seconds,
+            factory=ClosingSQLiteConnection,
+        )
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA query_only = ON")
         return connection

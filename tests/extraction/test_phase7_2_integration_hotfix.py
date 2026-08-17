@@ -16,14 +16,14 @@ from receipt_intelligence.extraction.correction.strategies.item_sum import (
 )
 from receipt_intelligence.extraction.correction.strategies.vat import build_vat_patch
 from receipt_intelligence.extraction.presentation.categorization import (
-    ExistingReceiptCategorizationService,
+    ReceiptCategorizationAdapter,
 )
 from receipt_intelligence.extraction.settings import (
     DEFAULT_SCALAR_TASKS,
     CorrectionSettings,
     PipelineSettings,
 )
-from receipt_intelligence.extraction.stages.publish import _completed_finalization_trace
+from receipt_intelligence.extraction.stages.finalize import _completed_finalization_trace
 from receipt_intelligence.extraction.structured.normalization import normalize_task_answer
 
 
@@ -59,7 +59,7 @@ def test_next_item_contract_is_adapted_for_legacy_categorizer() -> None:
             "merchant_classification": {},
         }
 
-    service = ExistingReceiptCategorizationService(
+    service = ReceiptCategorizationAdapter(
         llm_gateway=FakeGateway(),
         ollama_url="http://ollama",
         model="gemma4",
@@ -180,12 +180,11 @@ def test_correction_thinking_is_strategy_specific() -> None:
 
 def test_gemma_stages_share_one_context_size(tmp_path: Path) -> None:
     config = ExtractionConfig(
-        ocr_json_path=tmp_path / "ocr.json",
+        source_image_path=tmp_path / "receipt.png",
         result_dir=tmp_path / "results",
         run_id="ctx-test",
         ollama_url="http://ollama",
         model="gemma4",
-        source_image_path=tmp_path / "receipt.png",
         num_ctx=16384,
         categorization_num_ctx=8192,
     )
@@ -422,8 +421,8 @@ def test_final_total_schema_patterns_are_backend_compatible() -> None:
 
 def test_finalization_metadata_snapshot_marks_final_stage_done() -> None:
     trace = [
-        {"stage": "next_categorization", "status": "done"},
-        {"stage": "next_finalize", "status": "running"},
+        {"stage": "categorization", "status": "done"},
+        {"stage": "finalize", "status": "running"},
     ]
     snapshot = _completed_finalization_trace(trace)
     assert snapshot[-1]["status"] == "done"

@@ -7,7 +7,7 @@ from receipt_intelligence.extraction.contracts.presentation import (
     CategorizationStatus,
 )
 from receipt_intelligence.extraction.presentation.categorization import (
-    ExistingReceiptCategorizationService,
+    ReceiptCategorizationAdapter,
 )
 
 
@@ -22,7 +22,7 @@ def test_disabled_categorization_keeps_receipt_unchanged() -> None:
         "items": [{"description": "Milk", "line_total": 1.29}],
         "totals": {"grand_total": 1.29},
     }
-    service = ExistingReceiptCategorizationService(
+    service = ReceiptCategorizationAdapter(
         llm_gateway=FakeGateway(),
         ollama_url="http://ollama",
         model="gemma4",
@@ -68,7 +68,7 @@ def test_categorization_adapter_preserves_math_fields() -> None:
             "duration_seconds": 0.1,
         }
 
-    service = ExistingReceiptCategorizationService(
+    service = ReceiptCategorizationAdapter(
         llm_gateway=FakeGateway(),
         ollama_url="http://ollama",
         model="gemma4",

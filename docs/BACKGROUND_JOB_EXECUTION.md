@@ -10,7 +10,7 @@ The default adapter is a bounded process-level `ThreadPoolJobDispatcher`:
 
 - `JOB_WORKER_MAX_WORKERS` controls active workers;
 - `JOB_QUEUE_CAPACITY` bounds waiting work;
-- one worker is the safe default for a local OCR/VLM/LLM stack;
+- one worker is the safe default for local Paddle, Qwen, and Gemma execution;
 - every submitted task is described by a serializable dispatch payload in
   `job_status.json`;
 - state transitions and timestamps are persisted before and after execution;
@@ -77,5 +77,5 @@ JOB_RECOVER_PENDING=1
 ```
 
 Keep the claim lease at least three times the maintenance interval. Increase the
-worker count only when the OCR, VLM, and LLM resource model supports concurrent
+worker count only when the transcription and structured-extraction resource model supports concurrent
 jobs safely.

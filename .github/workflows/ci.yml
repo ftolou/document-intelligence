@@ -60,17 +60,3 @@ jobs:
 
       - name: Verify RAG-SQL demo CLI in app image
         run: docker run --rm receipt-app:ci python scripts/demo_rag_sql_query.py --help
-
-      - name: Build mock VLM runtime smoke image
-        run: |
-          cat > /tmp/Dockerfile.vlm-runtime-mock <<'DOCKERFILE'
-          FROM python:3.11-slim
-          WORKDIR /app
-          RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/* \
-              && python -m pip install --no-cache-dir flask pillow werkzeug
-          CMD ["python", "-c", "print(\"mock VLM runtime\")"]
-          DOCKERFILE
-          docker build -f /tmp/Dockerfile.vlm-runtime-mock -t receipt-vlm-runtime:ci .
-
-      - name: Build thin VLM app image
-        run: docker build -f docker/Dockerfile.vlm-app --build-arg VLM_RUNTIME_IMAGE=receipt-vlm-runtime:ci -t receipt-vlm:ci .

@@ -44,7 +44,7 @@
         </div>
 
         <div class="llm-box">
-          <h2>LLM-main parser</h2>
+          <h2>Receipt extraction models</h2>
           <div class="grid">
             <div class="field">
               <label>Ollama URL</label>
@@ -54,6 +54,12 @@
             <div class="field">
               <label>Ollama model</label>
               <input name="model" id="model" />
+              <small>Gemma model used for structured extraction and correction.</small>
+            </div>
+            <div class="field">
+              <label>Transcription model</label>
+              <input id="transcription_model" disabled />
+              <small>Server-managed Qwen multimodal model.</small>
             </div>
             <div class="field">
               <label>Context tokens</label>
@@ -72,23 +78,18 @@
               <label>OCR device</label>
               <input name="ocr_device" id="ocr_device" />
             </div>
+            <div class="field">
+              <label>Maximum image crops</label>
+              <input name="max_crops" id="max_crops" type="number" min="1" />
+              <small>Paddle geometry guides non-overlapping Qwen transcription crops.</small>
+            </div>
           </div>
         </div>
 
         <div class="llm-box">
-          <h2>Mandatory PaddleOCR-VL evidence</h2>
-          <div class="grid">
-            <div class="field">
-              <label>VLM backend</label>
-              <input id="vlm_backend" disabled />
-              <small>PaddleOCR-VL runs before the main LLM parser and cannot be disabled in production.</small>
-            </div>
-            <div class="field">
-              <label>VLM service URL</label>
-              <input id="vlm_service_url" disabled />
-              <small>Server-managed internal service endpoint.</small>
-            </div>
-          </div>
+          <h2>Validation and correction</h2>
+          <label class="checkline"><input name="correction_enabled" id="correction_enabled" type="checkbox" /> Enable specialist correction</label>
+          <small>Deterministic validation remains read-only. Correction uses source-evidence specialists and rejects regressions.</small>
         </div>
 
         <div class="llm-box">
@@ -116,7 +117,7 @@
 
         <div class="form-actions">
           <button id="run-button" type="submit">Run parser</button>
-          <small class="v14-note">OCR uses the V13 Docker/Paddle runtime; parsing uses the V14 LLM-main architecture.</small>
+          <small class="v14-note">Paddle geometry, Qwen transcription, and Gemma extraction run as one image-first pipeline.</small>
         </div>
       </form>
     </section>
@@ -181,7 +182,7 @@
         </div>
         <div class="form-actions">
           <button id="batch-run-button" type="submit">Run folder batch</button>
-          <small class="v14-note">Batch execution is serial by design, so VLM/Gemma do not compete for GPU memory.</small>
+          <small class="v14-note">Batch execution is serial by design, so transcription and structured extraction do not compete for GPU memory.</small>
         </div>
       </form>
     </section>

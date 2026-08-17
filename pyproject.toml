@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "document-intelligence-pipeline"
 version = "1.1.0"
-description = "Local-first OCR/VLM/LLM document intelligence pipeline, currently optimized for receipts."
+description = "Local-first image transcription and structured document intelligence pipeline, optimized for receipts."
 requires-python = ">=3.11"
 
 [tool.setuptools]
@@ -26,7 +26,7 @@ markers = [
     "unit: fast isolated tests",
     "integration: database or service integration",
     "regression: saved receipt regression suite",
-    "gpu: requires the GPU VLM service",
+    "gpu: requires locally available GPU-backed extraction models",
     "ollama: requires a reachable Ollama model",
 ]
 

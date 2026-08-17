@@ -31,6 +31,7 @@ DEBUG = os.getenv("FLASK_DEBUG", "0").lower() in {"1", "true", "yes"}
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma4:latest")
+QWEN_TRANSCRIPTION_MODEL = os.getenv("QWEN_TRANSCRIPTION_MODEL", "qwen3.5:latest")
 OLLAMA_KEEP_ALIVE = os.getenv(
     "OLLAMA_KEEP_ALIVE", ""
 )  # empty => omit keep_alive from Ollama request
@@ -39,8 +40,6 @@ NUM_PREDICT = int(os.getenv("NUM_PREDICT", "8192"))
 LLM_TIMEOUT_SECONDS = float(os.getenv("LLM_TIMEOUT_SECONDS", "300"))
 LLM_JSON_RETRY_COUNT = int(os.getenv("LLM_JSON_RETRY_COUNT", "1"))
 OLLAMA_FORMAT_JSON = os.getenv("OLLAMA_FORMAT_JSON", "1").lower() in {"1", "true", "yes"}
-MAX_LINES_FOR_LLM = int(os.getenv("MAX_LINES_FOR_LLM", "220"))
-SPATIAL_CANVAS_WIDTH = int(os.getenv("SPATIAL_CANVAS_WIDTH", "112"))
 
 # RAG semantic item-embedding index. The index is derived and rebuildable;
 # approved receipt data in SQLite remains the source of truth.
@@ -146,33 +145,10 @@ RAG_SQL_GRAPH_RECURSION_LIMIT = int(os.getenv("RAG_SQL_GRAPH_RECURSION_LIMIT", "
 
 OCR_LANG = os.getenv("OCR_LANG", "german")
 OCR_DEVICE = os.getenv("OCR_DEVICE", "cpu")
-OCR_MAX_SIDE_LIMIT = int(os.getenv("OCR_MAX_SIDE_LIMIT", "4000"))
-OCR_USE_ANGLE_CLS = os.getenv("OCR_USE_ANGLE_CLS", "1").lower() in {"1", "true", "yes"}
-OCR_DET_LIMIT_SIDE_LEN = int(os.getenv("OCR_DET_LIMIT_SIDE_LEN", "4000"))
-# Safety defaults for PaddleOCR on Windows/CPU. Keep MKLDNN/oneDNN disabled unless you explicitly test it.
-OCR_ENABLE_MKLDNN = os.getenv("OCR_ENABLE_MKLDNN", "0").lower() in {"1", "true", "yes"}
-OCR_CPU_THREADS = int(os.getenv("OCR_CPU_THREADS", "4"))
-OCR_DISABLE_PADDLE_STANDALONE_EXECUTOR = os.getenv(
-    "OCR_DISABLE_PADDLE_STANDALONE_EXECUTOR", "0"
-).lower() in {"1", "true", "yes"}
-OCR_DISABLE_PADDLE_PIR = os.getenv("OCR_DISABLE_PADDLE_PIR", "0").lower() in {"1", "true", "yes"}
+EXTRACTION_MAX_CROPS = max(1, int(os.getenv("EXTRACTION_MAX_CROPS", "4")))
 
 VALIDATION_TOLERANCE = float(os.getenv("VALIDATION_TOLERANCE", "0.03"))
-
-# PaddleOCR-VL is a mandatory production dependency. The main application
-# communicates with the standalone GPU service through the internal HTTP boundary.
-VLM_BACKEND = "http_service"
-VLM_SERVICE_URL = os.getenv("VLM_SERVICE_URL", "http://receipt-vlm:7870")
-VLM_TIMEOUT_SECONDS = float(os.getenv("VLM_TIMEOUT_SECONDS", "900"))
-VLM_MAX_CHARS = int(os.getenv("VLM_MAX_CHARS", "12000"))
-
-# The service resizes very large receipt images before PaddleOCR-VL to avoid
-# long stalls and timeouts on full-resolution photos.
-VLM_SERVICE_MAX_SIDE_LIMIT = int(os.getenv("VLM_SERVICE_MAX_SIDE_LIMIT", "1200"))
-VLM_SERVICE_REQUEST_TIMEOUT_SECONDS = float(
-    os.getenv("VLM_SERVICE_REQUEST_TIMEOUT_SECONDS", os.getenv("VLM_TIMEOUT_SECONDS", "900"))
-)
-VLM_CORRECTION_ENABLED = os.getenv("VLM_CORRECTION_ENABLED", "1").lower() in {
+CORRECTION_ENABLED = os.getenv("CORRECTION_ENABLED", "1").lower() in {
     "1",
     "true",
     "yes",
@@ -192,8 +168,8 @@ BATCH_RECURSIVE_DEFAULT = os.getenv("BATCH_RECURSIVE_DEFAULT", "0").lower() in {
 }
 BATCH_ALLOW_ANY_PATH = os.getenv("BATCH_ALLOW_ANY_PATH", "0").lower() in {"1", "true", "yes", "on"}
 
-# Bounded local background worker. One worker is the safe default because OCR,
-# VLM, and LLM execution share constrained local compute resources.
+# Bounded local background worker. One worker is the safe default because Paddle
+# geometry and Ollama generation share constrained local compute resources.
 JOB_WORKER_MAX_WORKERS = max(1, int(os.getenv("JOB_WORKER_MAX_WORKERS", "1")))
 JOB_QUEUE_CAPACITY = max(0, int(os.getenv("JOB_QUEUE_CAPACITY", "32")))
 JOB_CLAIM_LEASE_SECONDS = max(30.0, float(os.getenv("JOB_CLAIM_LEASE_SECONDS", "120")))
@@ -208,30 +184,6 @@ JOB_RECOVER_PENDING = os.getenv("JOB_RECOVER_PENDING", "1").lower() in {
     "on",
 }
 
-
-# Optional sequential GPU orchestration for Ollama and the mandatory VLM service.
-VLM_GPU_ORCHESTRATION = os.getenv("VLM_GPU_ORCHESTRATION", "none").strip().lower()
-OLLAMA_UNLOAD_BEFORE_VLM = os.getenv("OLLAMA_UNLOAD_BEFORE_VLM", "0").lower() in {
-    "1",
-    "true",
-    "yes",
-    "on",
-}
-OLLAMA_RELOAD_AFTER_VLM = os.getenv("OLLAMA_RELOAD_AFTER_VLM", "0").lower() in {
-    "1",
-    "true",
-    "yes",
-    "on",
-}
-OLLAMA_CONTROL_MODE = os.getenv("OLLAMA_CONTROL_MODE", "api").strip().lower()
-OLLAMA_CONTROL_TIMEOUT_SECONDS = float(os.getenv("OLLAMA_CONTROL_TIMEOUT_SECONDS", "120"))
-OLLAMA_UNLOAD_COMMAND = os.getenv("OLLAMA_UNLOAD_COMMAND", "")
-OLLAMA_START_COMMAND = os.getenv("OLLAMA_START_COMMAND", "")
-OLLAMA_RELOAD_PROMPT = os.getenv("OLLAMA_RELOAD_PROMPT", "ok")
-OLLAMA_GPU_HANDOFF_WAIT_SECONDS = float(os.getenv("OLLAMA_GPU_HANDOFF_WAIT_SECONDS", "0"))
-
-# PaddleOCR-VL engine used by the standalone service.
-VLM_ENGINE = os.getenv("VLM_ENGINE", "transformers").strip()
 
 # LLM-first item categorization runs after final receipt extraction and validation.
 CATEGORIZATION_ENABLED = os.getenv("CATEGORIZATION_ENABLED", "1").lower() in {
@@ -267,14 +219,12 @@ READINESS_PROBE_OLLAMA = os.getenv("READINESS_PROBE_OLLAMA", "1").lower() in {
     "yes",
     "on",
 }
-READINESS_PROBE_VLM = True
 READINESS_REQUIRE_OLLAMA = os.getenv("READINESS_REQUIRE_OLLAMA", "0").lower() in {
     "1",
     "true",
     "yes",
     "on",
 }
-READINESS_REQUIRE_VLM = True
 READINESS_TIMEOUT_SECONDS = float(os.getenv("READINESS_TIMEOUT_SECONDS", "2"))
 
 MODEL_CALL_TELEMETRY_ENABLED = os.getenv("MODEL_CALL_TELEMETRY_ENABLED", "1").lower() in {

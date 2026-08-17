@@ -1,4 +1,4 @@
-"""Composition helpers for the inactive next-pipeline correction subsystem."""
+"""Composition helpers for the specialist correction subsystem."""
 
 from __future__ import annotations
 

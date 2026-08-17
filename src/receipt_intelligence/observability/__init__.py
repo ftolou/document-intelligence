@@ -6,11 +6,14 @@ from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from receipt_intelligence.application.ports.llm import ModelCallMetrics
-    from receipt_intelligence.observability.jsonl import JsonlEventWriter
-    from receipt_intelligence.observability.query import QueryTelemetrySink
-    from receipt_intelligence.observability.readiness import build_readiness_report
-    from receipt_intelligence.observability.timing import elapsed_ms, utc_now_iso
+    from receipt_intelligence.application.ports.llm import ModelCallMetrics as ModelCallMetrics
+    from receipt_intelligence.observability.jsonl import JsonlEventWriter as JsonlEventWriter
+    from receipt_intelligence.observability.query import QueryTelemetrySink as QueryTelemetrySink
+    from receipt_intelligence.observability.readiness import (
+        build_readiness_report as build_readiness_report,
+    )
+    from receipt_intelligence.observability.timing import elapsed_ms as elapsed_ms
+    from receipt_intelligence.observability.timing import utc_now_iso as utc_now_iso
 
 _EXPORTS: dict[str, tuple[str, str]] = {
     "JsonlEventWriter": ("receipt_intelligence.observability.jsonl", "JsonlEventWriter"),

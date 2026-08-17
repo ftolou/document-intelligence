@@ -20,6 +20,3 @@
 - [Reviewed RAG-SQL product semantics](RAG_SQL_PRODUCT_SEMANTICS.md)
 - [Human review](HUMAN_REVIEW.md)
 - [Regression reporting](REGRESSION_REPORTING.md)
-- [VLM troubleshooting](VLM_TROUBLESHOOTING.md)
-- [VLM adapter architecture](VLM_ADAPTER_ARCHITECTURE.md)
-- [Spatial geometry extraction](SPATIAL_OVERVIEW_EXTRACTION.md)

@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from receipt_intelligence.extraction.config import ExtractionConfig
 from receipt_intelligence.extraction.contracts import (
     CanonicalTranscriptionRow,
@@ -19,7 +17,6 @@ def test_grouped_settings_bridge_keeps_parsing_and_transcription_models_separate
     tmp_path: Path,
 ) -> None:
     config = ExtractionConfig(
-        ocr_json_path=tmp_path / "ocr.json",
         source_image_path=tmp_path / "receipt.jpg",
         result_dir=tmp_path / "results",
         run_id="run-1",
@@ -36,23 +33,6 @@ def test_grouped_settings_bridge_keeps_parsing_and_transcription_models_separate
     assert settings.parsing.model == "gemma4"
     assert settings.runtime.run_id == "run-1"
     assert settings.source_image_path == tmp_path / "receipt.jpg"
-
-
-def test_grouped_settings_bridge_requires_source_image(tmp_path: Path) -> None:
-    config = ExtractionConfig(
-        ocr_json_path=tmp_path / "ocr.json",
-        source_image_path=None,
-        result_dir=tmp_path / "results",
-        run_id="run-1",
-        ollama_url="http://localhost:11434",
-        model="gemma4",
-    )
-
-    with pytest.raises(ValueError, match="source_image_path"):
-        PipelineSettings.from_extraction_config(
-            config,
-            transcription_model="qwen3.5:4b",
-        )
 
 
 def test_transcription_contract_preserves_one_canonical_representation(

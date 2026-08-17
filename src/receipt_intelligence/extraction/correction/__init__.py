@@ -1,4 +1,4 @@
-"""Validator-gated specialist correction for the next extraction pipeline."""
+"""Validator-gated specialist correction for receipt extraction."""
 
 from receipt_intelligence.extraction.correction.composition import (
     build_specialist_correction_service,

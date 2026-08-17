@@ -1,31 +1,35 @@
 # Extraction configuration contract
 
-Receipt extraction has two entry points:
+The canonical API is:
 
-- `run_receipt_extraction(ExtractionRequest(...))` is the typed application API.
-- `run_integrated_receipt_pipeline(...)` is a compatibility adapter for historical callers.
+```python
+run_receipt_extraction(
+    ExtractionRequest(
+        source_image_path=image_path,
+        result_dir=result_dir,
+        run_id=run_id,
+        ollama_url=ollama_url,
+        model=gemma_model,
+    )
+)
+```
 
-`ExtractionRequest` is immutable and declares every supported option. Unknown fields are rejected instead of being stored or silently ignored.
+`ExtractionRequest` is immutable and image-first. It has no OCR-JSON input, VLM-service setting,
+spatial-parser setting, or extraction-strategy toggle.
 
-The compatibility adapter recognizes only these historical aliases:
+`run_integrated_receipt_pipeline(...)` remains temporarily available for historical keyword
+callers. It requires `source_image_path`, ignores explicitly declared historical OCR/VLM tuning
+arguments, rejects unknown arguments, emits `DeprecationWarning`, and always runs the canonical
+workflow.
 
-| Historical name | Canonical field |
+Important environment settings:
+
+| Setting | Purpose |
 |---|---|
-| `vlm_gpu_orchestration` | `gpu_orchestration` |
-| `gpu_orchestration_mode` | `gpu_orchestration` |
-| `ollama_unload_before_vlm` | `unload_llm_before_vlm` |
-| `unload_before_vlm` | `unload_llm_before_vlm` |
-| `ollama_reload_after_vlm` | `reload_llm_after_vlm` |
-| `reload_after_vlm` | `reload_llm_after_vlm` |
-
-Supplying both an alias and its canonical name is an error. Internal application services must use the canonical typed API rather than the compatibility adapter.
-
-
-## Spatial extraction
-
-The geometry-first extraction path is now the only supported path. OCR coordinates are
-preserved in a spatial document map and passed to the schema-constrained main receipt LLM.
-There is no extraction-strategy toggle and no separate overview LLM call.
-
-`SPATIAL_CANVAS_WIDTH` controls the rendered geometry canvas width. Values from 72 to 160
-are accepted.
+| `OLLAMA_URL` | Ollama API base URL |
+| `OLLAMA_MODEL` | Gemma extraction/correction model |
+| `QWEN_TRANSCRIPTION_MODEL` | Qwen multimodal transcription model |
+| `EXTRACTION_MAX_CROPS` | Maximum safe transcription crops |
+| `OCR_LANG` / `OCR_DEVICE` | Paddle text-detection configuration |
+| `VALIDATION_TOLERANCE` | Receipt validation tolerance |
+| `CORRECTION_ENABLED` | Enable specialist correction |

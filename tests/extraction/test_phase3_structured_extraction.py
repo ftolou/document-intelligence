@@ -86,16 +86,3 @@ def test_item_contract_is_read_only_and_reports_missing_price() -> None:
     assert answer == before
     assert report["status"] == "valid_with_warnings"
     assert report["warnings"][0]["code"] == "MISSING_FINAL_PRICE"
-
-
-def test_phase3_does_not_activate_next_pipeline_stages() -> None:
-    from receipt_intelligence.extraction.factory import build_default_extraction_workflow
-
-    assert [stage.name for stage in build_default_extraction_workflow().stages] == [
-        "prepare",
-        "visual_evidence",
-        "spatial_overview",
-        "main_parsing",
-        "repair_and_correction",
-        "finalize",
-    ]

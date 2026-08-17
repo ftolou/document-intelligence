@@ -45,7 +45,7 @@ def test_finalization_writes_compatible_artifacts_and_aliases(tmp_path) -> None:
             receipt=categorized.receipt,
             validation=validation,
             categorization=categorized,
-            stage_trace=({"stage": "next_finalize", "status": "running"},),
+            stage_trace=({"stage": "finalize", "status": "running"},),
         )
     )
     expected = {
@@ -132,15 +132,15 @@ def test_completed_workflow_refreshes_finalization_trace_metadata(tmp_path) -> N
             receipt=categorization.receipt,
             validation=validation,
             categorization=categorization,
-            stage_trace=({"stage": "next_finalize", "status": "running"},),
+            stage_trace=({"stage": "finalize", "status": "running"},),
         )
     )
-    finalization = SimpleNamespace(next_finalization=result, pipeline_meta=None)
+    finalization = SimpleNamespace(result=result)
     context = SimpleNamespace(
         finalized=finalization,
         stage_trace=[
             {
-                "stage": "next_finalize",
+                "stage": "finalize",
                 "status": "done",
                 "finished_at": "2026-08-04T08:00:00.000Z",
                 "duration_ms": 12.5,
@@ -151,7 +151,7 @@ def test_completed_workflow_refreshes_finalization_trace_metadata(tmp_path) -> N
 
     _refresh_finalization_observability(context)
 
-    refreshed = finalization.next_finalization.pipeline_metadata["workflow"]["stage_trace"]
+    refreshed = finalization.result.pipeline_metadata["workflow"]["stage_trace"]
     assert refreshed[0]["status"] == "done"
     assert refreshed[0]["duration_ms"] == 12.5
     persisted = json.loads((tmp_path / "r3_pipeline_meta.json").read_text())

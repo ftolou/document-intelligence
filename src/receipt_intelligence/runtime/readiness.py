@@ -94,18 +94,14 @@ def build_readiness_report(
     database: ReceiptDatabase,
     runtime_paths: RuntimePaths,
     ollama_url: str,
-    vlm_service_url: str,
     probe_ollama: bool,
-    probe_vlm: bool,
     require_ollama: bool,
-    require_vlm: bool,
     timeout_seconds: float,
 ) -> dict[str, Any]:
     """Build a deterministic readiness report.
 
     Database and writable runtime storage are always required. Ollama may be
-    optional for selected endpoints, while the production composition always
-    probes and requires the PaddleOCR-VL service.
+    optional for selected endpoints.
     """
 
     checks = {
@@ -116,13 +112,6 @@ def build_readiness_report(
             url=f"{ollama_url.rstrip('/')}/api/tags",
             required=require_ollama,
             enabled=probe_ollama or require_ollama,
-            timeout_seconds=timeout_seconds,
-        ),
-        "vlm": _http_check(
-            name="vlm",
-            url=f"{vlm_service_url.rstrip('/')}/health",
-            required=require_vlm,
-            enabled=probe_vlm or require_vlm,
             timeout_seconds=timeout_seconds,
         ),
     }

@@ -3,9 +3,7 @@
 from receipt_intelligence.extraction.presentation.artifacts import (
     CompatibilityFilesystemArtifactStore,
 )
-from receipt_intelligence.extraction.presentation.categorization import (
-    ExistingReceiptCategorizationService,
-)
+from receipt_intelligence.extraction.presentation.categorization import ReceiptCategorizationAdapter
 from receipt_intelligence.extraction.presentation.finalization import (
     CompatibilityFinalizationService,
 )
@@ -13,5 +11,5 @@ from receipt_intelligence.extraction.presentation.finalization import (
 __all__ = [
     "CompatibilityFilesystemArtifactStore",
     "CompatibilityFinalizationService",
-    "ExistingReceiptCategorizationService",
+    "ReceiptCategorizationAdapter",
 ]

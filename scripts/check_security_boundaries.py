@@ -7,67 +7,24 @@ import ast
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SRC_ROOT = ROOT / "src"
-
 violations: list[str] = []
 
-for path in SRC_ROOT.rglob("*.py"):
+for path in (ROOT / "src").rglob("*.py"):
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
         for keyword in node.keywords:
-            if (
-                keyword.arg == "shell"
-                and isinstance(keyword.value, ast.Constant)
-                and keyword.value.value is True
-            ):
-                violations.append(
-                    f"{path.relative_to(ROOT)}:{node.lineno}: shell=True is forbidden"
-                )
+            if keyword.arg == "shell" and isinstance(keyword.value, ast.Constant):
+                if keyword.value.value is True:
+                    violations.append(f"{path.relative_to(ROOT)}:{node.lineno}: shell=True")
 
-request_source = (ROOT / "src" / "receipt_intelligence" / "web" / "request_parsing.py").read_text(
+request_source = (ROOT / "src/receipt_intelligence/web/request_parsing.py").read_text(
     encoding="utf-8"
 )
-for field in (
-    "ollama_url",
-    "vlm_service_url",
-    "vlm_command",
-    "ollama_control_mode",
-    "ollama_unload_command",
-    "ollama_start_command",
-    "vlm_timeout_seconds",
-    "vlm_gpu_orchestration",
-    "gpu_orchestration",
-    "ollama_unload_before_vlm",
-    "unload_llm_before_vlm",
-    "ollama_reload_after_vlm",
-    "reload_llm_after_vlm",
-    "ollama_control_timeout_seconds",
-    "ollama_reload_prompt",
-    "ollama_gpu_handoff_wait_seconds",
-):
-    fragment = f'request.form.get("{field}")'
-    if fragment in request_source:
-        violations.append(
-            "src/receipt_intelligence/web/request_parsing.py: "
-            f"infrastructure field remains request-controlled: {field}"
-        )
-
-vlm_service_source = (
-    ROOT / "services" / "receipt-vlm" / "src" / "receipt_vlm_service" / "app.py"
-).read_text(encoding="utf-8")
-for field in ("backend", "runner", "command", "timeout_seconds", "max_side_limit"):
-    fragment = f'payload.get("{field}")'
-    if fragment in vlm_service_source:
-        violations.append(
-            "services/receipt-vlm/src/receipt_vlm_service/app.py: "
-            f"execution-policy field remains request-controlled: {field}"
-        )
-
-compose_source = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
-if '"7870:7870"' in compose_source:
-    violations.append("docker-compose.yml: VLM service port 7870 must not be host-published")
+for field in ("ollama_url", "transcription_model"):
+    if f'request.form.get("{field}")' in request_source:
+        violations.append(f"Infrastructure field remains request-controlled: {field}")
 
 if violations:
     print("Security boundary violations detected:")

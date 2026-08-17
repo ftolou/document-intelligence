@@ -7,9 +7,7 @@ from dataclasses import dataclass, field
 from receipt_intelligence.application.ports import (
     EventSink,
     LlmGateway,
-    ModelLifecycleCoordinator,
     NullEventSink,
-    VlmEngine,
 )
 from receipt_intelligence.extraction.services.correction import ReceiptCorrectionService
 from receipt_intelligence.extraction.services.structured_extraction import (
@@ -22,8 +20,6 @@ from receipt_intelligence.extraction.services.validation import ReceiptValidatio
 @dataclass(frozen=True, slots=True)
 class ExtractionDependencies:
     llm_gateway: LlmGateway
-    vlm_engine: VlmEngine
-    model_lifecycle: ModelLifecycleCoordinator
     event_sink: EventSink
     model_call_event_sink: EventSink = field(default_factory=NullEventSink)
     transcription_service: TranscriptionService | None = None

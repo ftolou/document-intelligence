@@ -1,13 +1,10 @@
-"""Prepare artifacts and preliminary OCR context."""
+"""Prepare one image-first receipt extraction run."""
 
 from __future__ import annotations
-
-import json
 
 from receipt_intelligence.app_version import get_app_version
 from receipt_intelligence.extraction.artifacts import build_artifact_paths
 from receipt_intelligence.extraction.context import ExtractionContext
-from receipt_intelligence.extraction.parsing.llm_parser import build_ocr_context
 from receipt_intelligence.extraction.state import ExtractionPhase, PreparedArtifacts
 
 
@@ -22,33 +19,18 @@ class PreparationStage:
         context.prepared = PreparedArtifacts(
             paths=build_artifact_paths(config.result_dir, config.run_id)
         )
-
         context.emit(
             "pipeline",
             "running",
             (
-                f"{get_app_version()} staged pipeline started: OCR/VLM evidence -> "
-                "spatial geometry -> LLM parse -> validation -> "
-                "optional patch-only targeted correction -> optional item categorization."
+                f"{get_app_version()} extraction pipeline started: Paddle geometry -> "
+                "Qwen transcription -> Gemma extraction -> read-only validation -> "
+                "specialist correction -> optional categorization."
             ),
             workflow="ReceiptExtractionWorkflow",
+            source_image_path=str(config.source_image_path),
         )
-
-        try:
-            raw_ocr = json.loads(config.ocr_json_path.read_text(encoding="utf-8-sig"))
-            context.preliminary_ocr_context = build_ocr_context(
-                raw_ocr,
-                max_lines=config.max_lines_for_llm,
-            )
-        except Exception as exc:
-            context.preliminary_ocr_context = None
-            context.emit(
-                "table_arbitration",
-                "error",
-                (
-                    "Could not build preliminary OCR context for table arbitration; "
-                    "continuing without it."
-                ),
-                error=f"{type(exc).__name__}: {exc}",
-            )
         return context
+
+
+__all__ = ["PreparationStage"]

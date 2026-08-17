@@ -1,16 +1,25 @@
-"""Grouped immutable settings for the next receipt extraction pipeline.
-
-The active workflow still consumes :class:`ExtractionConfig`. These grouped settings are an
-additive migration target. Later phases can move one stage at a time and use
-``PipelineSettings.from_extraction_config`` at the compatibility boundary.
-"""
+"""Grouped immutable settings for the canonical receipt extraction pipeline."""
 
 from __future__ import annotations
 
+import os
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from receipt_intelligence.extraction.config import ExtractionConfig
+
+
+def resolve_transcription_model(*, environ: Mapping[str, str] | None = None) -> str:
+    source = environ if environ is not None else os.environ
+    model = str(
+        source.get("QWEN_TRANSCRIPTION_MODEL")
+        or source.get("TRANSCRIPTION_MODEL")
+        or "qwen3.5:latest"
+    ).strip()
+    if not model:
+        raise ValueError("QWEN_TRANSCRIPTION_MODEL must not be empty.")
+    return model
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,7 +174,7 @@ class ValidationSettings:
 
 @dataclass(frozen=True, slots=True)
 class CorrectionSettings:
-    """Exact runtime settings of the v7.8 specialist correction subsystem."""
+    """Runtime settings for validator-gated specialist correction."""
 
     enabled: bool = True
     profile_path: Path | None = None
@@ -216,9 +225,6 @@ class RuntimeSettings:
     result_dir: Path
     run_id: str
     keep_alive: str | None = None
-    gpu_orchestration: str = "none"
-    unload_llm_before_multimodal: bool = False
-    reload_llm_after_multimodal: bool = False
 
     def __post_init__(self) -> None:
         run_id = str(self.run_id or "").strip()
@@ -231,7 +237,6 @@ class RuntimeSettings:
 @dataclass(frozen=True, slots=True)
 class PipelineSettings:
     source_image_path: Path
-    legacy_ocr_json_path: Path | None
     detection: DetectionSettings
     transcription: TranscriptionSettings
     parsing: ParsingSettings
@@ -243,8 +248,6 @@ class PipelineSettings:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "source_image_path", Path(self.source_image_path))
-        if self.legacy_ocr_json_path is not None:
-            object.__setattr__(self, "legacy_ocr_json_path", Path(self.legacy_ocr_json_path))
 
     @classmethod
     def from_extraction_config(
@@ -255,19 +258,15 @@ class PipelineSettings:
     ) -> PipelineSettings:
         """Build grouped settings without changing the current public request contract.
 
-        The transcription model is explicit because the legacy request has only one model field,
-        while the next pipeline deliberately separates Qwen transcription from Gemma parsing.
+        The transcription model is explicit because transcription and structured extraction use
+        separate model families.
         """
 
         transcription_model = str(transcription_model or "").strip()
         if not transcription_model:
             raise ValueError("transcription_model must not be empty.")
-        if config.source_image_path is None:
-            raise ValueError("The next pipeline requires source_image_path.")
-
         return cls(
             source_image_path=config.source_image_path,
-            legacy_ocr_json_path=config.ocr_json_path,
             detection=DetectionSettings(
                 language=config.ocr_lang,
                 device=config.ocr_device,
@@ -308,12 +307,9 @@ class PipelineSettings:
                 result_dir=config.result_dir,
                 run_id=config.run_id,
                 keep_alive=config.keep_alive,
-                gpu_orchestration=config.gpu_orchestration,
-                unload_llm_before_multimodal=config.unload_llm_before_vlm,
-                reload_llm_after_multimodal=config.reload_llm_after_vlm,
             ),
             crop_planning=CropPlanningSettings(
-                max_crops=config.max_reocr_images or 4,
+                max_crops=config.max_crops,
             ),
         )
 
@@ -329,4 +325,5 @@ __all__ = [
     "RuntimeSettings",
     "TranscriptionSettings",
     "ValidationSettings",
+    "resolve_transcription_model",
 ]

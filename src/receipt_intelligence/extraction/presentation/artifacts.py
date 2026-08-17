@@ -14,8 +14,8 @@ from receipt_intelligence.application.ports.artifacts import (
 )
 
 _FILENAMES: dict[ArtifactKind, str] = {
-    ArtifactKind.TRANSCRIPTION: "{run_id}_next_transcription.json",
-    ArtifactKind.STRUCTURED_EXTRACTION: "{run_id}_next_structured_extraction.json",
+    ArtifactKind.TRANSCRIPTION: "{run_id}_transcription.json",
+    ArtifactKind.STRUCTURED_EXTRACTION: "{run_id}_structured_extraction.json",
     ArtifactKind.INITIAL_RECEIPT: "{run_id}_89_receipt_structured_initial.json",
     ArtifactKind.INITIAL_VALIDATION: "{run_id}_89_deterministic_validation_initial.json",
     ArtifactKind.CORRECTION_REPORT: "{run_id}_90_gemma_correction_report.json",

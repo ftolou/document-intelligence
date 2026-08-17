@@ -79,7 +79,7 @@ class CanonicalReceiptTranscriptionService(TranscriptionService):
 
     def transcribe(self, request: TranscriptionRequest) -> TranscriptionResult:
         started = time.perf_counter()
-        work_dir = self._result_dir / f"{request.run_id}_next_transcription"
+        work_dir = self._result_dir / f"{request.run_id}_transcription"
         work_dir.mkdir(parents=True, exist_ok=True)
         with Image.open(request.source_image_path) as source:
             image = ImageOps.exif_transpose(source).convert("RGB")
@@ -202,11 +202,11 @@ class CanonicalReceiptTranscriptionService(TranscriptionService):
             diagnostics=report,
             artifacts=(
                 StageArtifact(
-                    name="next_transcription",
+                    name="transcription",
                     path=transcription_path,
                     media_type="text/plain",
                 ),
-                StageArtifact(name="next_transcription_report", path=report_path),
+                StageArtifact(name="transcription_report", path=report_path),
             ),
         )
 

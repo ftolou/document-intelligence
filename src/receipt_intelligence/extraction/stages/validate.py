@@ -1,4 +1,4 @@
-"""Inactive next-pipeline stage for pure deterministic validation."""
+"""Pure deterministic validation stage."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from receipt_intelligence.extraction.state import ExtractionPhase, StageContract
 
 
 class ValidationStage:
-    name = "next_validation"
+    name = "validation"
     input_phase = ExtractionPhase.EXTRACTED
     output_phase = ExtractionPhase.VALIDATED
 

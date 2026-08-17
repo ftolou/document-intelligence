@@ -1,4 +1,4 @@
-"""Inactive next-pipeline stage for Gemma scalar/item extraction."""
+"""Gemma scalar/item extraction stage."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from receipt_intelligence.extraction.state import ExtractionPhase, StageContract
 
 
 class StructuredExtractionStage:
-    name = "next_structured_extraction"
+    name = "structured_extraction"
     input_phase = ExtractionPhase.TRANSCRIBED
     output_phase = ExtractionPhase.EXTRACTED
 
@@ -34,6 +34,7 @@ class StructuredExtractionStage:
             )
         )
         context.begin_structured_extraction_stage().result = result
+        context.register_artifacts(result.artifacts)
         context.emit(
             self.name,
             "done",

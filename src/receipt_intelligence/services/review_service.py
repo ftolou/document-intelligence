@@ -10,12 +10,14 @@ from typing import Any
 from urllib.parse import unquote, urlparse
 
 from receipt_intelligence.domain.categorization_taxonomy import fashion_category_path
-from receipt_intelligence.extraction.validation.receipt import validate_receipt
+from receipt_intelligence.extraction.contracts.validation import ValidationRequest
+from receipt_intelligence.extraction.validation.engine import DeterministicValidationEngine
 from receipt_intelligence.receipt_compat import (
     apply_review_field,
     apply_review_item_field,
     is_next_receipt,
-    to_legacy_validation_document,
+    receipt_grand_total,
+    to_canonical_validation_document,
     validation_for_review,
 )
 from receipt_intelligence.services.artifact_service import artifact_resource
@@ -61,6 +63,40 @@ def _category_path_from_group_key(group: Any, key: Any) -> str | None:
     if group_text and key_text:
         return f"{group_text}/{key_text}"
     return group_text or key_text
+
+
+def _add_review_core_checks(report: dict[str, Any], receipt: dict[str, Any]) -> None:
+    """Retain approval safeguards for both historical and canonical saved receipts."""
+
+    merchant = receipt.get("merchant")
+    merchant_name = merchant.get("name") if isinstance(merchant, dict) else None
+    items = receipt.get("items")
+    requirements = (
+        ("MISSING_MERCHANT", bool(str(merchant_name or "").strip()), "Merchant name is missing."),
+        ("MISSING_TOTAL", receipt_grand_total(receipt) is not None, "Final total is missing."),
+        ("NO_ITEMS", bool(items) if isinstance(items, list) else False, "No items are present."),
+    )
+    missing = [(code, message) for code, present, message in requirements if not present]
+    if not missing:
+        return
+    checks = report.setdefault("checks", [])
+    if not isinstance(checks, list):
+        checks = []
+        report["checks"] = checks
+    checks.extend(
+        {
+            "code": code,
+            "status": "failed",
+            "severity": "error",
+            "message": message,
+        }
+        for code, message in missing
+    )
+    report["status"] = "invalid"
+    summary = report.setdefault("summary", {})
+    if isinstance(summary, dict):
+        summary["failed"] = int(summary.get("failed") or 0) + len(missing)
+        summary["error_count"] = int(summary.get("error_count") or 0) + len(missing)
 
 
 def apply_human_review(
@@ -228,9 +264,27 @@ class ReviewService:
             # to validation. Structural validation still blocks incomplete edits.
             updated["parse_status"] = "partial"
 
-        ocr_context, context_source = self.load_ocr_context(job_id)
-        validation_input = to_legacy_validation_document(updated)
-        report = validate_receipt(validation_input, ocr_context)
+        _ocr_context, context_source = self.load_ocr_context(job_id)
+        validation_input = to_canonical_validation_document(updated)
+        items = validation_input.get("items")
+        item_contract = {
+            "status": "valid" if isinstance(items, list) else "invalid",
+            "warnings": [],
+            "errors": [] if isinstance(items, list) else ["items must be an array"],
+        }
+        report = (
+            DeterministicValidationEngine()
+            .validate(
+                ValidationRequest(
+                    receipt=validation_input,
+                    item_contract=item_contract,
+                    item_pipeline_enabled=True,
+                    selected_scalar_tasks=(),
+                )
+            )
+            .to_dict()
+        )
+        _add_review_core_checks(report, updated)
         report = validation_for_review(report)
         deterministic_decision = str(report.get("import_decision") or "needs_review")
         issues = [issue for issue in report.get("issues") or [] if isinstance(issue, dict)]

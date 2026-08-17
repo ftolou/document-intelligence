@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -34,7 +35,12 @@ assert not any(name == "langgraph" or name.startswith("langgraph.") for name in 
     subprocess.run(
         [sys.executable, "-c", code],
         cwd=root,
-        env={"PYTHONPATH": str(root / "src")},
+        env={
+            **os.environ,
+            "PYTHONPATH": os.pathsep.join(
+                [str(root / "src"), *(entry for entry in sys.path if entry)]
+            ),
+        },
         check=True,
         capture_output=True,
         text=True,

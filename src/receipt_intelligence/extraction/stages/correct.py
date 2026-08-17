@@ -1,4 +1,4 @@
-"""Inactive next-pipeline stage for specialist validator-gated correction."""
+"""Specialist validator-gated correction stage."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from receipt_intelligence.extraction.state import ExtractionPhase, StageContract
 
 
 class CorrectionStage:
-    name = "next_correction"
+    name = "correction"
     input_phase = ExtractionPhase.VALIDATED
     output_phase = ExtractionPhase.CORRECTED
 
@@ -45,6 +45,7 @@ class CorrectionStage:
             )
         )
         context.begin_correction_stage().result = result
+        context.register_artifacts(result.artifacts)
         context.emit(
             self.name,
             "done",

@@ -1,64 +1,29 @@
-# Docker Image Design
+# Docker image design
 
-## Goal
-
-Keep the application and GPU VLM service independently buildable. Application
-changes must not rebuild or alter the known-working PaddleOCR-VL runtime.
-
-## Image layers
+The deployment contains one application image family:
 
 ```text
 receipt-app-runtime:py311
-  Python 3.11
-  application dependencies
+  Python 3.11 and application dependencies
 
 paddle-gemma-receipt-app:latest
   FROM receipt-app-runtime:py311
-  src/receipt_intelligence
-
-receipt-vlm-runtime:cu126
-  NVIDIA CUDA 12.6 runtime
-  Ubuntu 22.04 Python 3.10
-  PaddlePaddle GPU 3.2.1
-  PaddleOCR/PaddleX
-  Torch/Torchvision cu126
-
-paddle-gemma-receipt-vlm:gpu-python-cu126
-  FROM receipt-vlm-runtime:cu126
-  services/receipt-vlm/src only
+  repository source and static assets
 ```
 
-The VLM thin image intentionally does not copy `src/receipt_intelligence`.
+Paddle text detection runs inside the application container. Qwen, Gemma, and embedding models run
+through Ollama on the host. There is no standalone VLM image or service.
 
-## Local workflow
-
-Use already-built images:
+Build dependencies only when `requirements/app.txt` or the runtime Dockerfile changes:
 
 ```powershell
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --no-build
+.\scripts\docker\build-app-runtime.ps1
 ```
 
-The development override mounts only `services/receipt-vlm/src` into the VLM
-container. Main-application code is not visible to that process.
-
-## Build workflow
-
-Rebuild the heavy VLM runtime only when its CUDA/system/Python dependencies or
-`requirements/vlm-gpu-cu126.txt` change:
+For normal source changes, rebuild only the thin application image:
 
 ```powershell
-.\scripts\docker\build-vlm-runtime.ps1
+.\scripts\docker\build-app.ps1
 ```
 
-For VLM service-code changes, rebuild only the thin image:
-
-```powershell
-.\scripts\docker\build-vlm.ps1
-```
-
-The app and VLM intentionally use different Python contracts. Validate them with:
-
-```powershell
-python scripts/check_python_runtime_contract.py
-python scripts/check_vlm_architecture.py
-```
+The development override bind-mounts the repository and `var/` into `receipt-app`.

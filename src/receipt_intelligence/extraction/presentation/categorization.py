@@ -17,7 +17,7 @@ from receipt_intelligence.extraction.services.categorization import ReceiptCateg
 Categorizer = Callable[..., dict[str, Any]]
 
 
-class ExistingReceiptCategorizationService(ReceiptCategorizationService):
+class ReceiptCategorizationAdapter(ReceiptCategorizationService):
     """Preserve the current categorizer while exposing a typed application boundary.
 
     Categorization runs only after deterministic validation/correction. The wrapped
@@ -95,7 +95,7 @@ class ExistingReceiptCategorizationService(ReceiptCategorizationService):
 
 
 def _legacy_categorization_input(receipt: dict[str, Any]) -> dict[str, Any]:
-    """Adapt the next item contract to the existing categorizer on an isolated copy."""
+    """Adapt the canonical item contract to the categorizer on an isolated copy."""
 
     adapted = copy.deepcopy(receipt)
     items = adapted.get("items") if isinstance(adapted.get("items"), list) else []
@@ -199,4 +199,4 @@ def _optional_float(value: Any) -> float | None:
         return None
 
 
-__all__ = ["ExistingReceiptCategorizationService"]
+__all__ = ["ReceiptCategorizationAdapter"]

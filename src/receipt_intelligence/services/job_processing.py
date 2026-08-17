@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any
 
 import receipt_intelligence.settings as settings
-from receipt_intelligence.application.ports import OcrEngine, OcrRequest
 from receipt_intelligence.extraction import ExtractionRequest
 from receipt_intelligence.pipeline.integrated_receipt_pipeline import run_receipt_extraction
 from receipt_intelligence.receipt_compat import validation_for_review
@@ -26,13 +25,10 @@ class JobProcessingService:
         self,
         store: JobStore,
         receipt_db: ReceiptDatabase,
-        *,
-        ocr_engine: OcrEngine,
     ) -> None:
         self.store = store
         self.receipt_db = receipt_db
         self.review_service = ReviewService(store, receipt_db)
-        self.ocr_engine = ocr_engine
 
     def allowed_file(self, filename: str) -> bool:
         return "." in filename and filename.rsplit(".", 1)[1].lower() in settings.ALLOWED_EXTENSIONS
@@ -56,53 +52,23 @@ class JobProcessingService:
                 }
             )
 
-            ocr_json_path = job_dir / f"{job_id}_ocr_full_image.json"
-            ocr_json = self.ocr_engine.recognize(
-                OcrRequest(
-                    image_path=image_path,
-                    out_json_path=ocr_json_path,
-                    work_dir=job_dir,
-                    lang=options["ocr_lang"],
-                    device=options["ocr_device"],
-                    max_side_length=options["ocr_max_side_limit"],
-                    detect_orientation=options["ocr_use_angle_cls"],
-                    detection_max_side_length=options["ocr_det_limit_side_len"],
-                    progress_callback=progress,
-                )
-            )
-
             extraction_request = ExtractionRequest(
-                ocr_json_path=ocr_json_path,
+                source_image_path=image_path,
                 result_dir=job_dir,
                 run_id=job_id,
                 ollama_url=options["ollama_url"],
                 model=options["model"],
                 tolerance=options["validation_tolerance"],
-                spatial_canvas_width=options["spatial_canvas_width"],
                 ocr_lang=options["ocr_lang"],
                 ocr_device=options["ocr_device"],
-                max_lines_for_llm=options["max_lines_for_llm"],
+                max_crops=options["max_crops"],
                 num_ctx=options["num_ctx"],
                 num_predict=options["num_predict"],
                 keep_alive=options["keep_alive"],
                 llm_timeout_seconds=options["llm_timeout_seconds"],
                 json_retry_count=options["json_retry_count"],
                 format_json=options["format_json"],
-                source_image_path=image_path,
-                vlm_backend=options["vlm_backend"],
-                vlm_service_url=options["vlm_service_url"],
-                vlm_timeout_seconds=options["vlm_timeout_seconds"],
-                vlm_max_chars=options["vlm_max_chars"],
-                correction_enabled=options["vlm_correction_enabled"],
-                gpu_orchestration=options["gpu_orchestration"],
-                unload_llm_before_vlm=options["unload_llm_before_vlm"],
-                reload_llm_after_vlm=options["reload_llm_after_vlm"],
-                ollama_control_mode=options["ollama_control_mode"],
-                ollama_control_timeout_seconds=options["ollama_control_timeout_seconds"],
-                ollama_unload_command=options["ollama_unload_command"],
-                ollama_start_command=options["ollama_start_command"],
-                ollama_reload_prompt=options["ollama_reload_prompt"],
-                ollama_gpu_handoff_wait_seconds=options["ollama_gpu_handoff_wait_seconds"],
+                correction_enabled=options["correction_enabled"],
                 categorization_enabled=options["categorization_enabled"],
                 categorization_model=options["categorization_model"],
                 categorization_num_ctx=options["categorization_num_ctx"],
@@ -117,7 +83,6 @@ class JobProcessingService:
             key_artifacts = self._build_key_artifacts(
                 job_id,
                 image_path=image_path,
-                ocr_json_path=ocr_json_path,
                 paths=paths,
             )
             self.store.update(
@@ -125,10 +90,6 @@ class JobProcessingService:
                 result={
                     "report": report,
                     "artifacts": key_artifacts,
-                    "ocr": {
-                        "line_count": ocr_json.get("line_count"),
-                        "word_count": ocr_json.get("word_count"),
-                    },
                 },
             )
 
@@ -184,13 +145,11 @@ class JobProcessingService:
         job_id: str,
         *,
         image_path: Path,
-        ocr_json_path: Path,
         paths: dict[str, str],
     ) -> dict[str, Any]:
         final_path = self._final_result_path(paths)
 
         self.store.register_artifact(job_id, "receipt_image", image_path, category="input")
-        self.store.register_artifact(job_id, "ocr_json", ocr_json_path, category="ocr")
         for key, value in paths.items():
             path = Path(value)
             if path.exists():
@@ -205,26 +164,19 @@ class JobProcessingService:
 
         artifacts = {
             "receipt_image": artifact_resource(job_id, image_path) if image_path.exists() else None,
-            "ocr_json": artifact_resource(job_id, ocr_json_path)
-            if ocr_json_path.exists()
-            else None,
             "final_receipt": artifact_resource(job_id, final_path),
             "final_receipt_reconciled": optional("receipt_final_reconciled"),
             "final_receipt_categorized": optional("receipt_final_categorized"),
             "validation_report": optional("validation_report"),
-            "llm_prompt": optional("llm_main_prompt"),
-            "llm_raw": optional("llm_main_raw"),
-            "ocr_context": optional("ocr_context"),
+            "transcription": optional("transcription"),
+            "transcription_report": optional("transcription_report"),
+            "structured_receipt": optional("structured_receipt"),
+            "structured_extraction_report": optional("structured_extraction_report"),
+            "correction_report": optional("90_gemma_correction_report"),
+            "correction_validation": optional("91_deterministic_validation_final"),
             "pipeline_meta": optional("pipeline_meta"),
             "stage_trace": optional("stage_trace"),
             "extraction_metrics": optional("extraction_metrics"),
-            "visual_evidence": optional("visual_evidence"),
-            "region_reocr": optional("region_reocr"),
-            "right_column_reocr": optional("right_column_reocr"),
-            "correction_patch_prompt": optional("correction_patch_prompt"),
-            "correction_patch_raw": optional("correction_patch_raw"),
-            "correction_patch_result": optional("correction_patch_result"),
-            "corrected_receipt": optional("receipt_patch_corrected"),
             "categorization_result": optional("categorization_result"),
             "categorization_prompt": optional("categorization_prompt"),
             "categorization_raw": optional("categorization_raw"),
