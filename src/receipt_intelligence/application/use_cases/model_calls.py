@@ -41,14 +41,29 @@ class ModelCallUseCases:
     def pricing(self) -> list[dict[str, Any]]:
         return self.repository.list_pricing()
 
+    def models(self) -> list[dict[str, Any]]:
+        return self.repository.list_models()
+
     def save_pricing(self, payload: dict[str, Any]) -> dict[str, Any]:
+        cached_price = payload.get("cached_input_price_per_million")
+        cache_write_price = payload.get("cache_write_input_price_per_million")
         return self.repository.upsert_pricing(
             ModelPricingInput(
                 provider=str(payload.get("provider") or ""),
                 model=str(payload.get("model") or ""),
-                currency=str(payload.get("currency") or "EUR"),
+                currency=str(payload.get("currency") or "USD"),
                 input_price_per_million=float(payload.get("input_price_per_million") or 0),
                 output_price_per_million=float(payload.get("output_price_per_million") or 0),
+                cached_input_price_per_million=(
+                    None if cached_price in (None, "") else float(cached_price)
+                ),
+                cache_write_input_price_per_million=(
+                    None if cache_write_price in (None, "") else float(cache_write_price)
+                ),
+                pricing_source=str(payload.get("pricing_source") or "manual").strip() or "manual",
+                effective_from=(
+                    str(payload.get("effective_from") or "").strip() or None
+                ),
             )
         )
 
