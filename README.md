@@ -191,3 +191,7 @@ for retrieval and analytics.
 - [Model-call dashboard](docs/MODEL_CALL_DASHBOARD.md)
 - [Observability and readiness](docs/operations/OBSERVABILITY.md)
 - [Documentation index](docs/index.md)
+
+## License
+
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE).
