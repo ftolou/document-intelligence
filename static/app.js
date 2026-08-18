@@ -27,7 +27,6 @@ const askReceiptsLogHelpEl = document.getElementById('askReceiptsLogHelp');
 const askReceiptsEngineBadgeEl = document.getElementById('askReceiptsEngineBadge');
 const askReceiptsResultEl = document.getElementById('askReceiptsResult');
 const askQueryProgressEl = document.getElementById('askQueryProgress');
-const askQueryProgressMessageEl = document.getElementById('askQueryProgressMessage');
 const askQueryElapsedEl = document.getElementById('askQueryElapsed');
 const askResultStatusEl = document.getElementById('askResultStatus');
 const askQueryExampleButtons = Array.from(document.querySelectorAll('[data-query-example]'));
@@ -136,11 +135,9 @@ function updateAppVersionFromConfig() {
   const title = document.getElementById('appTitle');
   const heading = document.getElementById('appHeading');
   const badge = document.getElementById('appVersionBadge');
-  const runButton = document.getElementById('run-button');
   if (title) title.textContent = `Receipt Intelligence ${version}`;
   if (heading) heading.textContent = 'Receipt Intelligence';
   if (badge) badge.textContent = version;
-  if (runButton) runButton.textContent = `Run ${version} parser`; 
 }
 
 function syncCategorizationCheckboxFromConfig() {
@@ -227,26 +224,6 @@ function setAskResultStatus(status) {
   askResultStatusEl.className = queryStatusBadgeClass(status);
 }
 
-function setQueryProgressStep(elapsedSeconds) {
-  const thresholds = [
-    ['analysis', 0, 'Understanding the request'],
-    ['retrieval', 6, 'Searching approved receipt data'],
-    ['resolution', 12, 'Resolving matching products'],
-    ['planning', 24, 'Preparing a safe database query'],
-    ['execution', 36, 'Validating and executing the query'],
-  ];
-  let currentIndex = 0;
-  thresholds.forEach((entry, index) => {
-    if (elapsedSeconds >= entry[1]) currentIndex = index;
-  });
-  const items = Array.from(document.querySelectorAll('[data-query-step]'));
-  items.forEach((item, index) => {
-    item.classList.toggle('done', index < currentIndex);
-    item.classList.toggle('active', index === currentIndex);
-  });
-  if (askQueryProgressMessageEl) askQueryProgressMessageEl.textContent = thresholds[currentIndex][2];
-}
-
 function setQueryLoadingState(isLoading) {
   const button = document.getElementById('ask-receipts-button');
   const buttonLabel = button?.querySelector('.button-label');
@@ -271,12 +248,10 @@ function setQueryLoadingState(isLoading) {
   if (askQueryElapsedEl) askQueryElapsedEl.textContent = '0s';
   const title = document.getElementById('askQueryProgressTitle');
   if (title) title.textContent = `${queryEngineLabel()} is processing your question…`;
-  setQueryProgressStep(0);
   if (queryProgressTimer) window.clearInterval(queryProgressTimer);
   queryProgressTimer = window.setInterval(() => {
     const elapsed = Math.max(0, Math.floor((Date.now() - queryProgressStartedAt) / 1000));
     if (askQueryElapsedEl) askQueryElapsedEl.textContent = `${elapsed}s`;
-    setQueryProgressStep(elapsed);
   }, 1000);
 }
 

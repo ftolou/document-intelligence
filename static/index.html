@@ -25,15 +25,15 @@
 
     <nav class="tab-nav primary-nav" aria-label="Main workflow tabs">
       <button type="button" class="tab-button active" data-tab-target="run" aria-selected="true"><span>Process</span><small>Single receipt</small></button>
-      <button type="button" class="tab-button" data-tab-target="batch" aria-selected="false"><span>Batch</span><small>Folder runner</small></button>
       <button type="button" class="tab-button" data-tab-target="review" aria-selected="false"><span>Review</span><small>Approval queue</small></button>
       <button type="button" class="tab-button" data-tab-target="ask" aria-selected="false"><span>Ask</span><small>Receipt analytics</small></button>
-      <button type="button" class="tab-button" data-tab-target="models" aria-selected="false"><span>Models</span><small>Tokens &amp; cost</small></button>
-      <button type="button" class="tab-button" data-tab-target="data" aria-selected="false"><span>Receipt data</span><small>Maintenance</small></button>
+      <button type="button" class="tab-button" data-tab-target="batch" aria-selected="false"><span>Batch</span><small>Folder runner</small></button>
+      <button type="button" class="tab-button" data-tab-target="models" aria-selected="false"><span>Observability</span><small>Tokens, latency &amp; cost</small></button>
+      <button type="button" class="tab-button" data-tab-target="data" aria-selected="false"><span>Data</span><small>Receipt maintenance</small></button>
     </nav>
 
     <section class="tab-panel active" id="tab-run" data-tab-panel="run">
-    <section class="card">
+    <section class="card process-card">
       <form id="uploadForm">
         <div class="field full">
           <label>Receipt image</label>
@@ -43,17 +43,31 @@
           </label>
         </div>
 
-        <div class="llm-box">
-          <h2>Receipt extraction models</h2>
-          <div class="grid">
-            <div class="field full">
-              <label for="extraction_backend">Extraction engine</label>
-              <select name="extraction_backend" id="extraction_backend">
-                <option value="local_specialized" selected>Local — Paddle + Qwen + Gemma</option>
-                <option value="openai_one_shot">OpenAI — one-shot multimodal</option>
-              </select>
-              <small>OpenAI uses the full image in one model request; its model, reasoning effort, and image detail are server-managed from <code>.env</code>. Local controls below are ignored in OpenAI mode.</small>
-            </div>
+        <div class="process-engine-card">
+          <div>
+            <p class="section-kicker">Extraction</p>
+            <h2>Choose processing mode</h2>
+            <p class="sub small">Use the local staged pipeline by default, or compare it with the optional OpenAI one-shot backend.</p>
+          </div>
+          <label class="field process-engine-field" for="extraction_backend">
+            <span>Processing mode</span>
+            <select name="extraction_backend" id="extraction_backend">
+              <option value="local_specialized" selected>Local AI — Paddle + Qwen + Gemma</option>
+              <option value="openai_one_shot">OpenAI — one-shot multimodal</option>
+            </select>
+            <small>OpenAI settings are server-managed. Local tuning remains available under Advanced settings.</small>
+          </label>
+        </div>
+
+        <details class="advanced-settings">
+          <summary>
+            <span>Advanced settings</span>
+            <small>Models, OCR, validation and categorization</small>
+          </summary>
+          <div class="advanced-settings-body">
+            <div class="llm-box">
+              <h2>Local model runtime</h2>
+              <div class="grid">
             <div class="field">
               <label>Ollama URL</label>
               <input id="ollama_url" disabled />
@@ -92,40 +106,42 @@
               <small>Paddle geometry guides non-overlapping Qwen transcription crops.</small>
             </div>
           </div>
-        </div>
+            </div>
 
-        <div class="llm-box">
-          <h2>Validation and correction</h2>
-          <label class="checkline"><input name="correction_enabled" id="correction_enabled" type="checkbox" /> Enable specialist correction</label>
-          <small>Deterministic validation remains read-only. Correction uses source-evidence specialists and rejects regressions.</small>
-        </div>
+            <div class="llm-box">
+              <h2>Validation and correction</h2>
+              <label class="checkline"><input name="correction_enabled" id="correction_enabled" type="checkbox" /> Enable specialist correction</label>
+              <small>Deterministic validation remains read-only. Correction uses source-evidence specialists and rejects regressions.</small>
+            </div>
 
-        <div class="llm-box">
-          <h2>LLM-first item categorization</h2>
-          <div class="grid">
-            <div class="field">
-              <label class="checkline"><input name="categorization_enabled" id="categorization_enabled" type="checkbox" /> Enable item categorization</label>
-              <small>Runs after final validation. Categorization never changes extracted totals/items; it only appends category metadata.</small>
-            </div>
-            <div class="field">
-              <label>Categorization model</label>
-              <input name="categorization_model" id="categorization_model" />
-              <small>Defaults to the same Ollama model as the parser.</small>
-            </div>
-            <div class="field">
-              <label>Category context tokens</label>
-              <input name="categorization_num_ctx" id="categorization_num_ctx" type="number" />
-            </div>
-            <div class="field">
-              <label>Category predict tokens</label>
-              <input name="categorization_num_predict" id="categorization_num_predict" type="number" />
+            <div class="llm-box">
+              <h2>Item categorization</h2>
+              <div class="grid">
+                <div class="field">
+                  <label class="checkline"><input name="categorization_enabled" id="categorization_enabled" type="checkbox" /> Enable item categorization</label>
+                  <small>Runs after final validation and only appends category metadata.</small>
+                </div>
+                <div class="field">
+                  <label>Categorization model</label>
+                  <input name="categorization_model" id="categorization_model" />
+                  <small>Defaults to the same Ollama model as the parser.</small>
+                </div>
+                <div class="field">
+                  <label>Category context tokens</label>
+                  <input name="categorization_num_ctx" id="categorization_num_ctx" type="number" />
+                </div>
+                <div class="field">
+                  <label>Category predict tokens</label>
+                  <input name="categorization_num_predict" id="categorization_num_predict" type="number" />
+                </div>
+              </div>
             </div>
           </div>
-        </div>
+        </details>
 
         <div class="form-actions">
-          <button id="run-button" type="submit">Run parser</button>
-          <small class="v14-note">Local mode uses Paddle/Qwen/Gemma. OpenAI mode uses one full-image structured-output request, then deterministic validation and category calibration.</small>
+          <button id="run-button" class="button-primary" type="submit">Process receipt</button>
+          <small class="form-note">Local mode keeps receipt processing on the configured local runtime. OpenAI mode sends the receipt image to the configured OpenAI model.</small>
         </div>
       </form>
     </section>
@@ -134,22 +150,12 @@
     <section class="card hidden" id="statusCard">
       <div class="progress-header">
         <div>
-          <h2>Live pipeline feedback</h2>
+          <h2>Extraction result</h2>
           <p id="live-status">Waiting for job...</p>
         </div>
         <div id="state" class="badge neutral">queued</div>
       </div>
       <div class="progress-bar"><div id="progress-bar-fill"></div></div>
-      <div class="rowBetween">
-        <small>Job ID</small>
-        <code id="jobId"></code>
-      </div>
-
-      <h3>Timeline</h3>
-      <ul id="events" class="timeline static"></ul>
-
-      <h3>Artifacts</h3>
-      <div id="artifacts" class="links artifacts"></div>
 
       <h3>Extracted receipt information</h3>
       <div id="receiptSummary" class="receipt-summary empty">Run a receipt to see merchant, totals, payments, taxes, items and validation issues here.</div>
@@ -159,8 +165,27 @@
         Review is performed only in the dedicated Review tab. Run a receipt to add it to the canonical review queue.
       </div>
 
-      <h3>Final JSON preview</h3>
-      <pre id="preview"></pre>
+      <details class="technical-details">
+        <summary>
+          <span>Technical details</span>
+          <small>Job ID, pipeline timeline, artifacts and raw JSON</small>
+        </summary>
+        <div class="technical-details-body">
+          <div class="rowBetween">
+            <small>Job ID</small>
+            <code id="jobId"></code>
+          </div>
+
+          <h3>Timeline</h3>
+          <ul id="events" class="timeline static"></ul>
+
+          <h3>Artifacts</h3>
+          <div id="artifacts" class="links artifacts"></div>
+
+          <h3>Final JSON preview</h3>
+          <pre id="preview"></pre>
+        </div>
+      </details>
     </section>
     </section>
 
@@ -329,17 +354,10 @@
             <div class="query-spinner" aria-hidden="true"></div>
             <div>
               <strong id="askQueryProgressTitle">Working on your question…</strong>
-              <span id="askQueryProgressMessage">Understanding the request</span>
+              <span>Searching reviewed receipt data and preparing a validated read-only query.</span>
             </div>
             <time id="askQueryElapsed">0s</time>
           </div>
-          <ol class="query-progress-steps">
-            <li data-query-step="analysis" class="active">Understand question</li>
-            <li data-query-step="retrieval">Search approved receipts</li>
-            <li data-query-step="resolution">Resolve matching products</li>
-            <li data-query-step="planning">Prepare query</li>
-            <li data-query-step="execution">Validate and execute</li>
-          </ol>
         </section>
 
         <section class="query-result-shell" aria-labelledby="askResultHeading">
@@ -364,7 +382,7 @@
     <section class="tab-panel" id="tab-models" data-tab-panel="models" hidden>
       <section class="model-dashboard">
         <header class="section-hero">
-          <div><p class="section-kicker">LLM usage analytics</p><h2>Model calls, tokens &amp; estimated cost</h2><p class="sub">Each generation call is recorded with provider-reported input/output tokens and timing. Costs use your configured price per one million tokens.</p></div>
+          <div><p class="section-kicker">Model observability</p><h2>LLM calls, tokens, latency &amp; estimated cost</h2><p class="sub">Inspect provider-reported token usage, timing, generation speed, failures, and cost estimates for every model call.</p></div>
           <button id="refresh-model-dashboard" type="button" class="button-secondary">Refresh</button>
         </header>
         <section class="card model-filter-bar">
@@ -442,5 +460,6 @@
   </main>
   <script src="/receipt_process_view.js"></script>
   <script src="/app.js"></script>
+  <script src="/model_pricing.js"></script>
 </body>
 </html>

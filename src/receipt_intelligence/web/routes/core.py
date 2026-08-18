@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from flask import Blueprint, Response, current_app, jsonify
+from flask import Blueprint, current_app, jsonify
 
 from receipt_intelligence.web.dependencies import get_app_services
 
@@ -13,17 +11,9 @@ core_bp = Blueprint("core", __name__)
 
 @core_bp.get("/")
 def index():
-    """Serve the static shell with small optional dashboard extensions."""
+    """Serve the static application shell."""
 
-    static_folder = current_app.static_folder
-    if not static_folder:
-        return current_app.send_static_file("index.html")
-    html = (Path(static_folder) / "index.html").read_text(encoding="utf-8")
-    marker = '<script src="/app.js"></script>'
-    extension = marker + '\n  <script src="/model_pricing.js"></script>'
-    if marker in html and "/model_pricing.js" not in html:
-        html = html.replace(marker, extension, 1)
-    return Response(html, mimetype="text/html")
+    return current_app.send_static_file("index.html")
 
 
 @core_bp.get("/health")
