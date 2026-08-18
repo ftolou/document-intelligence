@@ -165,8 +165,7 @@ def test_sql_import_prefers_next_final_price_over_stale_line_total(tmp_path: Pat
     imported = database.import_receipt(job_id="stale-line-total", receipt=receipt)
     with database.connect() as connection:
         stored = connection.execute(
-            "SELECT line_total FROM receipt_items "
-            "WHERE receipt_id = ? AND item_index = 0",
+            "SELECT line_total FROM receipt_items WHERE receipt_id = ? AND item_index = 0",
             (imported.receipt_db_id,),
         ).fetchone()
 

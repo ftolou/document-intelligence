@@ -29,3 +29,17 @@ def test_review_json_is_hidden_under_technical_details() -> None:
     assert 'class="review-technical-details"' in javascript
     assert "Current review document JSON" in javascript
     assert "JSON.stringify(receipt, null, 2)" in javascript
+
+
+def test_review_submit_is_sparse_and_action_message_is_compact() -> None:
+    javascript = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+    styles = (ROOT / "static" / "styles.css").read_text(encoding="utf-8")
+
+    assert "review-control-dirty" in javascript
+    assert "databaseRequiresAllRows" in javascript
+    assert "currentReviewIdentity?.source === 'database'" in javascript
+    assert "if (!el.classList.contains('review-control-dirty')) continue;" in javascript
+    assert "fields changed" in javascript
+    assert "Changed fields: ${changedFields.join(', ')}" in javascript
+    assert "#humanReviewMessage" in styles
+    assert "-webkit-line-clamp: 2" in styles
