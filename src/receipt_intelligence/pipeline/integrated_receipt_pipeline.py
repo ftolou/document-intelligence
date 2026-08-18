@@ -53,7 +53,11 @@ def run_receipt_extraction(
             result.get("observability") if isinstance(result.get("observability"), dict) else {}
         )
         stage_trace = observability.get("stage_trace")
-        stages = tuple(value for value in stage_trace if isinstance(value, dict)) if isinstance(stage_trace, list) else ()
+        stages = (
+            tuple(value for value in stage_trace if isinstance(value, dict))
+            if isinstance(stage_trace, list)
+            else ()
+        )
         metrics_path = publish_openai_extraction_metrics(
             request,
             status="completed",

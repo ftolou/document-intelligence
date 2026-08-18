@@ -118,12 +118,7 @@ def test_openai_cost_uses_standard_cache_read_cache_write_and_output_rates(
     assert call["cached_input_tokens"] == 2000
     assert call["cache_write_input_tokens"] == 1000
     assert call["reasoning_output_tokens"] == 1200
-    expected = (
-        1092 * 0.20
-        + 2000 * 0.02
-        + 1000 * 0.25
-        + 2812 * 1.20
-    ) / 1_000_000
+    expected = (1092 * 0.20 + 2000 * 0.02 + 1000 * 0.25 + 2812 * 1.20) / 1_000_000
     assert call["estimated_cost"] == pytest.approx(expected)
     assert call["missing_price_components"] == []
 
@@ -135,9 +130,7 @@ def test_model_catalog_exposes_canonical_ids_and_friendly_names(tmp_path: Path) 
     catalog = repository.list_models()
 
     luna = next(
-        row
-        for row in catalog
-        if row["provider"] == "openai" and row["model"] == "gpt-5.6-luna"
+        row for row in catalog if row["provider"] == "openai" and row["model"] == "gpt-5.6-luna"
     )
     assert luna["provider_display_name"] == "OpenAI"
     assert luna["model_display_name"] == "GPT-5.6 Luna"

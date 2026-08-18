@@ -61,9 +61,7 @@ class ModelCallUseCases:
                     None if cache_write_price in (None, "") else float(cache_write_price)
                 ),
                 pricing_source=str(payload.get("pricing_source") or "manual").strip() or "manual",
-                effective_from=(
-                    str(payload.get("effective_from") or "").strip() or None
-                ),
+                effective_from=(str(payload.get("effective_from") or "").strip() or None),
             )
         )
 
