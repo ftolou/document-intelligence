@@ -16,8 +16,11 @@ from receipt_intelligence.receipt_compat import (
     apply_review_field,
     apply_review_item_field,
     is_next_receipt,
+    item_description,
+    item_line_total,
     receipt_grand_total,
     to_canonical_validation_document,
+    to_review_document,
     validation_for_review,
 )
 from receipt_intelligence.services.artifact_service import artifact_resource
@@ -50,6 +53,63 @@ def _bool_or_original(value: Any) -> Any:
     if text in {"0", "false", "no", "n", "off"}:
         return False
     return value
+
+
+_NUMERIC_REVIEW_FIELDS = {
+    "subtotal",
+    "tax_total",
+    "grand_total",
+    "paid_total",
+    "change",
+    "quantity",
+    "unit_price",
+    "original_price",
+    "gross_unit_price",
+    "discount_amount",
+    "line_total",
+    "confidence",
+    "category_confidence",
+}
+
+
+def _review_values_equal(key: str, left: Any, right: Any) -> bool:
+    """Compare values using the semantics exposed by the review UI."""
+
+    if left in (None, "") and right in (None, ""):
+        return True
+    if key in _NUMERIC_REVIEW_FIELDS:
+        try:
+            return float(left) == float(right)
+        except (TypeError, ValueError):
+            pass
+    return left == right
+
+
+def _review_header_value(receipt: dict[str, Any], key: str) -> Any:
+    projected = to_review_document(receipt)
+    merchant = projected.get("merchant") if isinstance(projected.get("merchant"), dict) else {}
+    totals = projected.get("totals") if isinstance(projected.get("totals"), dict) else {}
+    if key == "merchant_name":
+        return merchant.get("name")
+    if key == "merchant_address":
+        return merchant.get("address")
+    if key in {"subtotal", "tax_total", "grand_total", "paid_total", "change"}:
+        return totals.get(key)
+    return projected.get(key)
+
+
+def _review_item_value(item: dict[str, Any], key: str) -> Any:
+    if key in {"description", "product_description"}:
+        return item_description(item)
+    if key == "line_total":
+        return item_line_total(item)
+    if key == "parser_item_type":
+        for candidate in ("parser_item_type", "receipt_row_type", "line_type", "category"):
+            value = item.get(candidate)
+            if value not in (None, ""):
+                return value
+        return None
+    return item.get(key)
 
 
 def _category_path_from_group_key(group: Any, key: Any) -> str | None:
@@ -114,9 +174,10 @@ def apply_human_review(
         value = _number_or_original(raw_value) if key in numeric_header_fields else raw_value
         if value is None:
             continue
-        before = _deep_copy_json(updated)
+        before_value = _review_header_value(updated, key)
         applied = apply_review_field(updated, key, value)
-        if applied and updated != before:
+        after_value = _review_header_value(updated, key)
+        if applied and not _review_values_equal(key, before_value, after_value):
             changed.append(key)
 
     items = updated.get("items") if isinstance(updated.get("items"), list) else []
@@ -147,7 +208,7 @@ def apply_human_review(
         for key, raw_value in correction.items():
             if key in ignored_fields:
                 continue
-            before_item = _deep_copy_json(item)
+            before_value = _review_item_value(item, key)
             value = raw_value
             if key in item_numeric_fields:
                 value = _number_or_original(value)
@@ -159,7 +220,8 @@ def apply_human_review(
                 value,
                 next_schema=next_schema,
             )
-            item_changed = item != before_item
+            after_value = _review_item_value(item, key)
+            item_changed = not _review_values_equal(key, before_value, after_value)
             if item_changed:
                 changed.append(f"items[{index}].{canonical_key}")
             if item_changed and not next_schema and key == "parser_item_type":

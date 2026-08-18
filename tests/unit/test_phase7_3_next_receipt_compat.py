@@ -119,7 +119,7 @@ def test_review_edits_update_canonical_next_paths_only() -> None:
             "paid_total": "110.24",
             "currency": "EUR",
         },
-        [{"index": 0, "description": "KRAWATTE EDITED", "line_total": "14.24"}],
+        [{"index": 0, "description": "KRAWATTE EDITED", "line_total": "13.75"}],
         {"status": "needs_review", "reviewer": "FT"},
     )
 
@@ -129,7 +129,7 @@ def test_review_edits_update_canonical_next_paths_only() -> None:
     assert receipt["totals"]["final_purchase_total"]["final_purchase_total"] == 110.24
     assert receipt["payment"]["payment_received"]["payment_received"] == 110.24
     assert receipt["items"][0]["name"] == "KRAWATTE EDITED"
-    assert receipt["items"][0]["final_price"] == 14.24
+    assert receipt["items"][0]["final_price"] == 13.75
     assert "line_total" not in receipt["items"][0]
     assert "items[0].final_price" in changed
 
