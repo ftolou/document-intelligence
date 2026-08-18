@@ -41,9 +41,9 @@ persisted under `var/jobs`.
 
 ## Compatibility boundary
 
-The deprecated keyword pipeline wrapper always invokes the canonical workflow. Stable final
-artifact names and receipt-schema adapters remain so existing jobs, review records, and relational
-imports stay readable. Compatibility does not include executable access to the removed pipeline.
+Stable final artifact names and receipt-schema adapters remain so existing jobs, review records,
+and relational imports stay readable. Compatibility is limited to persisted data contracts; there
+is no executable legacy extraction API or fallback pipeline.
 
 ## Query boundary
 

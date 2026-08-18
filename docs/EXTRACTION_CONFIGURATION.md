@@ -17,10 +17,8 @@ run_receipt_extraction(
 `ExtractionRequest` is immutable and image-first. It has no OCR-JSON input, VLM-service setting,
 spatial-parser setting, or extraction-strategy toggle.
 
-`run_integrated_receipt_pipeline(...)` remains temporarily available for historical keyword
-callers. It requires `source_image_path`, ignores explicitly declared historical OCR/VLM tuning
-arguments, rejects unknown arguments, emits `DeprecationWarning`, and always runs the canonical
-workflow.
+`run_receipt_extraction(ExtractionRequest(...))` is the only supported extraction entry point.
+Historical OCR/VLM keyword arguments are no longer part of the public API.
 
 Important environment settings:
 

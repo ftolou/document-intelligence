@@ -15,8 +15,7 @@ class ExtractionConfig:
     """Immutable inputs for one receipt extraction run.
 
     This contract is intentionally explicit. Runtime callers must provide only
-    declared fields; compatibility aliases are handled outside the workflow by
-    the legacy entry-point adapter.
+    declared fields.
     """
 
     source_image_path: Path

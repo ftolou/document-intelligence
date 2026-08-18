@@ -340,8 +340,11 @@ class MigrationRunner:
 
     @staticmethod
     def _model_identity_key(provider: str, model: str) -> tuple[str, str]:
-        compact = lambda value: re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
-        return compact(provider), compact(model)
+        def _compact(value: str) -> str:
+            return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
+
+        # compact = lambda value: re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
+        return _compact(provider), _compact(model)
 
     def _apply_reviewed_product_semantics(self, connection: sqlite3.Connection) -> None:
         self._add_missing_columns(

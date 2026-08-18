@@ -522,8 +522,12 @@ def _model_display_name(provider: str, model: str) -> str:
     return normalized_model or "Unknown"
 
 
+def compact(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
+
+
 def _model_identity_key(provider: str, model: str) -> tuple[str, str]:
-    compact = lambda value: re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
+    # compact = lambda value: re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
     return compact(provider), compact(model)
 
 

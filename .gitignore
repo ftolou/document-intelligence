@@ -31,4 +31,3 @@ var/batch_input/*
 var/logs/*
 !var/logs/.gitkeep
 var/migration/
-var/vlm_service/*

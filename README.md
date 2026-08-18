@@ -36,7 +36,6 @@ The extraction workflow has one production path:
 ## Design boundaries
 
 - `run_receipt_extraction(ExtractionRequest(...))` is the canonical typed API.
-- `run_integrated_receipt_pipeline(...)` is a deprecated wrapper that invokes the same workflow.
 - Extraction is image-first; there is no preliminary full-image OCR pass or OCR-JSON mode.
 - Paddle geometry runs in the application process. There is no separate `receipt-vlm` service.
 - Stored legacy receipts and stable artifact filenames remain readable.
