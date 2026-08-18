@@ -134,6 +134,45 @@ def test_review_edits_update_canonical_next_paths_only() -> None:
     assert "items[0].final_price" in changed
 
 
+def test_review_line_total_ignores_stale_projection_alias() -> None:
+    receipt = _next_receipt()
+    # Simulate a next-schema document that acquired the UI compatibility alias
+    # during an earlier review/database round trip.
+    receipt["items"][0]["line_total"] = 99.99
+
+    projected = to_review_document(receipt)
+    assert projected["items"][0]["line_total"] == 14.24
+
+    updated, changed = apply_human_review(
+        receipt,
+        {},
+        [{"index": 0, "line_total": "13.75"}],
+        {"status": "needs_review", "reviewer": "FT"},
+    )
+
+    assert updated["items"][0]["final_price"] == 13.75
+    assert "line_total" not in updated["items"][0]
+    assert to_review_document(updated)["items"][0]["line_total"] == 13.75
+    assert "items[0].final_price" in changed
+
+
+def test_sql_import_prefers_next_final_price_over_stale_line_total(tmp_path: Path) -> None:
+    database = ReceiptDatabase(tmp_path / "stale-line-total.sqlite3")
+    receipt = _next_receipt()
+    receipt["items"][0]["line_total"] = 99.99
+    receipt["human_review"] = {"status": "approved", "reviewer": "FT"}
+
+    imported = database.import_receipt(job_id="stale-line-total", receipt=receipt)
+    with database.connect() as connection:
+        stored = connection.execute(
+            "SELECT line_total FROM receipt_items "
+            "WHERE receipt_id = ? AND item_index = 0",
+            (imported.receipt_db_id,),
+        ).fetchone()
+
+    assert stored["line_total"] == 14.24
+
+
 def test_queue_projection_derives_summary_and_failed_checks_from_raw_json() -> None:
     row = ReviewRepository._present_queue_row(
         {

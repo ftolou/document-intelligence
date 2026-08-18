@@ -175,9 +175,14 @@ def item_description(item: JsonObject) -> str:
 
 
 def item_line_total(item: JsonObject) -> Any:
+    # ``final_price`` is the canonical price field of the next receipt schema.
+    # ``line_total`` is also emitted by the review projection for UI compatibility,
+    # so historical/projected documents may temporarily contain both. Prefer the
+    # canonical value to prevent a stale projection alias from winning on reload,
+    # validation, or relational persistence.
     return first_present(
-        item.get("line_total"),
         item.get("final_price"),
+        item.get("line_total"),
         item.get("total"),
         item.get("amount"),
     )
@@ -505,7 +510,12 @@ def apply_review_item_field(item: JsonObject, key: str, value: Any, *, next_sche
             item["name"] = value
             return "name"
         if key == "line_total":
+            # Keep one canonical source of truth. ``line_total`` may exist on a
+            # next-schema item because it was previously projected for review;
+            # remove that alias when applying an edit so it cannot shadow the
+            # corrected canonical ``final_price`` later.
             item["final_price"] = value
+            item.pop("line_total", None)
             return "final_price"
         item[key] = value
         return key
