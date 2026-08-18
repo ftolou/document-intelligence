@@ -690,13 +690,24 @@ function renderHumanReview(receipt, artifacts = {}, options = {}) {
 function collectHumanReviewPayload(status = 'needs_review') {
   const fields = {};
   for (const el of humanReviewPanelEl.querySelectorAll('[data-review-field]')) {
+    if (!el.classList.contains('review-control-dirty')) continue;
     let value = el.type === 'checkbox' ? el.checked : el.value;
     if (el.type === 'number' && value !== '') value = Number(value);
     fields[el.dataset.reviewField] = value;
   }
 
   const itemMap = new Map();
+  const databaseRequiresAllRows = currentReviewIdentity?.source === 'database';
+  if (databaseRequiresAllRows) {
+    for (const row of humanReviewPanelEl.querySelectorAll('[data-review-item-row]')) {
+      const index = Number(row.dataset.reviewItemRow);
+      const itemId = Number(row.dataset.reviewItemId || '');
+      if (!Number.isInteger(index) || !Number.isInteger(itemId) || itemId <= 0) continue;
+      itemMap.set(index, { index, item_id: itemId });
+    }
+  }
   for (const el of humanReviewPanelEl.querySelectorAll('[data-review-item-index][data-review-item-field]')) {
+    if (!el.classList.contains('review-control-dirty')) continue;
     const index = Number(el.dataset.reviewItemIndex);
     if (!Number.isInteger(index)) continue;
     const field = el.dataset.reviewItemField;
@@ -744,7 +755,16 @@ async function saveHumanReview(status = 'needs_review', advance = false) {
     const revision = data.review_queue?.revision || data.review_revision?.revision || data.review?.review_revision || '—';
     const newMessage = document.getElementById('humanReviewMessage');
     if (newMessage) {
-      newMessage.textContent = `Saved revision ${revision}. Effective status: ${effectiveStatus}. Changed fields: ${(data.review?.changed_fields || []).join(', ') || 'none'}.`;
+      const changedFields = Array.isArray(data.review?.changed_fields)
+        ? data.review.changed_fields
+        : [];
+      const changedLabel = changedFields.length === 1
+        ? '1 field changed'
+        : `${changedFields.length} fields changed`;
+      newMessage.textContent = `Saved revision ${revision} · ${effectiveStatus} · ${changedLabel}.`;
+      newMessage.title = changedFields.length
+        ? `Changed fields: ${changedFields.join(', ')}`
+        : 'No receipt data fields changed.';
     }
     refreshReceiptDbSummary().catch(() => {});
     refreshReceiptDbList().catch(() => {});

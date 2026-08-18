@@ -1236,8 +1236,19 @@ button:hover:not(:disabled) { transform: translateY(-1px); }
   box-shadow: 0 -8px 28px rgba(2, 6, 23, .55);
   backdrop-filter: blur(10px);
 }
-.review-action-bar > div:first-child { display: grid; gap: 3px; }
+.review-action-bar > div:first-child { display: grid; gap: 3px; min-width: 0; }
 .review-action-bar small { color: #94a3b8; }
+#humanReviewMessage {
+  display: -webkit-box;
+  min-width: 0;
+  max-width: min(720px, 60vw);
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
 .review-action-buttons { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
 .review-action-buttons button { margin: 0; }
 button.secondary { background: #1e293b; border-color: #475569; color: #e2e8f0; }

@@ -172,6 +172,49 @@ def test_sql_import_prefers_next_final_price_over_stale_line_total(tmp_path: Pat
     assert stored["line_total"] == 14.24
 
 
+def test_review_noop_submission_does_not_report_every_field_as_changed() -> None:
+    receipt = _next_receipt()
+    updated, changed = apply_human_review(
+        receipt,
+        {
+            "merchant_name": "Modepark Röther",
+            "date": "2017-12-17",
+            "time": "19:55:55",
+            "currency": "EUR",
+            "grand_total": 110.24,
+        },
+        [
+            {
+                "index": 0,
+                "product_description": "KRAWATTE",
+                "quantity": 1,
+                "original_price": 14.99,
+                "discount_amount": 0.75,
+                "line_total": 14.24,
+                "category_key": "clothing_shoes",
+                "category_group": "Clothing",
+            }
+        ],
+        {"status": "needs_review", "reviewer": "FT"},
+    )
+
+    assert changed == []
+    assert updated["items"][0]["final_price"] == 14.24
+
+
+def test_review_reports_only_the_actual_manual_delta() -> None:
+    receipt = _next_receipt()
+    updated, changed = apply_human_review(
+        receipt,
+        {},
+        [{"index": 0, "line_total": 13.75}],
+        {"status": "needs_review", "reviewer": "FT"},
+    )
+
+    assert changed == ["items[0].final_price"]
+    assert updated["items"][0]["final_price"] == 13.75
+
+
 def test_queue_projection_derives_summary_and_failed_checks_from_raw_json() -> None:
     row = ReviewRepository._present_queue_row(
         {

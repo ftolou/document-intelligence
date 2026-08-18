@@ -114,7 +114,9 @@ def apply_human_review(
         value = _number_or_original(raw_value) if key in numeric_header_fields else raw_value
         if value is None:
             continue
-        if apply_review_field(updated, key, value):
+        before = _deep_copy_json(updated)
+        applied = apply_review_field(updated, key, value)
+        if applied and updated != before:
             changed.append(key)
 
     items = updated.get("items") if isinstance(updated.get("items"), list) else []
@@ -145,6 +147,7 @@ def apply_human_review(
         for key, raw_value in correction.items():
             if key in ignored_fields:
                 continue
+            before_item = _deep_copy_json(item)
             value = raw_value
             if key in item_numeric_fields:
                 value = _number_or_original(value)
@@ -156,8 +159,10 @@ def apply_human_review(
                 value,
                 next_schema=next_schema,
             )
-            changed.append(f"items[{index}].{canonical_key}")
-            if not next_schema and key == "parser_item_type":
+            item_changed = item != before_item
+            if item_changed:
+                changed.append(f"items[{index}].{canonical_key}")
+            if item_changed and not next_schema and key == "parser_item_type":
                 changed.append(f"items[{index}].category")
 
         if "category_group" in correction or "category_key" in correction:
