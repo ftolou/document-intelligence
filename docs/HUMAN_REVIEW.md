@@ -19,12 +19,28 @@ After a receipt job reaches `done`, the Run tab only confirms that the result en
 
 The existing SQLite database is used instead of a separate unreviewed-receipt database:
 
-- `review_queue.raw_json` is the canonical draft for extracted and not-yet-approved receipts;
+- `review_queue.extraction_json` is the immutable extraction snapshot captured when a receipt first enters the queue;
+- `review_queue.draft_json` is the canonical mutable review draft;
+- `review_queue.raw_json` remains a compatibility mirror of the current draft for code and databases created before the split;
 - `receipts` and `receipt_items` are the canonical approved records used by analytics, RAG, and RAG-SQL;
 - `receipt_review_history` stores an immutable snapshot for every saved review revision;
 - `approved_receipt.json` and `human_review_record.json` are compatibility/audit mirrors, not authoritative application state.
 
 Each queue record carries an optimistic `review_revision`. A stale browser save is rejected and the reviewer must reload, preventing one review session from silently overwriting another.
+
+The state transition is deliberately explicit:
+
+```text
+immutable extraction_json
+        |
+        v
+mutable draft_json  -- review revisions --> receipt_review_history
+        |
+        v
+approved receipts + receipt_items
+```
+
+For queue rows created before this schema split, migration 11 initializes both new columns from the previous `raw_json` value because the original extraction snapshot cannot always be reconstructed from database state alone. New queue records preserve `extraction_json` on subsequent upserts and review saves.
 
 ## Editable receipt header fields
 

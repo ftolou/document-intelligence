@@ -16,7 +16,7 @@ from pathlib import Path
 
 from receipt_intelligence.storage.connection import SQLiteConnectionFactory
 
-LATEST_SCHEMA_VERSION = 10
+LATEST_SCHEMA_VERSION = 11
 
 
 @dataclass(frozen=True)
@@ -91,6 +91,7 @@ class MigrationRunner:
             Migration(8, "approved_analytics_boundary", self._apply_approved_analytics_boundary),
             Migration(9, "review_workspace", self._apply_review_workspace),
             Migration(10, "cache_aware_model_pricing", self._apply_cache_aware_model_pricing),
+            Migration(11, "review_source_and_draft", self._apply_review_source_and_draft),
         ]
 
     def _apply_sql(self, connection: sqlite3.Connection, filename: str) -> None:
@@ -191,6 +192,28 @@ class MigrationRunner:
             },
         )
         self._apply_sql(connection, "009_review_workspace.sql")
+
+    def _apply_review_source_and_draft(self, connection: sqlite3.Connection) -> None:
+        """Separate immutable extraction evidence from the mutable review draft."""
+        self._add_missing_columns(
+            connection,
+            "review_queue",
+            {
+                "extraction_json": "TEXT",
+                "draft_json": "TEXT",
+            },
+        )
+        # Older queue rows only have raw_json. It is the best available source
+        # snapshot during migration; from this version onward extraction_json
+        # is write-once and draft_json carries the mutable review state.
+        connection.execute(
+            """
+            UPDATE review_queue
+            SET extraction_json=COALESCE(extraction_json, raw_json),
+                draft_json=COALESCE(draft_json, raw_json)
+            WHERE extraction_json IS NULL OR draft_json IS NULL
+            """
+        )
 
     def _apply_cache_aware_model_pricing(self, connection: sqlite3.Connection) -> None:
         self._add_missing_columns(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from receipt_intelligence.storage.receipt_db import ReceiptDatabase
@@ -43,6 +44,8 @@ def test_review_workspace_migration_adds_canonical_draft_and_history_schema(
         "reviewed_at",
         "review_reason_codes_json",
         "source_kind",
+        "extraction_json",
+        "draft_json",
     } <= queue_columns
     assert "receipt_review_history" in tables
 
@@ -86,6 +89,9 @@ def test_review_revision_updates_canonical_queue_draft_and_appends_history(
         history = connection.execute(
             "SELECT * FROM receipt_review_history WHERE job_id='job-1'"
         ).fetchall()
+        queue_json = connection.execute(
+            "SELECT extraction_json, draft_json, raw_json FROM review_queue WHERE job_id='job-1'"
+        ).fetchone()
 
     assert revision["revision"] == 1
     assert queue is not None
@@ -94,6 +100,89 @@ def test_review_revision_updates_canonical_queue_draft_and_appends_history(
     assert queue["reviewer"] == "FT"
     assert len(history) == 1
     assert history[0]["revision"] == 1
+    assert json.loads(queue_json["extraction_json"])["merchant"]["name"] == "REWE"
+    assert json.loads(queue_json["draft_json"])["merchant"]["name"] == "REWE Markt"
+    assert json.loads(queue_json["raw_json"])["merchant"]["name"] == "REWE Markt"
+
+
+def test_review_queue_upsert_preserves_extraction_snapshot(tmp_path: Path) -> None:
+    database = ReceiptDatabase(tmp_path / "receipt.db")
+    original = _receipt("REWE")
+    database.upsert_review_queue(
+        job_id="job-source",
+        receipt=original,
+        decision="review",
+        balanced=True,
+        difference=0.0,
+        issue_count=1,
+        image_path=None,
+        final_receipt_path=None,
+        queue_status="needs_review",
+    )
+
+    reviewed = _receipt("REWE Markt")
+    reviewed["human_review"] = {
+        "status": "needs_review",
+        "reviewer": "FT",
+    }
+    database.upsert_review_queue(
+        job_id="job-source",
+        receipt=reviewed,
+        decision="review",
+        balanced=True,
+        difference=0.0,
+        issue_count=1,
+        image_path=None,
+        final_receipt_path=None,
+        queue_status="needs_review",
+    )
+
+    with database.connect() as connection:
+        row = connection.execute(
+            "SELECT extraction_json, draft_json, raw_json "
+            "FROM review_queue WHERE job_id='job-source'"
+        ).fetchone()
+
+    assert json.loads(row["extraction_json"])["merchant"]["name"] == "REWE"
+    assert json.loads(row["draft_json"])["merchant"]["name"] == "REWE Markt"
+    assert json.loads(row["raw_json"])["merchant"]["name"] == "REWE Markt"
+
+
+def test_migration_11_backfills_existing_queue_json(tmp_path: Path) -> None:
+    database = ReceiptDatabase(tmp_path / "receipt.db")
+    receipt = _receipt("Legacy Queue")
+    database.upsert_review_queue(
+        job_id="job-backfill",
+        receipt=receipt,
+        decision="review",
+        balanced=True,
+        difference=0.0,
+        issue_count=1,
+        image_path=None,
+        final_receipt_path=None,
+        queue_status="needs_review",
+    )
+
+    with database.connect() as connection:
+        connection.execute(
+            "UPDATE review_queue "
+            "SET extraction_json=NULL, draft_json=NULL "
+            "WHERE job_id='job-backfill'"
+        )
+        connection.execute("DELETE FROM schema_migrations WHERE version=11")
+        connection.execute("UPDATE schema_meta SET value='10' WHERE key='schema_version'")
+        connection.commit()
+
+    database.migrations.migrate()
+
+    with database.connect() as connection:
+        row = connection.execute(
+            "SELECT extraction_json, draft_json, raw_json "
+            "FROM review_queue WHERE job_id='job-backfill'"
+        ).fetchone()
+
+    assert row["extraction_json"] == row["raw_json"]
+    assert row["draft_json"] == row["raw_json"]
 
 
 def test_review_revision_rejects_stale_expected_revision(tmp_path: Path) -> None:

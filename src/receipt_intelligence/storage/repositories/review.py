@@ -1,4 +1,4 @@
-"""Human-review queue, canonical review drafts, and review history persistence."""
+"""Human-review queue, immutable extraction snapshots, mutable drafts, and history."""
 
 from __future__ import annotations
 
@@ -198,7 +198,7 @@ class ReviewRepository(BaseRepository):
                 queue_status = "needs_review"
 
         now = utc_now()
-        raw_json = json.dumps(receipt, ensure_ascii=False, default=str)
+        receipt_json = json.dumps(receipt, ensure_ascii=False, default=str)
         human_review = (
             receipt.get("human_review") if isinstance(receipt.get("human_review"), dict) else {}
         )
@@ -212,9 +212,10 @@ class ReviewRepository(BaseRepository):
                     grand_total, item_count, file_sha256, content_fingerprint,
                     item_signature, image_path, final_receipt_path, duplicate_status,
                     duplicate_score, duplicate_candidates_json, raw_json,
+                    extraction_json, draft_json,
                     reviewer, review_notes, reviewed_at, review_reason_codes_json,
                     source_kind, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(job_id) DO UPDATE SET
                     queue_status=excluded.queue_status,
                     decision=excluded.decision,
@@ -236,6 +237,8 @@ class ReviewRepository(BaseRepository):
                     duplicate_score=excluded.duplicate_score,
                     duplicate_candidates_json=excluded.duplicate_candidates_json,
                     raw_json=excluded.raw_json,
+                    extraction_json=COALESCE(review_queue.extraction_json, excluded.extraction_json),
+                    draft_json=excluded.draft_json,
                     reviewer=COALESCE(excluded.reviewer, review_queue.reviewer),
                     review_notes=COALESCE(excluded.review_notes, review_queue.review_notes),
                     reviewed_at=COALESCE(excluded.reviewed_at, review_queue.reviewed_at),
@@ -264,7 +267,9 @@ class ReviewRepository(BaseRepository):
                     duplicate_status,
                     max_score,
                     json.dumps(duplicates, ensure_ascii=False, default=str),
-                    raw_json,
+                    receipt_json,
+                    receipt_json,
+                    receipt_json,
                     str(human_review.get("reviewer") or "") or None,
                     str(human_review.get("notes") or "") or None,
                     str(human_review.get("reviewed_at") or "") or None,
@@ -394,7 +399,7 @@ class ReviewRepository(BaseRepository):
                 UPDATE review_queue
                 SET review_revision=?, queue_status=?, receipt_db_id=COALESCE(?, receipt_db_id),
                     reviewer=?, review_notes=?, reviewed_at=?, review_reason_codes_json=?,
-                    source_kind='reviewed', raw_json=?, updated_at=?
+                    source_kind='reviewed', raw_json=?, draft_json=?, updated_at=?
                 WHERE job_id=? AND review_revision=?
                 """,
                 (
@@ -405,6 +410,7 @@ class ReviewRepository(BaseRepository):
                     notes,
                     now,
                     json.dumps(reason_codes, ensure_ascii=False),
+                    receipt_json,
                     receipt_json,
                     now,
                     str(job_id),
@@ -501,7 +507,7 @@ class ReviewRepository(BaseRepository):
     @staticmethod
     def _present_queue_row(item: dict[str, Any]) -> dict[str, Any]:
         item["duplicate_candidates"] = _json_list(item.get("duplicate_candidates_json"))
-        receipt = _json_object(item.get("raw_json"))
+        receipt = _json_object(item.get("draft_json") or item.get("raw_json"))
         core = receipt_core(receipt)
         validation = (
             receipt.get("validation") if isinstance(receipt.get("validation"), dict) else {}
