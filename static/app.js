@@ -436,6 +436,17 @@ function renderReceiptSummary(receipt) {
 }
 
 
+function reviewIssueFocusTarget(issue) {
+  const code = String(issue?.code || '').toUpperCase();
+  if (code.includes('MERCHANT')) return 'merchant_name';
+  if (code.includes('DATE')) return 'date';
+  if (code.includes('CATEGORY')) return 'category_key';
+  if (code.includes('VAT') || code.includes('TAX')) return 'tax_total';
+  if (code.includes('ITEM') || code.includes('LINE')) return 'items';
+  if (code.includes('TOTAL') || code.includes('BALANCE') || code.includes('SUM')) return 'grand_total';
+  return null;
+}
+
 function reviewIssueMarkup(validation) {
   const issues = Array.isArray(validation?.issues) ? validation.issues : [];
   if (!issues.length) {
@@ -443,9 +454,13 @@ function reviewIssueMarkup(validation) {
   }
   return `<div class="review-issue-list">${issues.map((issue) => {
     const severity = String(issue?.severity || 'medium').toLowerCase();
+    const focusTarget = reviewIssueFocusTarget(issue);
+    const focusButton = focusTarget
+      ? `<button type="button" class="review-issue-focus" data-review-focus="${escapeHtml(focusTarget)}">Show field</button>`
+      : '';
     return `<article class="review-issue review-issue-${escapeHtml(severity)}">
       <span>${escapeHtml(severity)}</span>
-      <div><strong>${escapeHtml(formatPlain(issue?.code || 'VALIDATION_ISSUE'))}</strong><p>${escapeHtml(formatPlain(issue?.message || issue?.detail || 'Review required.'))}</p></div>
+      <div><strong>${escapeHtml(formatPlain(issue?.code || 'VALIDATION_ISSUE'))}</strong><p>${escapeHtml(formatPlain(issue?.message || issue?.detail || 'Review required.'))}</p>${focusButton}</div>
     </article>`;
   }).join('')}</div>`;
 }
@@ -464,28 +479,28 @@ function reviewItemEditor(item, idx) {
   const categoryReviewRequired = Boolean(item.category_review_required);
   const categoryReason = firstDefined(item.category_reason, '');
   const semanticDescription = firstDefined(item.semantic_description, '');
+  const reviewStatus = item.review_status || 'needs_review';
   const itemId = escapeHtml(inputValue(item._db_item_id));
   const selectOptions = (values, current) => values.map((value) => `<option value="${value}" ${String(current).toLowerCase() === value ? 'selected' : ''}>${value}</option>`).join('');
-  return `<article class="review-item-card" data-review-item-row="${idx}" data-review-item-id="${itemId}">
-    <header class="review-item-card-header">
-      <span class="review-item-number">${idx + 1}</span>
-      <div class="field review-item-product"><label>Product / printed item</label><input data-review-item-index="${idx}" data-review-item-field="product_description" value="${escapeHtml(inputValue(productDescription))}" /></div>
-      <div class="field review-item-price"><label>Line total</label><input data-review-item-index="${idx}" data-review-item-field="line_total" type="number" step="0.01" value="${escapeHtml(inputValue(firstDefined(item.line_total, item.total, item.amount)))}" /></div>
-      <div class="field review-item-type"><label>Row type</label><select data-review-item-index="${idx}" data-review-item-field="parser_item_type">${selectOptions(['item', 'discount', 'deposit', 'refund', 'fee', 'tax', 'info', 'unknown'], parserType)}</select></div>
-    </header>
-    <div class="review-item-core-grid">
-      <div class="field"><label>Quantity</label><input data-review-item-index="${idx}" data-review-item-field="quantity" type="number" step="0.001" value="${escapeHtml(inputValue(item.quantity))}" /></div>
-      <div class="field"><label>Unit</label><input data-review-item-index="${idx}" data-review-item-field="unit" value="${escapeHtml(inputValue(item.unit))}" /></div>
-      <div class="field"><label>Unit price</label><input data-review-item-index="${idx}" data-review-item-field="unit_price" type="number" step="0.01" value="${escapeHtml(inputValue(item.unit_price))}" /></div>
-      <div class="field"><label>Category</label><input data-review-item-index="${idx}" data-review-item-field="category_key" placeholder="groceries" value="${escapeHtml(inputValue(productCategoryKey))}" /></div>
-      <div class="field"><label>Review state</label><select data-review-item-index="${idx}" data-review-item-field="review_status">${selectOptions(['approved', 'corrected', 'needs_review', 'rejected'], item.review_status || 'needs_review')}</select></div>
-    </div>
-    <details class="review-item-details">
-      <summary>More item details</summary>
+  return `<tr class="review-item-table-row ${String(reviewStatus).toLowerCase() === 'rejected' ? 'review-item-rejected' : ''}" data-review-item-row="${idx}" data-review-item-id="${itemId}">
+    <td class="review-item-index">${idx + 1}</td>
+    <td class="review-item-description"><input aria-label="Item ${idx + 1} description" data-review-item-index="${idx}" data-review-item-field="product_description" value="${escapeHtml(inputValue(productDescription))}" /></td>
+    <td><input aria-label="Item ${idx + 1} quantity" data-review-item-index="${idx}" data-review-item-field="quantity" type="number" step="0.001" value="${escapeHtml(inputValue(item.quantity))}" /></td>
+    <td><input aria-label="Item ${idx + 1} unit" data-review-item-index="${idx}" data-review-item-field="unit" value="${escapeHtml(inputValue(item.unit))}" /></td>
+    <td><input aria-label="Item ${idx + 1} unit price" data-review-item-index="${idx}" data-review-item-field="unit_price" type="number" step="0.01" value="${escapeHtml(inputValue(item.unit_price))}" /></td>
+    <td><input aria-label="Item ${idx + 1} line total" data-review-item-index="${idx}" data-review-item-field="line_total" type="number" step="0.01" value="${escapeHtml(inputValue(firstDefined(item.line_total, item.total, item.amount)))}" /></td>
+    <td><input aria-label="Item ${idx + 1} VAT rate" data-review-item-index="${idx}" data-review-item-field="vat_rate" value="${escapeHtml(inputValue(vatRate))}" /></td>
+    <td><select aria-label="Item ${idx + 1} review status" data-review-item-index="${idx}" data-review-item-field="review_status">${selectOptions(['approved', 'corrected', 'needs_review', 'rejected'], reviewStatus)}</select></td>
+    <td class="review-item-actions"><button type="button" class="review-table-action" data-review-item-details="${idx}" aria-expanded="false">Details</button><button type="button" class="review-table-action review-row-reject" data-review-item-reject="${idx}">${String(reviewStatus).toLowerCase() === 'rejected' ? 'Restore' : 'Reject'}</button></td>
+  </tr>
+  <tr class="review-item-detail-row" data-review-item-detail="${idx}" hidden>
+    <td colspan="9">
       <div class="review-item-detail-grid">
         <div class="field full-width"><label>Raw printed row</label><input data-review-item-index="${idx}" data-review-item-field="raw_description" value="${escapeHtml(inputValue(raw))}" /></div>
         <div class="field full-width"><label>Line note / promotion context</label><input data-review-item-index="${idx}" data-review-item-field="line_note" value="${escapeHtml(inputValue(lineNote))}" /></div>
         <div class="field"><label>Normalized item</label><input data-review-item-index="${idx}" data-review-item-field="normalized_name" value="${escapeHtml(inputValue(normalized))}" /></div>
+        <div class="field"><label>OCR row type</label><select data-review-item-index="${idx}" data-review-item-field="parser_item_type">${selectOptions(['item', 'discount', 'deposit', 'refund', 'fee', 'tax', 'info', 'unknown'], parserType)}</select></div>
+        <div class="field"><label>Product category</label><input data-review-item-index="${idx}" data-review-item-field="category_key" placeholder="groceries" value="${escapeHtml(inputValue(productCategoryKey))}" /></div>
         <div class="field"><label>Category group</label><input data-review-item-index="${idx}" data-review-item-field="category_group" value="${escapeHtml(inputValue(productCategoryGroup))}" /></div>
         <div class="field"><label>Category confidence</label><input data-review-item-index="${idx}" data-review-item-field="category_confidence" type="number" step="0.01" min="0" max="1" value="${escapeHtml(inputValue(categoryConfidence))}" /></div>
         <label class="checkline review-checkbox"><input data-review-item-index="${idx}" data-review-item-field="category_review_required" type="checkbox" ${categoryReviewRequired ? 'checked' : ''} /> Category requires review</label>
@@ -494,11 +509,10 @@ function reviewItemEditor(item, idx) {
         <div class="field"><label>Original price</label><input data-review-item-index="${idx}" data-review-item-field="original_price" type="number" step="0.01" value="${escapeHtml(inputValue(firstDefined(item.original_price, item.gross_unit_price, '')))}" /></div>
         <div class="field"><label>Discount amount</label><input data-review-item-index="${idx}" data-review-item-field="discount_amount" type="number" step="0.01" value="${escapeHtml(inputValue(item.discount_amount))}" /></div>
         <div class="field"><label>Tax code</label><input data-review-item-index="${idx}" data-review-item-field="tax_code" value="${escapeHtml(inputValue(item.tax_code))}" /></div>
-        <div class="field"><label>VAT rate</label><input data-review-item-index="${idx}" data-review-item-field="vat_rate" value="${escapeHtml(inputValue(vatRate))}" /></div>
         <div class="field"><label>OCR confidence</label><input data-review-item-index="${idx}" data-review-item-field="confidence" type="number" step="0.01" min="0" max="1" value="${escapeHtml(inputValue(extractionConfidence))}" /></div>
       </div>
-    </details>
-  </article>`;
+    </td>
+  </tr>`;
 }
 
 function renderHumanReview(receipt, artifacts = {}, options = {}) {
@@ -525,12 +539,12 @@ function renderHumanReview(receipt, artifacts = {}, options = {}) {
   const queueRevision = options.queueRecord?.review_revision ?? currentReviewIdentity?.review_revision ?? '—';
   const itemEditors = items.length
     ? items.map((item, idx) => reviewItemEditor(item, idx)).join('')
-    : '<div class="review-empty-items">No item rows were extracted. Header fields can still be corrected, but item-level analytics will have no evidence.</div>';
+    : '<tr><td colspan="9" class="review-empty-items">No item rows were extracted. Header fields can still be corrected, but item-level analytics will have no evidence.</td></tr>';
 
   humanReviewPanelEl.className = 'review-panel';
   humanReviewPanelEl.innerHTML = `
     <div class="review-source-notice ${editable ? '' : 'review-read-only-notice'}">
-      <div><strong>${options.source === 'database' ? 'Approved database receipt' : 'Canonical review draft'}</strong><span>${options.source === 'database' ? 'Changes commit to SQLite and selectively refresh semantic embeddings.' : 'Draft changes and every review revision are stored in SQLite.'}</span></div>
+      <div><strong>${options.source === 'database' ? 'Approved database receipt' : 'Review draft'}</strong><span>${options.source === 'database' ? 'Changes commit to SQLite and selectively refresh semantic embeddings.' : 'The extraction snapshot stays preserved while edits create versioned review-draft revisions.'}</span></div>
       <span class="badge neutral">revision ${escapeHtml(formatPlain(queueRevision))}</span>
     </div>
     <div class="review-layout">
@@ -568,9 +582,15 @@ function renderHumanReview(receipt, artifacts = {}, options = {}) {
           </div>
         </section>
 
-        <section class="review-form-section">
-          <div class="receipt-section-title"><h4>Items</h4><small>${items.length} extracted row(s)</small></div>
-          <div class="review-item-list">${itemEditors}</div>
+        <section class="review-form-section review-items-section" id="reviewItemsSection">
+          <div class="receipt-section-title"><h4>Items</h4><small>${items.length} extracted row(s) · edit directly in the table</small></div>
+          <div class="review-item-table-scroll">
+            <table class="review-item-table">
+              <thead><tr><th>#</th><th>Description</th><th>Qty</th><th>Unit</th><th>Unit price</th><th>Line total</th><th>VAT</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody>${itemEditors}</tbody>
+            </table>
+          </div>
+          <p class="review-table-help">Reject excludes a row from approval without deleting extraction evidence. Use Details for parser type, categories, semantic description, discounts, and confidence.</p>
         </section>
 
         <section class="review-form-section review-meta">
@@ -579,6 +599,11 @@ function renderHumanReview(receipt, artifacts = {}, options = {}) {
             <div class="field full-width"><label>Review notes</label><textarea id="reviewNotes" rows="3" placeholder="Corrections, uncertainty, or rejection reason">${escapeHtml(inputValue(persistedReview.notes))}</textarea></div>
           </div>
         </section>
+
+        <details class="review-technical-details">
+          <summary><span>Technical details</span><small>Current review document JSON</small></summary>
+          <pre>${escapeHtml(JSON.stringify(receipt, null, 2))}</pre>
+        </details>
       </div>
     </div>
     <div class="review-action-bar">
@@ -600,6 +625,61 @@ function renderHumanReview(receipt, artifacts = {}, options = {}) {
       ));
     }
   }
+
+  for (const button of humanReviewPanelEl.querySelectorAll('[data-review-item-details]')) {
+    button.addEventListener('click', () => {
+      const index = button.dataset.reviewItemDetails;
+      const details = humanReviewPanelEl.querySelector(`[data-review-item-detail="${index}"]`);
+      if (!details) return;
+      const expanded = details.hidden;
+      details.hidden = !expanded;
+      button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+      button.textContent = expanded ? 'Hide' : 'Details';
+    });
+  }
+
+  for (const button of humanReviewPanelEl.querySelectorAll('[data-review-item-reject]')) {
+    button.disabled = !editable;
+    if (!editable) continue;
+    button.addEventListener('click', () => {
+      const index = button.dataset.reviewItemReject;
+      const row = humanReviewPanelEl.querySelector(`[data-review-item-row="${index}"]`);
+      const status = humanReviewPanelEl.querySelector(`[data-review-item-index="${index}"][data-review-item-field="review_status"]`);
+      if (!status) return;
+      const rejecting = status.value !== 'rejected';
+      status.value = rejecting ? 'rejected' : 'needs_review';
+      status.dispatchEvent(new Event('change', { bubbles: true }));
+      row?.classList.toggle('review-item-rejected', rejecting);
+      button.textContent = rejecting ? 'Restore' : 'Reject';
+    });
+  }
+
+  for (const button of humanReviewPanelEl.querySelectorAll('[data-review-focus]')) {
+    button.addEventListener('click', () => {
+      const target = button.dataset.reviewFocus;
+      let control = null;
+      if (target === 'items') control = humanReviewPanelEl.querySelector('#reviewItemsSection');
+      else if (target === 'category_key') control = humanReviewPanelEl.querySelector('[data-review-item-field="category_key"]');
+      else control = humanReviewPanelEl.querySelector(`[data-review-field="${target}"]`);
+      if (!control) return;
+      control.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (typeof control.focus === 'function') control.focus({ preventScroll: true });
+      control.classList.add('review-focus-target');
+      window.setTimeout(() => control.classList.remove('review-focus-target'), 1400);
+    });
+  }
+
+  for (const control of humanReviewPanelEl.querySelectorAll('[data-review-field], [data-review-item-field], #reviewerName, #reviewNotes')) {
+    const markDirty = () => {
+      control.classList.add('review-control-dirty');
+      control.closest('[data-review-item-row]')?.classList.add('review-row-dirty');
+      const message = document.getElementById('humanReviewMessage');
+      if (message && editable) message.textContent = 'Unsaved review changes.';
+    };
+    control.addEventListener('input', markDirty);
+    control.addEventListener('change', markDirty);
+  }
+
   if (!editable) {
     for (const control of humanReviewPanelEl.querySelectorAll('input, select, textarea')) control.disabled = true;
     const message = document.getElementById('humanReviewMessage');
