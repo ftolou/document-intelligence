@@ -20,4 +20,3 @@ paddleocr>=3.0.0,<4.0.0
 # RAG-SQL graph orchestration and typed validation.
 langgraph==1.2.7
 pydantic>=2.7,<3
-pytest>=8.2,<10

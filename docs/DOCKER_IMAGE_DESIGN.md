@@ -14,6 +14,9 @@ paddle-gemma-receipt-app:latest
 Paddle text detection runs inside the application container. Qwen, Gemma, and embedding models run
 through Ollama on the host. There is no standalone VLM image or service.
 
+The production runtime installs only `requirements/app.txt`. Pytest, Ruff, mypy, coverage and
+pre-commit remain development dependencies and are installed only in local/CI test environments.
+
 Build dependencies only when `requirements/app.txt` or the runtime Dockerfile changes:
 
 ```powershell
