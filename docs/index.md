@@ -1,5 +1,10 @@
 # Documentation index
 
+## Project story
+
+- [Engineering evolution](ENGINEERING_EVOLUTION.md)
+- [Screenshot guide](SCREENSHOT_GUIDE.md)
+
 ## Current architecture and operation
 
 - [Architecture](ARCHITECTURE.md)

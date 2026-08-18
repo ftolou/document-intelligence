@@ -6,9 +6,6 @@ from pathlib import Path
 import pytest
 
 from receipt_intelligence.extraction import ExtractionConfig, ExtractionRequest
-from receipt_intelligence.pipeline.integrated_receipt_pipeline import (
-    run_integrated_receipt_pipeline,
-)
 
 
 def required_values(tmp_path: Path) -> dict[str, object]:
@@ -31,7 +28,7 @@ def test_extraction_request_is_an_immutable_image_first_contract(tmp_path: Path)
         request.model = "other"  # type: ignore[misc]
 
 
-def test_legacy_runtime_fields_are_absent() -> None:
+def test_removed_runtime_fields_are_absent() -> None:
     field_names = {field.name for field in fields(ExtractionRequest)}
 
     assert "ocr_json_path" not in field_names
@@ -42,18 +39,3 @@ def test_legacy_runtime_fields_are_absent() -> None:
 def test_max_crops_is_validated(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="max_crops"):
         ExtractionRequest(**required_values(tmp_path), max_crops=0)
-
-
-def test_compatibility_wrapper_rejects_unknown_keywords(tmp_path: Path) -> None:
-    with pytest.raises(TypeError, match="typoed_option"):
-        run_integrated_receipt_pipeline(
-            **required_values(tmp_path),
-            typoed_option=True,
-        )
-
-
-def test_compatibility_wrapper_requires_an_image(tmp_path: Path) -> None:
-    values = required_values(tmp_path)
-    values.pop("source_image_path")
-    with pytest.raises(TypeError, match="source_image_path"):
-        run_integrated_receipt_pipeline(**values)
