@@ -7,11 +7,11 @@ part of these models.
 
 from __future__ import annotations
 
-import math
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
+from receipt_intelligence.application.ports.embeddings import EmbeddingBatchResult
 from receipt_intelligence.application.ports.llm import ModelCallMetrics
 
 
@@ -19,51 +19,6 @@ class StrictModel(BaseModel):
     """Base model that rejects unexpected data at integration boundaries."""
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
-
-
-class EmbeddingBatchResult(StrictModel):
-    """Validated batch returned by an embedding provider.
-
-    All vectors in one batch must have the same dimension and contain only
-    finite numbers. Empty batches are represented with ``dimension == 0``.
-    """
-
-    model: str = Field(min_length=1, max_length=200)
-    vectors: list[list[float]] = Field(default_factory=list)
-    dimension: int = Field(ge=0)
-    total_duration_ns: int | None = Field(default=None, ge=0)
-    load_duration_ns: int | None = Field(default=None, ge=0)
-    prompt_eval_count: int | None = Field(default=None, ge=0)
-    prompt_eval_duration_ns: int | None = Field(default=None, ge=0)
-    ollama_calls: list[ModelCallMetrics] = Field(default_factory=list, max_length=20)
-
-    @model_validator(mode="after")
-    def validate_vectors(self) -> Self:
-        if not self.vectors:
-            if self.dimension != 0:
-                raise ValueError("An empty embedding batch must have dimension=0.")
-            return self
-
-        if self.dimension <= 0:
-            raise ValueError("A non-empty embedding batch requires a positive dimension.")
-
-        for index, vector in enumerate(self.vectors):
-            if len(vector) != self.dimension:
-                raise ValueError(
-                    f"Embedding {index} has dimension {len(vector)}, expected {self.dimension}."
-                )
-            if not all(math.isfinite(value) for value in vector):
-                raise ValueError(f"Embedding {index} contains a non-finite value.")
-
-        return self
-
-    @property
-    def count(self) -> int:
-        return len(self.vectors)
-
-    @classmethod
-    def empty(cls, *, model: str) -> EmbeddingBatchResult:
-        return cls(model=model, vectors=[], dimension=0)
 
 
 class ItemEmbeddingDocument(StrictModel):
@@ -151,12 +106,22 @@ class SemanticItemSearchResult(StrictModel):
     rrf_k: int = Field(default=60, ge=1)
     vector_weight: float = Field(default=1.0, ge=0.0)
     lexical_weight: float = Field(default=1.5, ge=0.0)
-    ollama_calls: list[ModelCallMetrics] = Field(default_factory=list, max_length=20)
+    model_calls: list[ModelCallMetrics] = Field(
+        default_factory=list,
+        max_length=20,
+        validation_alias=AliasChoices("model_calls", "ollama_calls"),
+    )
     matches: list[SemanticItemMatch] = Field(default_factory=list)
 
     @property
     def returned_count(self) -> int:
         return len(self.matches)
+
+    @property
+    def ollama_calls(self) -> list[ModelCallMetrics]:
+        """Compatibility alias for callers using the pre-gateway field name."""
+
+        return self.model_calls
 
 
 class RetrievalEvaluationCase(StrictModel):

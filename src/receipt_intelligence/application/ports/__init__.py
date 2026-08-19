@@ -14,6 +14,12 @@ if TYPE_CHECKING:
         ArtifactReference,
         ArtifactStore,
     )
+    from receipt_intelligence.application.ports.embeddings import (
+        CloseableEmbeddingGateway,
+        EmbeddingBatchResult,
+        EmbeddingGateway,
+        EmbeddingProviderError,
+    )
     from receipt_intelligence.application.ports.events import (
         ApplicationEvent,
         EventSink,
@@ -65,6 +71,10 @@ if TYPE_CHECKING:
         ArtifactKind,
         ArtifactReference,
         ArtifactStore,
+        CloseableEmbeddingGateway,
+        EmbeddingBatchResult,
+        EmbeddingGateway,
+        EmbeddingProviderError,
         ApplicationEvent,
         EventSink,
         NullEventSink,
@@ -103,6 +113,10 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "ArtifactKind": ("artifacts", "ArtifactKind"),
     "ArtifactReference": ("artifacts", "ArtifactReference"),
     "ArtifactStore": ("artifacts", "ArtifactStore"),
+    "CloseableEmbeddingGateway": ("embeddings", "CloseableEmbeddingGateway"),
+    "EmbeddingBatchResult": ("embeddings", "EmbeddingBatchResult"),
+    "EmbeddingGateway": ("embeddings", "EmbeddingGateway"),
+    "EmbeddingProviderError": ("embeddings", "EmbeddingProviderError"),
     "ApplicationEvent": ("events", "ApplicationEvent"),
     "EventSink": ("events", "EventSink"),
     "NullEventSink": ("events", "NullEventSink"),

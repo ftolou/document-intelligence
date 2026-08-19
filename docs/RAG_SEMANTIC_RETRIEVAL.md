@@ -34,6 +34,25 @@ values and are excluded from dense semantic similarity. Product-name lexical sco
 separate and retains higher default RRF weight, so exact product names are not replaced by broad
 category similarity.
 
+## Embedding provider boundary
+
+Semantic indexing and retrieval depend on the provider-neutral `EmbeddingGateway` application
+port. Provider adapters translate their native APIs into the same validated `EmbeddingBatchResult`
+contract. The core currently provides adapters for Ollama and the OpenAI embeddings API.
+
+The local reference application keeps Ollama as its default composition. Other deployments can
+inject a different gateway without changing item-document construction, indexing, hybrid scoring,
+or candidate resolution. Provider credentials and deployment-specific provider selection therefore
+stay outside the RAG algorithms.
+
+A single semantic index must use one compatible embedding model and vector dimension. Stored item
+vectors and query vectors must be generated with the same model policy. Changing the active model
+or output dimension requires rebuilding the derived embedding index; it does not change the
+approved receipt data that remains the source of truth.
+
+Provider request diagnostics are exposed through `model_calls`. The previous `ollama_calls` Python
+attribute remains available as a compatibility alias for existing callers.
+
 ## Reviewed semantic evidence
 
 `category_reason` is treated as a reviewed semantic description after receipt approval. It should

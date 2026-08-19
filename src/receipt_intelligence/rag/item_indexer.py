@@ -4,14 +4,16 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from datetime import UTC, datetime
-from typing import Protocol
 
+from receipt_intelligence.application.ports.embeddings import (
+    EmbeddingBatchResult,
+    EmbeddingGateway,
+)
 from receipt_intelligence.rag.item_documents import (
     UnindexableItemDescriptionError,
     build_item_embedding_document,
 )
 from receipt_intelligence.rag.models import (
-    EmbeddingBatchResult,
     ItemEmbeddingDocument,
     ItemEmbeddingIndexReport,
 )
@@ -21,13 +23,11 @@ from receipt_intelligence.rag.ports import (
     StoredItemEmbedding,
 )
 
+
+# Backwards-compatible type alias; new code should depend on EmbeddingGateway.
+EmbeddingClient = EmbeddingGateway
+
 _DEFAULT_INDEX_NAME = "approved_purchase_items"
-
-
-class EmbeddingClient(Protocol):
-    model: str
-
-    def embed(self, texts: list[str]) -> EmbeddingBatchResult: ...
 
 
 class ItemEmbeddingIndexer:
@@ -42,7 +42,7 @@ class ItemEmbeddingIndexer:
         self,
         *,
         repository: SemanticIndexRepository,
-        embedding_client: EmbeddingClient,
+        embedding_client: EmbeddingGateway,
         batch_size: int = 32,
         index_name: str = _DEFAULT_INDEX_NAME,
         approved_only: bool = True,
