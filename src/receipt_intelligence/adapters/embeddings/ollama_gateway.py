@@ -77,7 +77,9 @@ class OllamaEmbeddingGateway:
             try:
                 response_payload = response.json()
             except (TypeError, ValueError) as exc:
-                raise EmbeddingProviderError("Ollama returned invalid JSON for /api/embed.") from exc
+                raise EmbeddingProviderError(
+                    "Ollama returned invalid JSON for /api/embed."
+                ) from exc
 
         if not isinstance(response_payload, dict):
             raise EmbeddingProviderError("Ollama embedding response must be a JSON object.")

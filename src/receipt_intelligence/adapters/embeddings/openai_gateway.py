@@ -91,7 +91,9 @@ class OpenAIEmbeddingGateway:
             try:
                 response_payload = response.json()
             except (TypeError, ValueError) as exc:
-                raise EmbeddingProviderError("OpenAI returned invalid JSON for /embeddings.") from exc
+                raise EmbeddingProviderError(
+                    "OpenAI returned invalid JSON for /embeddings."
+                ) from exc
 
         if not isinstance(response_payload, dict):
             raise EmbeddingProviderError("OpenAI embedding response must be a JSON object.")
@@ -160,9 +162,13 @@ class OpenAIEmbeddingGateway:
             index = entry.get("index")
             vector = entry.get("embedding")
             if isinstance(index, bool) or not isinstance(index, int):
-                raise EmbeddingProviderError("Each OpenAI embedding entry requires an integer index.")
+                raise EmbeddingProviderError(
+                    "Each OpenAI embedding entry requires an integer index."
+                )
             if index < 0 or index >= expected:
-                raise EmbeddingProviderError(f"OpenAI returned out-of-range embedding index {index}.")
+                raise EmbeddingProviderError(
+                    f"OpenAI returned out-of-range embedding index {index}."
+                )
             if ordered[index] is not None:
                 raise EmbeddingProviderError(f"OpenAI returned duplicate embedding index {index}.")
             if not isinstance(vector, list):

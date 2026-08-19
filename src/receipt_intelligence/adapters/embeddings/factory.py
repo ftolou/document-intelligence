@@ -52,7 +52,9 @@ def build_embedding_gateway(config: EmbeddingProviderConfig) -> CloseableEmbeddi
         if not config.base_url:
             raise ValueError("Ollama embeddings require base_url.")
         if config.dimensions is not None:
-            raise ValueError("Explicit embedding dimensions are not supported by the Ollama adapter.")
+            raise ValueError(
+                "Explicit embedding dimensions are not supported by the Ollama adapter."
+            )
         return OllamaEmbeddingGateway(
             base_url=config.base_url,
             model=config.model,
