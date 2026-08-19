@@ -11,7 +11,9 @@ from typing import Self
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
-from receipt_intelligence.application.ports.embeddings import EmbeddingBatchResult
+from receipt_intelligence.application.ports.embeddings import (
+    EmbeddingBatchResult as EmbeddingBatchResult,
+)
 from receipt_intelligence.application.ports.llm import ModelCallMetrics
 
 

@@ -23,7 +23,6 @@ from receipt_intelligence.rag.ports import (
     StoredItemEmbedding,
 )
 
-
 # Backwards-compatible type alias; new code should depend on EmbeddingGateway.
 EmbeddingClient = EmbeddingGateway
 

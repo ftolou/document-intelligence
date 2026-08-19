@@ -23,7 +23,6 @@ from receipt_intelligence.rag.models import (
 )
 from receipt_intelligence.rag.ports import SemanticSearchCandidate, SemanticSearchRepository
 
-
 # Backwards-compatible type alias; new code should depend on EmbeddingGateway.
 EmbeddingClient = EmbeddingGateway
 
