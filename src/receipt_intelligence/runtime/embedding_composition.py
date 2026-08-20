@@ -41,9 +41,7 @@ def build_embedding_provider_config_from_settings(
         api_key=settings_source.OPENAI_API_KEY if provider == "openai" else None,
         dimensions=settings_source.RAG_EMBEDDING_DIMENSIONS,
         timeout_seconds=settings_source.RAG_EMBEDDING_TIMEOUT_SECONDS,
-        keep_alive=(
-            settings_source.RAG_EMBEDDING_KEEP_ALIVE if provider == "ollama" else None
-        ),
+        keep_alive=(settings_source.RAG_EMBEDDING_KEEP_ALIVE if provider == "ollama" else None),
     )
 
 
@@ -52,9 +50,7 @@ def build_embedding_gateway_from_settings(
 ) -> CloseableEmbeddingGateway:
     """Build the configured embedding adapter for the current runtime."""
 
-    return build_embedding_gateway(
-        build_embedding_provider_config_from_settings(settings_source)
-    )
+    return build_embedding_gateway(build_embedding_provider_config_from_settings(settings_source))
 
 
 __all__ = [

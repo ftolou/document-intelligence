@@ -61,20 +61,15 @@ RAG_EMBEDDING_ENABLED = os.getenv("RAG_EMBEDDING_ENABLED", "1").lower() in {
 }
 RAG_EMBEDDING_PROVIDER = os.getenv("RAG_EMBEDDING_PROVIDER", "ollama").strip().lower()
 _default_rag_embedding_model = (
-    "text-embedding-3-small"
-    if RAG_EMBEDDING_PROVIDER == "openai"
-    else "embeddinggemma:latest"
+    "text-embedding-3-small" if RAG_EMBEDDING_PROVIDER == "openai" else "embeddinggemma:latest"
 )
 RAG_EMBEDDING_MODEL = os.getenv("RAG_EMBEDDING_MODEL", _default_rag_embedding_model).strip()
 _rag_embedding_base_url = os.getenv("RAG_EMBEDDING_BASE_URL", "").strip()
-RAG_EMBEDDING_BASE_URL = (
-    _rag_embedding_base_url
-    or (OLLAMA_URL if RAG_EMBEDDING_PROVIDER == "ollama" else None)
+RAG_EMBEDDING_BASE_URL = _rag_embedding_base_url or (
+    OLLAMA_URL if RAG_EMBEDDING_PROVIDER == "ollama" else None
 )
 _rag_embedding_dimensions = os.getenv("RAG_EMBEDDING_DIMENSIONS", "").strip()
-RAG_EMBEDDING_DIMENSIONS = (
-    int(_rag_embedding_dimensions) if _rag_embedding_dimensions else None
-)
+RAG_EMBEDDING_DIMENSIONS = int(_rag_embedding_dimensions) if _rag_embedding_dimensions else None
 RAG_EMBEDDING_BATCH_SIZE = int(os.getenv("RAG_EMBEDDING_BATCH_SIZE", "32"))
 RAG_EMBEDDING_TIMEOUT_SECONDS = float(os.getenv("RAG_EMBEDDING_TIMEOUT_SECONDS", "120"))
 RAG_EMBEDDING_KEEP_ALIVE = os.getenv("RAG_EMBEDDING_KEEP_ALIVE", "30m")
