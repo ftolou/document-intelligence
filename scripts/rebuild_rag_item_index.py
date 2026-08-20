@@ -13,10 +13,13 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from receipt_intelligence import settings  # noqa: E402
+from receipt_intelligence.adapters.embeddings import (  # noqa: E402
+    EmbeddingProviderConfig,
+    build_embedding_gateway,
+)
 from receipt_intelligence.adapters.storage.sqlite.semantic_index import (  # noqa: E402
     SQLiteSemanticIndexRepository,
 )
-from receipt_intelligence.rag.embedding_client import OllamaEmbeddingClient  # noqa: E402
 from receipt_intelligence.rag.item_indexer import ItemEmbeddingIndexer  # noqa: E402
 from receipt_intelligence.storage.bootstrap import initialize_database  # noqa: E402
 
@@ -24,8 +27,23 @@ from receipt_intelligence.storage.bootstrap import initialize_database  # noqa: 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", type=Path, default=settings.RECEIPT_DB_PATH)
+    parser.add_argument(
+        "--provider",
+        choices=("ollama", "openai"),
+        default=settings.RAG_EMBEDDING_PROVIDER,
+    )
     parser.add_argument("--model", default=settings.RAG_EMBEDDING_MODEL)
-    parser.add_argument("--ollama-url", default=settings.OLLAMA_URL)
+    parser.add_argument(
+        "--base-url",
+        "--ollama-url",
+        dest="base_url",
+        default=settings.RAG_EMBEDDING_BASE_URL,
+    )
+    parser.add_argument(
+        "--dimensions",
+        type=int,
+        default=settings.RAG_EMBEDDING_DIMENSIONS,
+    )
     parser.add_argument("--batch-size", type=int, default=settings.RAG_EMBEDDING_BATCH_SIZE)
     parser.add_argument(
         "--timeout-seconds",
@@ -45,12 +63,16 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = build_parser().parse_args()
     initialize_database(args.db)
-    with OllamaEmbeddingClient(
-        base_url=args.ollama_url,
+    config = EmbeddingProviderConfig(
+        provider=args.provider,
         model=args.model,
+        base_url=args.base_url or None,
+        api_key=settings.OPENAI_API_KEY if args.provider == "openai" else None,
+        dimensions=args.dimensions,
         timeout_seconds=args.timeout_seconds,
-        keep_alive=args.keep_alive or None,
-    ) as client:
+        keep_alive=args.keep_alive if args.provider == "ollama" else None,
+    )
+    with build_embedding_gateway(config) as client:
         report = ItemEmbeddingIndexer(
             repository=SQLiteSemanticIndexRepository(args.db),
             embedding_client=client,

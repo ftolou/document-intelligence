@@ -9,8 +9,10 @@ import receipt_intelligence.settings as settings
 from receipt_intelligence.adapters.storage.sqlite.semantic_index import (
     SQLiteSemanticIndexRepository,
 )
-from receipt_intelligence.rag.embedding_client import OllamaEmbeddingClient
 from receipt_intelligence.rag.item_indexer import ItemEmbeddingIndexer
+from receipt_intelligence.runtime.embedding_composition import (
+    build_embedding_gateway_from_settings,
+)
 from receipt_intelligence.storage.receipt_db import ReceiptDatabase
 
 ReindexCallback = Callable[[list[int]], dict[str, Any]]
@@ -60,12 +62,7 @@ class SemanticIndexUpdater:
             }
 
         try:
-            with OllamaEmbeddingClient(
-                base_url=settings.OLLAMA_URL,
-                model=settings.RAG_EMBEDDING_MODEL,
-                timeout_seconds=settings.RAG_EMBEDDING_TIMEOUT_SECONDS,
-                keep_alive=settings.RAG_EMBEDDING_KEEP_ALIVE,
-            ) as embedding_client:
+            with build_embedding_gateway_from_settings(settings) as embedding_client:
                 report = ItemEmbeddingIndexer(
                     repository=SQLiteSemanticIndexRepository(self.receipt_db.db_path),
                     embedding_client=embedding_client,

@@ -41,17 +41,49 @@ port. Provider adapters translate their native APIs into the same validated `Emb
 contract. The core currently provides adapters for Ollama and the OpenAI embeddings API.
 
 The local reference application keeps Ollama as its default composition. Other deployments can
-inject a different gateway without changing item-document construction, indexing, hybrid scoring,
-or candidate resolution. Provider credentials and deployment-specific provider selection therefore
-stay outside the RAG algorithms.
+select a different gateway without changing item-document construction, indexing, hybrid scoring,
+or candidate resolution. The selected provider is used consistently for index creation,
+post-review reindexing, manual semantic search, and Ask Receipts query embeddings.
 
 A single semantic index must use one compatible embedding model and vector dimension. Stored item
-vectors and query vectors must be generated with the same model policy. Changing the active model
-or output dimension requires rebuilding the derived embedding index; it does not change the
-approved receipt data that remains the source of truth.
+vectors and query vectors must be generated with the same model policy. Changing the active model,
+provider, or output dimension requires rebuilding the derived embedding index; it does not change
+the approved receipt data that remains the source of truth.
+
+Provider credentials and deployment-specific provider selection stay outside the RAG algorithms.
+`OPENAI_API_KEY` is read from the runtime environment when the OpenAI embedding provider is active
+and is not stored in the semantic index.
 
 Provider request diagnostics are exposed through `model_calls`. The previous `ollama_calls` Python
 attribute remains available as a compatibility alias for existing callers.
+
+### Local Ollama configuration
+
+```env
+RAG_EMBEDDING_PROVIDER=ollama
+RAG_EMBEDDING_MODEL=embeddinggemma:latest
+RAG_EMBEDDING_BASE_URL=
+RAG_EMBEDDING_DIMENSIONS=
+```
+
+A blank `RAG_EMBEDDING_BASE_URL` uses `OLLAMA_URL`.
+
+### OpenAI configuration
+
+```env
+RAG_EMBEDDING_PROVIDER=openai
+RAG_EMBEDDING_MODEL=text-embedding-3-small
+RAG_EMBEDDING_BASE_URL=
+RAG_EMBEDDING_DIMENSIONS=
+OPENAI_API_KEY=<set locally>
+```
+
+A blank OpenAI base URL uses the official OpenAI API endpoint. A blank dimensions setting uses the
+embedding model's default output dimension. If an explicit dimension is configured, the same value
+must be used for both stored item vectors and query vectors.
+
+After changing provider, model, or dimension, rebuild the semantic index before relying on semantic
+retrieval.
 
 ## Reviewed semantic evidence
 
@@ -81,8 +113,13 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml exec receipt-app 
   python /app/scripts/rebuild_rag_item_index.py
 ```
 
-`--force` is not required. The incremental indexer detects the policy/hash change and re-embeds all
-eligible approved items once.
+`--force` is not required for document-policy changes. When changing embedding provider, model, or
+dimension, use `--force` so every eligible item is regenerated in the new vector space:
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.dev.yml exec receipt-app `
+  python /app/scripts/rebuild_rag_item_index.py --force
+```
 
 ## Selective updates after review
 
