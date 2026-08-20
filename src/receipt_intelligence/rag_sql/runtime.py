@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
+from receipt_intelligence.adapters.embeddings import (
+    EmbeddingProviderConfig,
+    build_embedding_gateway,
+)
 from receipt_intelligence.adapters.llm import ObservedLlmGateway, OllamaGateway
 from receipt_intelligence.adapters.storage.sqlite.analytical_query import (
     SQLiteAnalyticalQueryRepository,
@@ -19,7 +23,6 @@ from receipt_intelligence.adapters.storage.sqlite.semantic_search import (
 )
 from receipt_intelligence.application.ports.events import EventSink
 from receipt_intelligence.rag.candidate_resolver import CandidateResolver, CandidateResolverConfig
-from receipt_intelligence.rag.embedding_client import OllamaEmbeddingClient
 from receipt_intelligence.rag.item_retriever import EmbeddingClient, ItemSemanticRetriever
 from receipt_intelligence.rag_sql.answer_formatter import (
     AnswerFormatterConfig,
@@ -39,6 +42,9 @@ from receipt_intelligence.rag_sql.question_analyzer import (
     RagSqlQuestionAnalyzer,
 )
 from receipt_intelligence.rag_sql.validator import RagSqlValidator, SqlValidatorConfig
+from receipt_intelligence.runtime.embedding_composition import (
+    build_embedding_provider_config_from_settings,
+)
 
 
 class RagSqlExecutor(Protocol):
@@ -56,7 +62,11 @@ RagSqlEngineFactory = Callable[["RagSqlRuntimeConfig", EmbeddingClient], RagSqlE
 class RagSqlRuntimeConfig:
     database_path: Path
     ollama_url: str
+    embedding_provider: str
     embedding_model: str
+    embedding_base_url: str | None
+    embedding_api_key: str | None = field(repr=False)
+    embedding_dimensions: int | None
     embedding_timeout_seconds: float
     embedding_keep_alive: str | None
     analyzer: QuestionAnalyzerConfig
@@ -114,11 +124,16 @@ class RagSqlRuntime:
             self._engine = engine
             return
 
-        resolved_embedding_client = embedding_client or OllamaEmbeddingClient(
-            base_url=config.ollama_url,
-            model=config.embedding_model,
-            timeout_seconds=config.embedding_timeout_seconds,
-            keep_alive=config.embedding_keep_alive,
+        resolved_embedding_client = embedding_client or build_embedding_gateway(
+            EmbeddingProviderConfig(
+                provider=config.embedding_provider,
+                model=config.embedding_model,
+                base_url=config.embedding_base_url,
+                api_key=config.embedding_api_key,
+                dimensions=config.embedding_dimensions,
+                timeout_seconds=config.embedding_timeout_seconds,
+                keep_alive=config.embedding_keep_alive,
+            )
         )
         if embedding_client is None and hasattr(resolved_embedding_client, "close"):
             self._owned_resources.append(resolved_embedding_client)  # type: ignore[arg-type]
@@ -223,6 +238,8 @@ def build_rag_sql_runtime_config_from_settings() -> RagSqlRuntimeConfig:
 
     from receipt_intelligence import settings
 
+    embedding_config = build_embedding_provider_config_from_settings(settings)
+
     # Ollama may recreate a loaded model whenever ``num_ctx`` changes. One
     # provider-side configuration lets all RAG-SQL LLM stages reuse the same
     # resident runner.
@@ -236,9 +253,13 @@ def build_rag_sql_runtime_config_from_settings() -> RagSqlRuntimeConfig:
     return RagSqlRuntimeConfig(
         database_path=settings.RECEIPT_DB_PATH,
         ollama_url=settings.OLLAMA_URL,
-        embedding_model=settings.RAG_EMBEDDING_MODEL,
-        embedding_timeout_seconds=settings.RAG_EMBEDDING_TIMEOUT_SECONDS,
-        embedding_keep_alive=settings.RAG_EMBEDDING_KEEP_ALIVE or None,
+        embedding_provider=embedding_config.provider,
+        embedding_model=embedding_config.model,
+        embedding_base_url=embedding_config.base_url,
+        embedding_api_key=embedding_config.api_key,
+        embedding_dimensions=embedding_config.dimensions,
+        embedding_timeout_seconds=embedding_config.timeout_seconds,
+        embedding_keep_alive=embedding_config.keep_alive,
         analyzer=QuestionAnalyzerConfig(
             enabled=settings.RAG_SQL_ENABLED,
             ollama_url=settings.OLLAMA_URL,

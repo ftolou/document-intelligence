@@ -42,6 +42,7 @@ LLM_JSON_RETRY_COUNT = int(os.getenv("LLM_JSON_RETRY_COUNT", "1"))
 OLLAMA_FORMAT_JSON = os.getenv("OLLAMA_FORMAT_JSON", "1").lower() in {"1", "true", "yes"}
 
 EXTRACTION_BACKEND = os.getenv("EXTRACTION_BACKEND", "local_specialized").strip().lower()
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 OPENAI_RECEIPT_MODEL = os.getenv("OPENAI_RECEIPT_MODEL", "gpt-5.6-luna").strip()
 OPENAI_RECEIPT_REASONING_EFFORT = (
     os.getenv("OPENAI_RECEIPT_REASONING_EFFORT", "medium").strip().lower()
@@ -58,7 +59,17 @@ RAG_EMBEDDING_ENABLED = os.getenv("RAG_EMBEDDING_ENABLED", "1").lower() in {
     "yes",
     "on",
 }
-RAG_EMBEDDING_MODEL = os.getenv("RAG_EMBEDDING_MODEL", "embeddinggemma:latest")
+RAG_EMBEDDING_PROVIDER = os.getenv("RAG_EMBEDDING_PROVIDER", "ollama").strip().lower()
+_default_rag_embedding_model = (
+    "text-embedding-3-small" if RAG_EMBEDDING_PROVIDER == "openai" else "embeddinggemma:latest"
+)
+RAG_EMBEDDING_MODEL = os.getenv("RAG_EMBEDDING_MODEL", _default_rag_embedding_model).strip()
+_rag_embedding_base_url = os.getenv("RAG_EMBEDDING_BASE_URL", "").strip()
+RAG_EMBEDDING_BASE_URL = _rag_embedding_base_url or (
+    OLLAMA_URL if RAG_EMBEDDING_PROVIDER == "ollama" else None
+)
+_rag_embedding_dimensions = os.getenv("RAG_EMBEDDING_DIMENSIONS", "").strip()
+RAG_EMBEDDING_DIMENSIONS = int(_rag_embedding_dimensions) if _rag_embedding_dimensions else None
 RAG_EMBEDDING_BATCH_SIZE = int(os.getenv("RAG_EMBEDDING_BATCH_SIZE", "32"))
 RAG_EMBEDDING_TIMEOUT_SECONDS = float(os.getenv("RAG_EMBEDDING_TIMEOUT_SECONDS", "120"))
 RAG_EMBEDDING_KEEP_ALIVE = os.getenv("RAG_EMBEDDING_KEEP_ALIVE", "30m")

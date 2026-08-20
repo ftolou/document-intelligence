@@ -53,19 +53,27 @@ def test_runtime_composes_once_and_reuses_engine(
     config = _config(monkeypatch, tmp_path)
     embedding_client = _FakeEmbeddingClient()
     engine = _FakeEngine()
+    embedding_configs: list[object] = []
     factory_calls: list[object] = []
 
-    monkeypatch.setattr(
-        runtime_module,
-        "OllamaEmbeddingClient",
-        lambda **_kwargs: embedding_client,
-    )
+    def embedding_factory(received_config):
+        embedding_configs.append(received_config)
+        return embedding_client
+
+    monkeypatch.setattr(runtime_module, "build_embedding_gateway", embedding_factory)
 
     def engine_factory(received_config, received_embedding):
         factory_calls.append((received_config, received_embedding))
         return engine
 
     runtime = RagSqlRuntime(config, engine_factory=engine_factory)
+
+    assert len(embedding_configs) == 1
+    embedding_config = embedding_configs[0]
+    assert embedding_config.provider == config.embedding_provider
+    assert embedding_config.model == config.embedding_model
+    assert embedding_config.base_url == config.embedding_base_url
+    assert embedding_config.dimensions == config.embedding_dimensions
 
     assert len(factory_calls) == 1
     assert runtime.execute("first").answer == "ok"
@@ -91,8 +99,8 @@ def test_runtime_closes_owned_client_when_engine_composition_fails(
     embedding_client = _FakeEmbeddingClient()
     monkeypatch.setattr(
         runtime_module,
-        "OllamaEmbeddingClient",
-        lambda **_kwargs: embedding_client,
+        "build_embedding_gateway",
+        lambda _config: embedding_client,
     )
 
     def failing_factory(_config, _embedding):

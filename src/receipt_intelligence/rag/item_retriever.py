@@ -6,10 +6,10 @@ import json
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Protocol
 
 import numpy as np
 
+from receipt_intelligence.application.ports.embeddings import EmbeddingGateway
 from receipt_intelligence.rag.hybrid_scoring import (
     build_fts_query,
     lexical_relevance,
@@ -18,17 +18,13 @@ from receipt_intelligence.rag.hybrid_scoring import (
 )
 from receipt_intelligence.rag.item_documents import is_indexable_description
 from receipt_intelligence.rag.models import (
-    EmbeddingBatchResult,
     SemanticItemMatch,
     SemanticItemSearchResult,
 )
 from receipt_intelligence.rag.ports import SemanticSearchCandidate, SemanticSearchRepository
 
-
-class EmbeddingClient(Protocol):
-    model: str
-
-    def embed(self, texts: list[str]) -> EmbeddingBatchResult: ...
+# Backwards-compatible type alias; new code should depend on EmbeddingGateway.
+EmbeddingClient = EmbeddingGateway
 
 
 @dataclass
@@ -65,7 +61,7 @@ class ItemSemanticRetriever:
         self,
         *,
         repository: SemanticSearchRepository,
-        embedding_client: EmbeddingClient,
+        embedding_client: EmbeddingGateway,
         maximum_limit: int = 100,
         approved_only: bool = True,
         deduplicate: bool = True,
@@ -215,7 +211,7 @@ class ItemSemanticRetriever:
             rrf_k=self.rrf_k,
             vector_weight=self.vector_weight,
             lexical_weight=self.lexical_weight,
-            ollama_calls=query_result.ollama_calls,
+            model_calls=query_result.model_calls,
             matches=matches,
         )
 
