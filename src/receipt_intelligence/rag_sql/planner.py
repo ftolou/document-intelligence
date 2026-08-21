@@ -37,6 +37,7 @@ from receipt_intelligence.rag_sql.schema_catalog import (
     DEFAULT_SCHEMA_CATALOG,
     StaticSchemaCatalog,
 )
+from receipt_intelligence.rag_sql.sql_dialect import get_sql_dialect_profile
 
 
 class RagSqlPlanningError(RuntimeError):
@@ -64,6 +65,7 @@ class RagSqlPlannerConfig:
     format_json: bool = True
     keep_alive: str | None = None
     maximum_rows: int = 100
+    sql_dialect: str = "sqlite"
 
     def __post_init__(self) -> None:
         if not str(self.ollama_url or "").strip():
@@ -78,6 +80,7 @@ class RagSqlPlannerConfig:
             raise ValueError("retry_count must not be negative.")
         if self.maximum_rows <= 0 or self.maximum_rows > 1000:
             raise ValueError("maximum_rows must be between 1 and 1000.")
+        get_sql_dialect_profile(self.sql_dialect)
 
 
 class RagSqlPlanner:
@@ -91,6 +94,13 @@ class RagSqlPlanner:
     ) -> None:
         self.config = config
         self.schema_catalog = schema_catalog
+        self.sql_dialect = get_sql_dialect_profile(config.sql_dialect)
+        if self.schema_catalog.dialect_profile.name != self.sql_dialect.name:
+            raise ValueError(
+                "planner SQL dialect must match schema catalog SQL dialect: "
+                f"planner={self.sql_dialect.name!r}, "
+                f"catalog={self.schema_catalog.dialect_profile.name!r}."
+            )
         self.llm_gateway = llm_gateway
         self.generate = generate
 
@@ -203,6 +213,7 @@ class RagSqlPlanner:
                 )
             prompt = render_prompt_template(
                 "rag_sql_planner.txt",
+                SQL_DIALECT=self.sql_dialect.planner_label,
                 TODAY=datetime.now(ZoneInfo("Europe/Berlin")).date().isoformat(),
                 MAX_ROWS=self.config.maximum_rows,
                 SCHEMA_CONTEXT=self.schema_catalog.render_for_prompt(),

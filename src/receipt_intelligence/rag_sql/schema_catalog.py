@@ -10,6 +10,12 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
+from receipt_intelligence.rag_sql.sql_dialect import (
+    SQLITE_DIALECT,
+    SqlDialectProfile,
+    get_sql_dialect_profile,
+)
+
 SCHEMA_CATALOG_VERSION = "receipt_analytics_schema_v2"
 
 ALLOWED_ANALYTICS_OBJECTS: frozenset[str] = frozenset(
@@ -73,47 +79,28 @@ VIEW_BASE_TABLES: dict[str, frozenset[str]] = {
     "analytics_purchase_items": frozenset({"receipts", "receipt_items"}),
 }
 
-ALLOWED_SQL_FUNCTIONS: frozenset[str] = frozenset(
-    {
-        "abs",
-        "avg",
-        "cast",
-        "coalesce",
-        "count",
-        "date",
-        "datetime",
-        "glob",
-        "ifnull",
-        "julianday",
-        "like",
-        "length",
-        "lower",
-        "ltrim",
-        "max",
-        "min",
-        "nullif",
-        "printf",
-        "replace",
-        "round",
-        "rtrim",
-        "strftime",
-        "substr",
-        "sum",
-        "time",
-        "total",
-        "trim",
-        "upper",
-    }
-)
+# Backwards-compatible SQLite default used by the local Core runtime. Consumers that
+# execute against another database must select a matching SqlDialectProfile.
+ALLOWED_SQL_FUNCTIONS: frozenset[str] = SQLITE_DIALECT.allowed_functions
 
 
 @dataclass(frozen=True)
 class StaticSchemaCatalog:
     version: str = SCHEMA_CATALOG_VERSION
+    sql_dialect: str = "sqlite"
+
+    def __post_init__(self) -> None:
+        get_sql_dialect_profile(self.sql_dialect)
+
+    @property
+    def dialect_profile(self) -> SqlDialectProfile:
+        return get_sql_dialect_profile(self.sql_dialect)
 
     def as_dict(self) -> dict[str, object]:
+        profile = self.dialect_profile
         return {
             "schema_version": self.version,
+            "sql_dialect": profile.name,
             "objects": {
                 "analytics_receipts": {
                     "grain": "one row per approved receipt",
@@ -153,7 +140,7 @@ class StaticSchemaCatalog:
                 "Never infer a product brand from merchant or merchant_name: the merchant is the seller, not the brand.",
                 "If reviewed metadata does not support a descriptive answer, return the rows unchanged so the application can report insufficient information.",
             ],
-            "allowed_functions": sorted(ALLOWED_SQL_FUNCTIONS),
+            "allowed_functions": sorted(profile.allowed_functions),
         }
 
     def render_for_prompt(self) -> str:
@@ -161,6 +148,13 @@ class StaticSchemaCatalog:
 
 
 DEFAULT_SCHEMA_CATALOG = StaticSchemaCatalog()
+
+
+def schema_catalog_for_dialect(sql_dialect: str) -> StaticSchemaCatalog:
+    """Build the static receipt-analytics catalog for one SQL execution dialect."""
+
+    return StaticSchemaCatalog(sql_dialect=get_sql_dialect_profile(sql_dialect).name)
+
 
 __all__ = [
     "ALLOWED_ANALYTICS_OBJECTS",
@@ -170,4 +164,5 @@ __all__ = [
     "StaticSchemaCatalog",
     "VIEW_BASE_TABLES",
     "VIEW_COLUMNS",
+    "schema_catalog_for_dialect",
 ]
