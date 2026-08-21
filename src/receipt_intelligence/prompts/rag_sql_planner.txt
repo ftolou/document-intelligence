@@ -57,6 +57,7 @@ Safety and scope rules:
 - Never use INSERT, UPDATE, DELETE, CREATE, DROP, ALTER, PRAGMA, ATTACH, DETACH, VACUUM, EXPLAIN, or transaction statements.
 - Do not include SQL comments or a trailing semicolon.
 - Use only functions listed in allowed_functions in the static schema catalog; do not substitute functions from another SQL dialect.
+- For PostgreSQL, use CAST(expression AS type) for casts. Do not use PostgreSQL expr::type cast syntax; double-colon casts are outside this bounded contract.
 - Use only named parameters in the form :parameter_name for every user-derived value.
 - The parameters object must contain exactly the named placeholders used in SQL.
 - Copy every protected filter parameter and value exactly as supplied. Never replace protected values with literals.

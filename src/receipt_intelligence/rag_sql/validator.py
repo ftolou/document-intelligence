@@ -1,8 +1,9 @@
-"""Conservative validation for LLM-generated SQLite SELECT statements.
+"""Conservative validation for LLM-generated read-only receipt analytics SQL.
 
 The validator intentionally avoids a new parser dependency. It performs strict
-lexical checks and is paired with the SQLite authorizer in ``executor.py``.
-The authorizer is the final object/function access boundary at execution time.
+lexical checks using the selected generic SQL-dialect profile. SQLite execution is
+additionally paired with the authorizer in ``executor.py`` as a final local-runtime
+object/function access boundary.
 """
 
 from __future__ import annotations
@@ -18,9 +19,10 @@ from receipt_intelligence.rag_sql.models import (
     ResolvedQueryFilter,
     ValidatedSqlPlan,
 )
-from receipt_intelligence.rag_sql.schema_catalog import (
-    ALLOWED_ANALYTICS_OBJECTS,
-    ALLOWED_SQL_FUNCTIONS,
+from receipt_intelligence.rag_sql.schema_catalog import ALLOWED_ANALYTICS_OBJECTS
+from receipt_intelligence.rag_sql.sql_dialect import (
+    SqlDialectProfile,
+    get_sql_dialect_profile,
 )
 
 _FORBIDDEN_KEYWORDS = frozenset(
@@ -93,18 +95,29 @@ class SqlValidatorConfig:
     maximum_sql_length: int = 20000
     maximum_rows: int = 100
     allowed_objects: frozenset[str] = ALLOWED_ANALYTICS_OBJECTS
-    allowed_functions: frozenset[str] = ALLOWED_SQL_FUNCTIONS
+    sql_dialect: str = "sqlite"
 
     def __post_init__(self) -> None:
         if self.maximum_sql_length <= 0:
             raise ValueError("maximum_sql_length must be positive.")
         if self.maximum_rows <= 0 or self.maximum_rows > 1000:
             raise ValueError("maximum_rows must be between 1 and 1000.")
+        profile = get_sql_dialect_profile(self.sql_dialect)
+        object.__setattr__(self, "sql_dialect", profile.name)
+
+    @property
+    def dialect_profile(self) -> SqlDialectProfile:
+        return get_sql_dialect_profile(self.sql_dialect)
+
+    @property
+    def allowed_functions(self) -> frozenset[str]:
+        return self.dialect_profile.allowed_functions
 
 
 class RagSqlValidator:
     def __init__(self, config: SqlValidatorConfig | None = None) -> None:
         self.config = config or SqlValidatorConfig()
+        self.sql_dialect = self.config.dialect_profile
 
     def validate(
         self,
@@ -129,6 +142,10 @@ class RagSqlValidator:
             raise SqlValidationError("Exactly one SQL statement is allowed.")
         if scan.has_trailing_semicolon:
             raise SqlValidationError("A trailing semicolon is not allowed.")
+        if scan.has_double_colon_cast:
+            raise SqlValidationError(
+                "Double-colon cast syntax is not allowed; use CAST(expression AS type) instead."
+            )
 
         normalized = scan.masked.casefold().strip()
         first_token_match = re.search(r"[a-z_][a-z0-9_]*", normalized)
@@ -139,7 +156,11 @@ class RagSqlValidator:
             raise SqlValidationError("Recursive CTEs are not allowed.")
 
         tokens = set(re.findall(r"\b[a-z_][a-z0-9_]*\b", normalized))
-        forbidden_keywords = sorted(tokens & _FORBIDDEN_KEYWORDS)
+        forbidden_keywords = sorted(
+            keyword
+            for keyword in _FORBIDDEN_KEYWORDS
+            if re.search(rf"\b{re.escape(keyword)}\b(?!\s*\()", normalized)
+        )
         if forbidden_keywords:
             raise SqlValidationError(f"Forbidden SQL keyword(s): {', '.join(forbidden_keywords)}.")
         forbidden_objects = sorted(tokens & _FORBIDDEN_OBJECTS)
@@ -358,6 +379,7 @@ class _SqlScan:
     has_comment: bool
     has_trailing_semicolon: bool
     has_positional_parameter: bool
+    has_double_colon_cast: bool
 
 
 def _scan_sql(sql: str) -> _SqlScan:
@@ -366,6 +388,7 @@ def _scan_sql(sql: str) -> _SqlScan:
     semicolon_positions: list[int] = []
     has_comment = False
     has_positional = False
+    has_double_colon_cast = False
     index = 0
     length = len(sql)
     quote: str | None = None
@@ -423,6 +446,11 @@ def _scan_sql(sql: str) -> _SqlScan:
             masked.append(char)
             index += 1
             continue
+        if char == ":" and next_char == ":":
+            has_double_colon_cast = True
+            masked.extend([":", ":"])
+            index += 2
+            continue
         if char == ":":
             match = re.match(r":([A-Za-z][A-Za-z0-9_]*)", sql[index:])
             if match:
@@ -452,6 +480,7 @@ def _scan_sql(sql: str) -> _SqlScan:
         has_comment=has_comment,
         has_trailing_semicolon=has_trailing_semicolon,
         has_positional_parameter=has_positional,
+        has_double_colon_cast=has_double_colon_cast,
     )
 
 
