@@ -108,9 +108,16 @@ def test_artifact_review_revalidates_imports_and_indexes_after_approval(tmp_path
     assert len(queue) == 1
     assert queue[0]["decision"] == "import"
     assert queue[0]["balanced"] == 1
-    queued_receipt = json.loads(queue[0]["raw_json"])
-    assert queued_receipt["merchant"]["name"] == "REWE"
-    assert queued_receipt["validation"]["import_decision"] == "import"
+    assert queue[0]["receipt"]["merchant"]["name"] == "REWE"
+    assert queue[0]["receipt"]["validation"]["import_decision"] == "import"
+    draft_receipt = json.loads(queue[0]["draft_json"])
+    extraction_receipt = json.loads(queue[0]["extraction_json"])
+    legacy_raw_receipt = json.loads(queue[0]["raw_json"])
+    assert draft_receipt["merchant"]["name"] == "REWE"
+    assert draft_receipt["validation"]["import_decision"] == "import"
+    assert extraction_receipt["merchant"]["name"] is None
+    assert extraction_receipt["validation"]["import_decision"] == "reject"
+    assert legacy_raw_receipt == extraction_receipt
 
     approved = json.loads(review_service.approved_receipt_path(job_id).read_text())
     assert approved["validation"]["import_decision"] == "import"

@@ -54,25 +54,31 @@ def is_next_receipt(receipt: JsonObject) -> bool:
 
 
 def receipt_date(receipt: JsonObject) -> Any:
-    return first_present(_object(receipt.get("receipt_metadata")).get("date"), receipt.get("date"))
+    metadata = _object(receipt.get("receipt_metadata"))
+    if is_next_receipt(receipt) and "date" in metadata:
+        return metadata.get("date")
+    return first_present(metadata.get("date"), receipt.get("date"))
 
 
 def receipt_time(receipt: JsonObject) -> Any:
-    return first_present(_object(receipt.get("receipt_metadata")).get("time"), receipt.get("time"))
+    metadata = _object(receipt.get("receipt_metadata"))
+    if is_next_receipt(receipt) and "time" in metadata:
+        return metadata.get("time")
+    return first_present(metadata.get("time"), receipt.get("time"))
 
 
 def receipt_number(receipt: JsonObject) -> Any:
-    return first_present(
-        _object(receipt.get("receipt_metadata")).get("receipt_number"),
-        receipt.get("receipt_number"),
-    )
+    metadata = _object(receipt.get("receipt_metadata"))
+    if is_next_receipt(receipt) and "receipt_number" in metadata:
+        return metadata.get("receipt_number")
+    return first_present(metadata.get("receipt_number"), receipt.get("receipt_number"))
 
 
 def receipt_currency(receipt: JsonObject) -> Any:
-    return first_present(
-        _object(receipt.get("receipt_metadata")).get("currency"),
-        receipt.get("currency"),
-    )
+    metadata = _object(receipt.get("receipt_metadata"))
+    if is_next_receipt(receipt) and "currency" in metadata:
+        return metadata.get("currency")
+    return first_present(metadata.get("currency"), receipt.get("currency"))
 
 
 def merchant_address_text(receipt: JsonObject) -> str:
@@ -107,6 +113,8 @@ def merchant_address_text(receipt: JsonObject) -> str:
 
 def receipt_subtotal(receipt: JsonObject) -> Any:
     totals = _object(receipt.get("totals"))
+    if is_next_receipt(receipt) and "net_amount" in totals:
+        return scalar_value(totals.get("net_amount"), "net_amount")
     return first_present(
         scalar_value(totals.get("subtotal"), "subtotal"),
         scalar_value(totals.get("net_amount"), "net_amount"),
@@ -116,6 +124,8 @@ def receipt_subtotal(receipt: JsonObject) -> Any:
 def receipt_tax_total(receipt: JsonObject) -> Any:
     totals = _object(receipt.get("totals"))
     tax = _object(receipt.get("tax"))
+    if is_next_receipt(receipt) and "vat_amount" in tax:
+        return scalar_value(tax.get("vat_amount"), "vat_amount")
     return first_present(
         scalar_value(totals.get("tax_total"), "tax_total"),
         scalar_value(tax.get("vat_amount"), "vat_amount"),
@@ -124,6 +134,8 @@ def receipt_tax_total(receipt: JsonObject) -> Any:
 
 def receipt_grand_total(receipt: JsonObject) -> Any:
     totals = _object(receipt.get("totals"))
+    if is_next_receipt(receipt) and "final_purchase_total" in totals:
+        return scalar_value(totals.get("final_purchase_total"), "final_purchase_total")
     return first_present(
         scalar_value(totals.get("grand_total"), "grand_total"),
         scalar_value(totals.get("final_purchase_total"), "final_purchase_total"),
@@ -133,6 +145,8 @@ def receipt_grand_total(receipt: JsonObject) -> Any:
 def receipt_paid_total(receipt: JsonObject) -> Any:
     totals = _object(receipt.get("totals"))
     payment = _object(receipt.get("payment"))
+    if is_next_receipt(receipt) and "payment_received" in payment:
+        return scalar_value(payment.get("payment_received"), "payment_received")
     payments = receipt.get("payments") if isinstance(receipt.get("payments"), list) else []
     legacy_payment = payments[0] if payments and isinstance(payments[0], dict) else {}
     return first_present(
@@ -154,6 +168,8 @@ def receipt_change(receipt: JsonObject) -> Any:
 
 def receipt_payment_method(receipt: JsonObject) -> Any:
     payment = _object(receipt.get("payment"))
+    if is_next_receipt(receipt) and "payment_method" in payment:
+        return payment.get("payment_method")
     payments = receipt.get("payments") if isinstance(receipt.get("payments"), list) else []
     legacy_payment = payments[0] if payments and isinstance(payments[0], dict) else {}
     return first_present(payment.get("payment_method"), legacy_payment.get("method"))
@@ -176,12 +192,11 @@ def item_description(item: JsonObject) -> str:
 
 def item_line_total(item: JsonObject) -> Any:
     # ``final_price`` is the canonical price field of the next receipt schema.
-    # ``line_total`` is also emitted by the review projection for UI compatibility,
-    # so historical/projected documents may temporarily contain both. Prefer the
-    # canonical value to prevent a stale projection alias from winning on reload,
-    # validation, or relational persistence.
+    # Its explicit presence, including ``None``, is authoritative. Historical
+    # review aliases are only consulted when the canonical field is absent.
+    if "final_price" in item:
+        return item.get("final_price")
     return first_present(
-        item.get("final_price"),
         item.get("line_total"),
         item.get("total"),
         item.get("amount"),

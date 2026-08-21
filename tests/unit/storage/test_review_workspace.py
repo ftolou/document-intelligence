@@ -102,7 +102,7 @@ def test_review_revision_updates_canonical_queue_draft_and_appends_history(
     assert history[0]["revision"] == 1
     assert json.loads(queue_json["extraction_json"])["merchant"]["name"] == "REWE"
     assert json.loads(queue_json["draft_json"])["merchant"]["name"] == "REWE Markt"
-    assert json.loads(queue_json["raw_json"])["merchant"]["name"] == "REWE Markt"
+    assert json.loads(queue_json["raw_json"])["merchant"]["name"] == "REWE"
 
 
 def test_review_queue_upsert_preserves_extraction_snapshot(tmp_path: Path) -> None:
@@ -145,7 +145,7 @@ def test_review_queue_upsert_preserves_extraction_snapshot(tmp_path: Path) -> No
 
     assert json.loads(row["extraction_json"])["merchant"]["name"] == "REWE"
     assert json.loads(row["draft_json"])["merchant"]["name"] == "REWE Markt"
-    assert json.loads(row["raw_json"])["merchant"]["name"] == "REWE Markt"
+    assert json.loads(row["raw_json"])["merchant"]["name"] == "REWE"
 
 
 def test_migration_11_backfills_existing_queue_json(tmp_path: Path) -> None:
@@ -183,6 +183,57 @@ def test_migration_11_backfills_existing_queue_json(tmp_path: Path) -> None:
 
     assert row["extraction_json"] == row["raw_json"]
     assert row["draft_json"] == row["raw_json"]
+
+
+def test_migration_12_freezes_legacy_raw_json_without_losing_current_draft(
+    tmp_path: Path,
+) -> None:
+    database = ReceiptDatabase(tmp_path / "receipt.db")
+    original = _receipt("REWE")
+    database.upsert_review_queue(
+        job_id="job-migrate-authority",
+        receipt=original,
+        decision="review",
+        balanced=True,
+        difference=0.0,
+        issue_count=1,
+        image_path=None,
+        final_receipt_path=None,
+        queue_status="needs_review",
+    )
+    corrected = _receipt("REWE Markt")
+    database.save_review_revision(
+        job_id="job-migrate-authority",
+        receipt=corrected,
+        requested_status="needs_review",
+        effective_status="needs_review",
+        reviewer="FT",
+        notes=None,
+        changed_fields=["merchant.name"],
+        receipt_db_id=None,
+    )
+
+    with database.connect() as connection:
+        # Emulate the migration-11 behavior where raw_json was still mutated
+        # alongside draft_json.
+        connection.execute(
+            "UPDATE review_queue SET raw_json=draft_json WHERE job_id='job-migrate-authority'"
+        )
+        connection.execute("DELETE FROM schema_migrations WHERE version=12")
+        connection.execute("UPDATE schema_meta SET value='11' WHERE key='schema_version'")
+        connection.commit()
+
+    database.migrations.migrate()
+
+    with database.connect() as connection:
+        row = connection.execute(
+            "SELECT extraction_json, draft_json, raw_json "
+            "FROM review_queue WHERE job_id='job-migrate-authority'"
+        ).fetchone()
+
+    assert json.loads(row["extraction_json"])["merchant"]["name"] == "REWE"
+    assert json.loads(row["raw_json"])["merchant"]["name"] == "REWE"
+    assert json.loads(row["draft_json"])["merchant"]["name"] == "REWE Markt"
 
 
 def test_review_revision_rejects_stale_expected_revision(tmp_path: Path) -> None:
