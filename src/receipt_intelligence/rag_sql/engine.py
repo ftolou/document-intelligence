@@ -46,11 +46,18 @@ class RagSqlEngine:
             raise ValueError("retrieval_limit must be between 1 and 100.")
         if validation_repair_count < 0 or validation_repair_count > 3:
             raise ValueError("validation_repair_count must be between 0 and 3.")
-        if planner.sql_dialect.name != validator.sql_dialect.name:
+
+        planner_dialect = getattr(planner, "sql_dialect", None)
+        validator_dialect = getattr(validator, "sql_dialect", None)
+        if (
+            planner_dialect is not None
+            and validator_dialect is not None
+            and planner_dialect.name != validator_dialect.name
+        ):
             raise ValueError(
                 "planner and validator SQL dialects must match: "
-                f"planner={planner.sql_dialect.name!r}, "
-                f"validator={validator.sql_dialect.name!r}."
+                f"planner={planner_dialect.name!r}, "
+                f"validator={validator_dialect.name!r}."
             )
 
         resolved_factory = orchestrator_factory or _default_orchestrator_factory()
