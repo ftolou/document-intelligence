@@ -160,6 +160,8 @@ def receipt_paid_total(receipt: JsonObject) -> Any:
 def receipt_change(receipt: JsonObject) -> Any:
     totals = _object(receipt.get("totals"))
     payment = _object(receipt.get("payment"))
+    if is_next_receipt(receipt) and "change_returned" in payment:
+        return scalar_value(payment.get("change_returned"), "change_returned")
     return first_present(
         scalar_value(totals.get("change"), "change"),
         scalar_value(payment.get("change_returned"), "change_returned"),
@@ -176,13 +178,15 @@ def receipt_payment_method(receipt: JsonObject) -> Any:
 
 
 def item_description(item: JsonObject) -> str:
+    if "name" in item:
+        value = item.get("name")
+        return "" if value is None else str(value)
     return str(
         first_present(
             item.get("product_description"),
             item.get("clean_description"),
             item.get("normalized_name"),
             item.get("description"),
-            item.get("name"),
             item.get("raw_name"),
             item.get("text"),
             "",
@@ -254,7 +258,10 @@ def to_review_document(receipt: JsonObject) -> JsonObject:
     metadata = _object(result.get("receipt_metadata"))
     result["date"] = receipt_date(receipt)
     result["time"] = receipt_time(receipt)
-    result["currency"] = receipt_currency(receipt) or "EUR"
+    currency = receipt_currency(receipt)
+    if not (is_next_receipt(receipt) and "currency" in metadata):
+        currency = currency or "EUR"
+    result["currency"] = currency
     result["receipt_number"] = receipt_number(receipt)
     if metadata:
         result["receipt_metadata"] = metadata
@@ -276,14 +283,19 @@ def to_review_document(receipt: JsonObject) -> JsonObject:
     result["totals"] = totals
     result["payment_method"] = receipt_payment_method(receipt)
 
+    next_schema = is_next_receipt(receipt)
     projected_items: list[JsonObject] = []
     for original in _items(result):
         item = dict(original)
         description = item_description(item)
-        if not item.get("description"):
+        if next_schema and "name" in item:
             item["description"] = description
-        if not item.get("product_description"):
             item["product_description"] = description
+        else:
+            if not item.get("description"):
+                item["description"] = description
+            if not item.get("product_description"):
+                item["product_description"] = description
         item["line_total"] = item_line_total(item)
         projected_items.append(item)
     result["items"] = projected_items

@@ -72,7 +72,8 @@ def test_relational_values_survive_get_save_round_trip_over_stale_json(tmp_path:
         connection.execute(
             """
             UPDATE receipts
-            SET subtotal=10.0,
+            SET currency=NULL,
+                subtotal=10.0,
                 tax_total=NULL,
                 grand_total=12.0,
                 paid_total=NULL,
@@ -107,6 +108,8 @@ def test_relational_values_survive_get_save_round_trip_over_stale_json(tmp_path:
     assert document is not None
     assert document["merchant"]["name"] == "REWE"
     assert document["merchant"]["provider_note"] == "keep-me"
+    assert document["receipt_metadata"]["currency"] is None
+    assert document["currency"] is None
     assert document["totals"]["subtotal"] == 10.0
     assert document["totals"]["tax_total"] is None
     assert document["totals"]["grand_total"] == 12.0
@@ -147,7 +150,7 @@ def test_relational_values_survive_get_save_round_trip_over_stale_json(tmp_path:
     with database.connect() as connection:
         receipt_row = connection.execute(
             """
-            SELECT subtotal, tax_total, grand_total, paid_total, payment_method
+            SELECT currency, subtotal, tax_total, grand_total, paid_total, payment_method
             FROM receipts WHERE id=?
             """,
             (receipt_id,),
@@ -162,6 +165,7 @@ def test_relational_values_survive_get_save_round_trip_over_stale_json(tmp_path:
             (receipt_id,),
         ).fetchone()
 
+    assert receipt_row["currency"] is None
     assert receipt_row["subtotal"] == 10.0
     assert receipt_row["tax_total"] is None
     assert receipt_row["grand_total"] == 12.0

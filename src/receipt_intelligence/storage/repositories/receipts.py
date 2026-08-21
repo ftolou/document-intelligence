@@ -399,7 +399,7 @@ class ReceiptRepository(BaseRepository):
         receipt["merchant"] = merchant
         apply_review_field(receipt, "date", row.get("receipt_date"))
         apply_review_field(receipt, "time", row.get("receipt_time"))
-        apply_review_field(receipt, "currency", row.get("currency") or "EUR")
+        apply_review_field(receipt, "currency", row.get("currency"))
         apply_review_field(receipt, "subtotal", row.get("subtotal"))
         apply_review_field(receipt, "tax_total", row.get("tax_total"))
         apply_review_field(receipt, "grand_total", row.get("grand_total"))
@@ -506,7 +506,7 @@ class ReceiptRepository(BaseRepository):
         merchant_name = as_str(first_present(merchant.get("name"), receipt.get("merchant_name")))
         merchant_normalized = normalize_merchant_name(merchant_name)
         receipt_date = as_str(compat_receipt_date(receipt))
-        currency = as_str(receipt_currency(receipt)) or "EUR"
+        currency = as_str(receipt_currency(receipt))
         now = utc_now()
 
         with self.connect() as connection:
