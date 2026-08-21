@@ -101,7 +101,9 @@ def get_sql_dialect_profile(name: str | SqlDialectName) -> SqlDialectProfile:
         return _DIALECTS[normalized]
     except KeyError as exc:
         supported = ", ".join(sorted(_DIALECTS))
-        raise ValueError(f"Unsupported SQL dialect {name!r}; expected one of: {supported}.") from exc
+        raise ValueError(
+            f"Unsupported SQL dialect {name!r}; expected one of: {supported}."
+        ) from exc
 
 
 __all__ = [

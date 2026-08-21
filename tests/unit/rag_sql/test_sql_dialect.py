@@ -85,9 +85,7 @@ def test_postgresql_profile_drives_planner_prompt_and_schema_catalog() -> None:
     assert prompts
     assert "safe read-only PostgreSQL query" in prompts[0]
     assert '"sql_dialect": "postgresql"' in prompts[0]
-    assert "strftime" not in schema_catalog_for_dialect("postgresql").as_dict()[
-        "allowed_functions"
-    ]
+    assert "strftime" not in schema_catalog_for_dialect("postgresql").as_dict()["allowed_functions"]
 
 
 def test_planner_rejects_dialect_catalog_mismatch() -> None:
@@ -100,21 +98,14 @@ def test_planner_rejects_dialect_catalog_mismatch() -> None:
 
 def test_postgresql_validator_profile_rejects_sqlite_only_function() -> None:
     profile = get_sql_dialect_profile("postgresql")
-    validator = RagSqlValidator(
-        SqlValidatorConfig(allowed_functions=profile.allowed_functions)
-    )
+    validator = RagSqlValidator(SqlValidatorConfig(allowed_functions=profile.allowed_functions))
 
     with pytest.raises(SqlValidationError, match="non-allowlisted function"):
         validator.validate(
-            _plan(
-                "SELECT strftime('%Y', receipt_date) AS value "
-                "FROM analytics_receipts"
-            )
+            _plan("SELECT strftime('%Y', receipt_date) AS value FROM analytics_receipts")
         )
 
-    validated = validator.validate(
-        _plan("SELECT COUNT(*) AS value FROM analytics_receipts")
-    )
+    validated = validator.validate(_plan("SELECT COUNT(*) AS value FROM analytics_receipts"))
     assert validated.referenced_functions == ["count"]
 
 
