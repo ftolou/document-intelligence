@@ -182,3 +182,57 @@ def test_relational_values_survive_get_save_round_trip_over_stale_json(tmp_path:
     assert item_row["line_total"] is None
     assert item_row["vat_rate"] is None
     assert item_row["confidence"] is None
+
+
+def test_normalized_receipt_status_is_authoritative_after_import(tmp_path: Path) -> None:
+    database = ReceiptDatabase(tmp_path / "receipt.db")
+    receipt = _next_receipt_with_stale_aliases()
+    receipt["human_review"] = {"status": "approved", "reviewer": "tester"}
+    imported = database.import_receipt(job_id="job-status-authority", receipt=receipt)
+    database.upsert_review_queue(
+        job_id="job-status-authority",
+        receipt=receipt,
+        decision="needs_review",
+        balanced=True,
+        difference=0.0,
+        issue_count=0,
+        image_path=None,
+        final_receipt_path=None,
+        queue_status="needs_review",
+    )
+
+    with database.connect() as connection:
+        connection.execute(
+            """
+            UPDATE review_queue
+            SET receipt_db_id=?, queue_status='needs_review'
+            WHERE job_id='job-status-authority'
+            """,
+            (imported.receipt_db_id,),
+        )
+        connection.commit()
+        queue_status = connection.execute(
+            "SELECT queue_status FROM review_queue WHERE job_id='job-status-authority'"
+        ).fetchone()["queue_status"]
+        receipt_status = connection.execute(
+            "SELECT review_status FROM receipts WHERE id=?",
+            (imported.receipt_db_id,),
+        ).fetchone()["review_status"]
+
+    assert queue_status == "needs_review"
+    assert receipt_status == "approved"
+
+    record = database.get_review_queue_record("job-status-authority")
+    assert record is not None
+    assert record["queue_status"] == "approved"
+    assert database.list_review_queue(status="needs_review") == []
+
+    approved = database.list_review_queue(status="approved")
+    assert [row["job_id"] for row in approved] == ["job-status-authority"]
+    assert approved[0]["queue_status"] == "approved"
+
+    summary = database.review_queue_summary()
+    assert summary["total"] == 1
+    assert summary["needs_review"] == 0
+    assert summary["approved"] == 1
+    assert summary["counts"] == {"approved": 1}

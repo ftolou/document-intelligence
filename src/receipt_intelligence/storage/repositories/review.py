@@ -91,6 +91,26 @@ def _review_reason_codes(receipt: dict[str, Any]) -> list[str]:
     return sorted(codes)
 
 
+def _effective_queue_cte() -> str:
+    """Return queue rows with normalized receipt status authoritative after import."""
+
+    return """
+        WITH effective_queue AS (
+            SELECT q.*,
+                   COALESCE(
+                       (SELECT r.review_status
+                        FROM receipts AS r
+                        WHERE r.id = q.receipt_db_id),
+                       (SELECT r.review_status
+                        FROM receipts AS r
+                        WHERE r.job_id = q.job_id),
+                       q.queue_status
+                   ) AS effective_queue_status
+            FROM review_queue AS q
+        )
+    """
+
+
 class ReviewRepository(BaseRepository):
     def find_duplicate_candidates(
         self,
@@ -314,7 +334,12 @@ class ReviewRepository(BaseRepository):
     def get_review_queue_record(self, job_id: str) -> dict[str, Any] | None:
         with self.connect() as connection:
             row = connection.execute(
-                "SELECT * FROM review_queue WHERE job_id = ?",
+                _effective_queue_cte()
+                + """
+                SELECT *
+                FROM effective_queue
+                WHERE job_id = ?
+                """,
                 (str(job_id),),
             ).fetchone()
         if row is None:
@@ -326,17 +351,17 @@ class ReviewRepository(BaseRepository):
         status: str | None = None,
         limit: int = 200,
     ) -> list[dict[str, Any]]:
-        sql = "SELECT * FROM review_queue"
+        sql = _effective_queue_cte() + "\nSELECT * FROM effective_queue"
         parameters: list[Any] = []
         if status and status != "all":
-            sql += " WHERE queue_status = ? OR duplicate_status = ?"
+            sql += " WHERE effective_queue_status = ? OR duplicate_status = ?"
             parameters.extend([status, status])
         sql += (
             " ORDER BY CASE "
-            "WHEN queue_status='duplicate_candidate' THEN 0 "
-            "WHEN queue_status='needs_review' THEN 1 "
-            "WHEN queue_status='rejected' THEN 2 "
-            "WHEN queue_status='auto_validated' THEN 3 ELSE 4 END, "
+            "WHEN effective_queue_status='duplicate_candidate' THEN 0 "
+            "WHEN effective_queue_status='needs_review' THEN 1 "
+            "WHEN effective_queue_status='rejected' THEN 2 "
+            "WHEN effective_queue_status='auto_validated' THEN 3 ELSE 4 END, "
             "updated_at ASC LIMIT ?"
         )
         parameters.append(max(1, min(500, int(limit))))
@@ -347,18 +372,16 @@ class ReviewRepository(BaseRepository):
     def review_queue_summary(self) -> dict[str, Any]:
         with self.connect() as connection:
             rows = connection.execute(
-                """
-                SELECT queue_status, COUNT(*) AS n
-                FROM review_queue
-                GROUP BY queue_status
+                _effective_queue_cte()
+                + """
+                SELECT effective_queue_status AS queue_status, COUNT(*) AS n
+                FROM effective_queue
+                GROUP BY effective_queue_status
                 """
             ).fetchall()
-            total = int(
-                connection.execute("SELECT COUNT(*) AS n FROM review_queue").fetchone()["n"]
-            )
         counts = {str(row["queue_status"]): int(row["n"]) for row in rows}
         return {
-            "total": total,
+            "total": sum(counts.values()),
             "needs_review": counts.get("needs_review", 0),
             "duplicate_candidate": counts.get("duplicate_candidate", 0),
             "rejected": counts.get("rejected", 0),
@@ -509,6 +532,9 @@ class ReviewRepository(BaseRepository):
 
     @staticmethod
     def _present_queue_row(item: dict[str, Any]) -> dict[str, Any]:
+        effective_status = str(item.pop("effective_queue_status", "") or "").strip()
+        if effective_status:
+            item["queue_status"] = effective_status
         item["duplicate_candidates"] = _json_list(item.get("duplicate_candidates_json"))
         # ``draft_json`` is authoritative for mutable pre-import review state.
         # ``raw_json`` is a defensive fallback for databases predating migration 11.
