@@ -101,9 +101,10 @@ def test_postgresql_validator_profile_rejects_sqlite_only_function() -> None:
     validator = RagSqlValidator(SqlValidatorConfig(sql_dialect="postgresql"))
 
     assert validator.sql_dialect.name == "postgresql"
-    assert validator.config.allowed_functions == get_sql_dialect_profile(
-        "postgresql"
-    ).allowed_functions
+    assert (
+        validator.config.allowed_functions
+        == get_sql_dialect_profile("postgresql").allowed_functions
+    )
 
     with pytest.raises(SqlValidationError, match="non-allowlisted function"):
         validator.validate(
@@ -129,9 +130,7 @@ def test_postgresql_contract_rejects_double_colon_cast_and_accepts_cast_function
     validator = RagSqlValidator(SqlValidatorConfig(sql_dialect="postgresql"))
 
     with pytest.raises(SqlValidationError, match=r"CAST\(expression AS type\)"):
-        validator.validate(
-            _plan("SELECT receipt_date::date AS value FROM analytics_receipts")
-        )
+        validator.validate(_plan("SELECT receipt_date::date AS value FROM analytics_receipts"))
 
     validated = validator.validate(
         _plan("SELECT CAST(receipt_date AS date) AS value FROM analytics_receipts")
