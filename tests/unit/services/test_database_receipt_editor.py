@@ -316,7 +316,9 @@ def test_first_approval_indexes_all_items_and_refreshes_validation_state(tmp_pat
     assert len(queue) == 1
     assert queue[0]["decision"] == "import"
     assert queue[0]["balanced"] == 1
-    assert json.loads(queue[0]["raw_json"])["validation"]["import_decision"] == "import"
+    assert queue[0]["receipt"]["validation"]["import_decision"] == "import"
+    assert json.loads(queue[0]["draft_json"])["validation"]["import_decision"] == "import"
+    assert json.loads(queue[0]["raw_json"])["validation"]["import_decision"] == "reject"
 
 
 def test_database_editor_rejects_stale_review_revision(tmp_path: Path) -> None:

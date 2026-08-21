@@ -17,6 +17,7 @@ from receipt_intelligence.receipt_compat import (
     receipt_payment_method,
     receipt_subtotal,
     receipt_tax_total,
+    scalar_value,
 )
 from receipt_intelligence.receipt_compat import (
     receipt_date as compat_receipt_date,
@@ -106,6 +107,107 @@ def _review_category(item: dict[str, Any], description: str) -> str | None:
         item.get("analytics_category"),
     )
     return as_str(explicit) or category_from_item(item, description)
+
+
+def _review_category_for_persistence(item: dict[str, Any], description: str) -> str | None:
+    """Use projected relational category fields without reviving stale JSON aliases."""
+
+    relational_keys = {"category_path", "category_group", "category_key", "product_category"}
+    if any(key in item for key in relational_keys):
+        explicit = first_present(
+            item.get("category_path"),
+            _category_path(item.get("category_group"), item.get("category_key")),
+            item.get("product_category"),
+        )
+        return as_str(explicit)
+    return _review_category(item, description)
+
+
+def _review_paid_total_for_persistence(receipt: dict[str, Any]) -> Any:
+    """Respect an explicit canonical payment value, including ``None``."""
+
+    if is_next_receipt(receipt):
+        payment = receipt.get("payment") if isinstance(receipt.get("payment"), dict) else {}
+        if "payment_received" in payment:
+            return scalar_value(payment.get("payment_received"), "payment_received")
+    totals = receipt.get("totals") if isinstance(receipt.get("totals"), dict) else {}
+    if "paid_total" in totals:
+        return scalar_value(totals.get("paid_total"), "paid_total")
+    return receipt_paid_total(receipt)
+
+
+def _synchronize_relational_review_aliases(receipt: dict[str, Any]) -> None:
+    """Make compatibility aliases agree with the relationally projected values.
+
+    The JSON envelope preserves fields that are not normalized yet, but once a
+    relational column has been projected into the review document its value --
+    including an explicit ``None`` -- is authoritative over historical aliases.
+    """
+
+    merchant = receipt.get("merchant") if isinstance(receipt.get("merchant"), dict) else {}
+    if "name" in merchant:
+        receipt["merchant_name"] = merchant.get("name")
+
+    if is_next_receipt(receipt):
+        metadata = (
+            receipt.get("receipt_metadata")
+            if isinstance(receipt.get("receipt_metadata"), dict)
+            else {}
+        )
+        for key in ("date", "time", "currency"):
+            if key in metadata:
+                receipt[key] = metadata.get(key)
+
+        totals = receipt.get("totals") if isinstance(receipt.get("totals"), dict) else {}
+        tax = receipt.get("tax") if isinstance(receipt.get("tax"), dict) else {}
+        payment = receipt.get("payment") if isinstance(receipt.get("payment"), dict) else {}
+
+        if "net_amount" in totals:
+            totals["subtotal"] = scalar_value(totals.get("net_amount"), "net_amount")
+        if "vat_amount" in tax:
+            totals["tax_total"] = scalar_value(tax.get("vat_amount"), "vat_amount")
+        if "final_purchase_total" in totals:
+            totals["grand_total"] = scalar_value(
+                totals.get("final_purchase_total"), "final_purchase_total"
+            )
+        if "payment_received" in payment:
+            totals["paid_total"] = scalar_value(payment.get("payment_received"), "payment_received")
+
+        payments = receipt.get("payments") if isinstance(receipt.get("payments"), list) else None
+        if payments and isinstance(payments[0], dict):
+            if "payment_method" in payment:
+                payments[0]["method"] = payment.get("payment_method")
+            if "payment_received" in payment:
+                payments[0]["amount"] = scalar_value(
+                    payment.get("payment_received"), "payment_received"
+                )
+
+    items = receipt.get("items") if isinstance(receipt.get("items"), list) else []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        next_item_schema = is_next_receipt({"items": [item]})
+        if next_item_schema:
+            if "name" in item:
+                item["product_description"] = item.get("name")
+                item["description"] = item.get("name")
+            if "final_price" in item:
+                value = item.get("final_price")
+                item["line_total"] = value
+                item["total"] = value
+                item["amount"] = value
+            if "parser_item_type" in item:
+                item["receipt_row_type"] = item.get("parser_item_type")
+                item["line_type"] = item.get("parser_item_type")
+            if "vat_rate" in item:
+                item["tax_rate"] = item.get("vat_rate")
+                item["tax_rate_percent"] = item.get("vat_rate")
+            if "confidence" in item:
+                item["category_confidence"] = item.get("confidence")
+            if "original_price" in item:
+                item["gross_unit_price"] = item.get("original_price")
+        elif "product_description" in item:
+            item["description"] = item.get("product_description")
 
 
 class ReceiptRepository(BaseRepository):
@@ -297,7 +399,7 @@ class ReceiptRepository(BaseRepository):
         receipt["merchant"] = merchant
         apply_review_field(receipt, "date", row.get("receipt_date"))
         apply_review_field(receipt, "time", row.get("receipt_time"))
-        apply_review_field(receipt, "currency", row.get("currency") or "EUR")
+        apply_review_field(receipt, "currency", row.get("currency"))
         apply_review_field(receipt, "subtotal", row.get("subtotal"))
         apply_review_field(receipt, "tax_total", row.get("tax_total"))
         apply_review_field(receipt, "grand_total", row.get("grand_total"))
@@ -308,8 +410,8 @@ class ReceiptRepository(BaseRepository):
             receipt.get("human_review") if isinstance(receipt.get("human_review"), dict) else {}
         )
         review = dict(review)
-        review["status"] = row.get("review_status") or review.get("status")
-        review["reviewer"] = row.get("reviewer") or review.get("reviewer")
+        review["status"] = row.get("review_status")
+        review["reviewer"] = row.get("reviewer")
         receipt["human_review"] = review
 
         items: list[dict[str, Any]] = []
@@ -322,24 +424,20 @@ class ReceiptRepository(BaseRepository):
                 item["name"] = item_row.get("raw_name")
             else:
                 item["product_description"] = item_row.get("raw_name")
-                item.setdefault("description", item_row.get("raw_name"))
+                item["description"] = item_row.get("raw_name")
             item["normalized_name"] = item_row.get("normalized_name")
             item["parser_item_type"] = item_row.get("parser_item_type")
             if not next_item_schema:
                 item["receipt_row_type"] = item_row.get("parser_item_type")
+                item["category"] = item_row.get("parser_item_type")
             item["category_group"] = item_row.get("category_group")
             item["category_key"] = item_row.get("category_key")
             item["category_reason"] = item_row.get("category_reason")
             item["semantic_description"] = item_row.get("semantic_description")
-            category_path = _category_path(
+            item["category_path"] = _category_path(
                 item_row.get("category_group"), item_row.get("category_key")
             )
-            if category_path:
-                item["category_path"] = category_path
-            if item_row.get("category"):
-                item["product_category"] = item_row.get("category")
-            if item_row.get("parser_item_type") and not next_item_schema:
-                item["category"] = item_row.get("parser_item_type")
+            item["product_category"] = item_row.get("category")
             for field in (
                 "quantity",
                 "unit",
@@ -360,6 +458,7 @@ class ReceiptRepository(BaseRepository):
                 )
             items.append(item)
         receipt["items"] = items
+        _synchronize_relational_review_aliases(receipt)
         receipt["_database"] = {
             "receipt_id": int(row["id"]),
             "job_id": row.get("job_id"),
@@ -391,6 +490,8 @@ class ReceiptRepository(BaseRepository):
 
         if not isinstance(receipt, dict):
             raise ValueError("receipt must be an object")
+        receipt = _json_object(receipt)
+        _synchronize_relational_review_aliases(receipt)
         incoming_items = receipt.get("items")
         if not isinstance(incoming_items, list):
             raise ValueError("receipt items must be a list")
@@ -405,7 +506,7 @@ class ReceiptRepository(BaseRepository):
         merchant_name = as_str(first_present(merchant.get("name"), receipt.get("merchant_name")))
         merchant_normalized = normalize_merchant_name(merchant_name)
         receipt_date = as_str(compat_receipt_date(receipt))
-        currency = as_str(receipt_currency(receipt)) or "EUR"
+        currency = as_str(receipt_currency(receipt))
         now = utc_now()
 
         with self.connect() as connection:
@@ -464,20 +565,37 @@ class ReceiptRepository(BaseRepository):
 
             for item_id, index, item in resolved_items:
                 stored = stored_by_id[item_id]
-                description = extract_item_description(item).strip()
+                next_item_schema = is_next_receipt({"items": [item]})
+                if next_item_schema and "name" in item:
+                    description = str(item.get("name") or "").strip()
+                elif "product_description" in item:
+                    description = str(item.get("product_description") or "").strip()
+                else:
+                    description = extract_item_description(item).strip()
                 if not description:
                     raise ValueError(f"item {index + 1} requires a product description")
-                normalized_name = as_str(
-                    first_present(
-                        item.get("normalized_name"),
-                        item.get("product_description"),
-                        item.get("name"),
-                        description,
+                if "normalized_name" in item:
+                    normalized_name = as_str(item.get("normalized_name"))
+                else:
+                    normalized_name = as_str(
+                        first_present(
+                            item.get("product_description"),
+                            item.get("name"),
+                            description,
+                        )
                     )
+                category = _review_category_for_persistence(item, description)
+                parser_item_type = (
+                    as_str(item.get("parser_item_type"))
+                    if "parser_item_type" in item
+                    else parser_item_type_from_item(item)
                 )
-                category = _review_category(item, description)
-                parser_item_type = parser_item_type_from_item(item)
-                line_total = as_float(item_line_total(item))
+                if "final_price" in item:
+                    line_total = as_float(item.get("final_price"))
+                elif "line_total" in item:
+                    line_total = as_float(item.get("line_total"))
+                else:
+                    line_total = as_float(item_line_total(item))
                 embedding_text = build_item_embedding_text(
                     merchant_name=merchant_name,
                     merchant_normalized=merchant_normalized,
@@ -491,6 +609,21 @@ class ReceiptRepository(BaseRepository):
                 )
                 clean_item = json.loads(json.dumps(item, ensure_ascii=False, default=str))
                 clean_item.pop("_db_item_id", None)
+                original_price = (
+                    as_float(item.get("original_price"))
+                    if "original_price" in item
+                    else as_float(item.get("gross_unit_price"))
+                )
+                vat_rate = (
+                    as_str(item.get("vat_rate"))
+                    if "vat_rate" in item
+                    else as_str(first_present(item.get("tax_rate"), item.get("tax_rate_percent")))
+                )
+                confidence = (
+                    as_float(item.get("confidence"))
+                    if "confidence" in item
+                    else as_float(item.get("category_confidence"))
+                )
                 values = (
                     index,
                     description,
@@ -504,22 +637,12 @@ class ReceiptRepository(BaseRepository):
                     as_float(item.get("quantity")),
                     as_str(item.get("unit")),
                     as_float(item.get("unit_price")),
-                    as_float(
-                        first_present(item.get("original_price"), item.get("gross_unit_price"))
-                    ),
+                    original_price,
                     as_float(item.get("discount_amount")),
                     line_total,
                     as_str(item.get("tax_code")),
-                    as_str(
-                        first_present(
-                            item.get("vat_rate"),
-                            item.get("tax_rate"),
-                            item.get("tax_rate_percent"),
-                        )
-                    ),
-                    as_float(
-                        first_present(item.get("confidence"), item.get("category_confidence"))
-                    ),
+                    vat_rate,
+                    confidence,
                     as_str(first_present(item.get("review_status"), human_review.get("status"))),
                     embedding_text,
                     json.dumps(clean_item, ensure_ascii=False, default=str),
@@ -587,6 +710,7 @@ class ReceiptRepository(BaseRepository):
             clean_receipt = _without_internal_item_ids(receipt)
             clean_receipt.pop("_database", None)
             clean_receipt["items"] = [payload[2] for payload in item_payloads]
+            _synchronize_relational_review_aliases(clean_receipt)
             core = receipt_core(clean_receipt)
             payment_method = as_str(receipt_payment_method(clean_receipt))
 
@@ -608,7 +732,7 @@ class ReceiptRepository(BaseRepository):
                     as_float(receipt_subtotal(clean_receipt)),
                     as_float(receipt_tax_total(clean_receipt)),
                     as_float(receipt_grand_total(clean_receipt)),
-                    as_float(receipt_paid_total(clean_receipt)),
+                    as_float(_review_paid_total_for_persistence(clean_receipt)),
                     payment_method,
                     as_str(
                         first_present(
@@ -681,7 +805,7 @@ class ReceiptRepository(BaseRepository):
                     """
                     UPDATE review_queue
                     SET queue_status=?, receipt_db_id=?, decision=?, balanced=?,
-                        difference=?, issue_count=?, raw_json=?, updated_at=?
+                        difference=?, issue_count=?, draft_json=?, updated_at=?
                     WHERE job_id=?
                     """,
                     (

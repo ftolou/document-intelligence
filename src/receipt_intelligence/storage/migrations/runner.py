@@ -16,7 +16,7 @@ from pathlib import Path
 
 from receipt_intelligence.storage.connection import SQLiteConnectionFactory
 
-LATEST_SCHEMA_VERSION = 11
+LATEST_SCHEMA_VERSION = 12
 
 
 @dataclass(frozen=True)
@@ -92,6 +92,7 @@ class MigrationRunner:
             Migration(9, "review_workspace", self._apply_review_workspace),
             Migration(10, "cache_aware_model_pricing", self._apply_cache_aware_model_pricing),
             Migration(11, "review_source_and_draft", self._apply_review_source_and_draft),
+            Migration(12, "review_draft_authority", self._apply_review_draft_authority),
         ]
 
     def _apply_sql(self, connection: sqlite3.Connection, filename: str) -> None:
@@ -212,6 +213,27 @@ class MigrationRunner:
             SET extraction_json=COALESCE(extraction_json, raw_json),
                 draft_json=COALESCE(draft_json, raw_json)
             WHERE extraction_json IS NULL OR draft_json IS NULL
+            """
+        )
+
+    def _apply_review_draft_authority(self, connection: sqlite3.Connection) -> None:
+        """Freeze legacy raw_json as source evidence and keep draft_json mutable."""
+        # Migration 11 guaranteed both explicit roles exist. Preserve the latest
+        # draft first, then make raw_json a frozen compatibility mirror of the
+        # immutable extraction snapshot. No current review state is discarded.
+        connection.execute(
+            """
+            UPDATE review_queue
+            SET extraction_json=COALESCE(extraction_json, raw_json),
+                draft_json=COALESCE(draft_json, raw_json)
+            WHERE extraction_json IS NULL OR draft_json IS NULL
+            """
+        )
+        connection.execute(
+            """
+            UPDATE review_queue
+            SET raw_json=extraction_json
+            WHERE extraction_json IS NOT NULL
             """
         )
 

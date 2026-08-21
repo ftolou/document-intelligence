@@ -1,4 +1,9 @@
-"""Human-review queue, immutable extraction snapshots, mutable drafts, and history."""
+"""Human-review queue, immutable extraction snapshots, mutable drafts, and history.
+
+``extraction_json`` is immutable source evidence and ``draft_json`` is the mutable
+pre-import review state. ``raw_json`` is retained only as a frozen legacy mirror so
+older SQLite databases and external readers can migrate without losing evidence.
+"""
 
 from __future__ import annotations
 
@@ -236,7 +241,6 @@ class ReviewRepository(BaseRepository):
                     duplicate_status=excluded.duplicate_status,
                     duplicate_score=excluded.duplicate_score,
                     duplicate_candidates_json=excluded.duplicate_candidates_json,
-                    raw_json=excluded.raw_json,
                     extraction_json=COALESCE(review_queue.extraction_json, excluded.extraction_json),
                     draft_json=excluded.draft_json,
                     reviewer=COALESCE(excluded.reviewer, review_queue.reviewer),
@@ -399,7 +403,7 @@ class ReviewRepository(BaseRepository):
                 UPDATE review_queue
                 SET review_revision=?, queue_status=?, receipt_db_id=COALESCE(?, receipt_db_id),
                     reviewer=?, review_notes=?, reviewed_at=?, review_reason_codes_json=?,
-                    source_kind='reviewed', raw_json=?, draft_json=?, updated_at=?
+                    source_kind='reviewed', draft_json=?, updated_at=?
                 WHERE job_id=? AND review_revision=?
                 """,
                 (
@@ -410,7 +414,6 @@ class ReviewRepository(BaseRepository):
                     notes,
                     now,
                     json.dumps(reason_codes, ensure_ascii=False),
-                    receipt_json,
                     receipt_json,
                     now,
                     str(job_id),
@@ -507,6 +510,8 @@ class ReviewRepository(BaseRepository):
     @staticmethod
     def _present_queue_row(item: dict[str, Any]) -> dict[str, Any]:
         item["duplicate_candidates"] = _json_list(item.get("duplicate_candidates_json"))
+        # ``draft_json`` is authoritative for mutable pre-import review state.
+        # ``raw_json`` is a defensive fallback for databases predating migration 11.
         receipt = _json_object(item.get("draft_json") or item.get("raw_json"))
         core = receipt_core(receipt)
         validation = (
