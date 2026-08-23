@@ -45,6 +45,86 @@ jobs:
             node --check "${file}"
           done
 
+  capability-extra-imports:
+    name: Capability extra / ${{ matrix.extra }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        extra: [semantic, rag-sql, openai-extraction]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build package wheel
+        run: |
+          python -m pip install "build>=1.2,<2"
+          python -m build --wheel
+
+      - name: Install capability extra
+        run: python -m pip install ".[${{ matrix.extra }}]"
+
+      - name: Verify capability import surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ matrix.extra }}" in
+            semantic)
+              python - <<'PY'
+          import importlib.util
+          from receipt_intelligence.adapters.embeddings.factory import (
+              EmbeddingProviderConfig,
+              build_embedding_gateway,
+          )
+          from receipt_intelligence.rag.item_indexer import ItemEmbeddingIndexer
+          from receipt_intelligence.rag.item_retriever import ItemSemanticRetriever
+          from receipt_intelligence.rag.ports import IndexableItemSource, SemanticSearchCandidate
+
+          assert EmbeddingProviderConfig
+          assert build_embedding_gateway
+          assert ItemEmbeddingIndexer
+          assert ItemSemanticRetriever
+          assert IndexableItemSource
+          assert SemanticSearchCandidate
+          assert importlib.util.find_spec("numpy") is None
+          PY
+              ;;
+            rag-sql)
+              python - <<'PY'
+          import langgraph
+          import receipt_intelligence.rag_sql.orchestration.langgraph
+
+          assert langgraph
+          PY
+              ;;
+            openai-extraction)
+              python - <<'PY'
+          import importlib.util
+          from openai import OpenAI
+          from receipt_intelligence.extraction.config import ExtractionRequest
+          from receipt_intelligence.extraction.openai_one_shot import run_openai_one_shot_extraction
+          from receipt_intelligence.pipeline.integrated_receipt_pipeline import run_receipt_extraction
+
+          assert OpenAI
+          assert ExtractionRequest
+          assert run_openai_one_shot_extraction
+          assert run_receipt_extraction
+          for package in ("paddle", "paddleocr", "cv2", "numpy", "langgraph", "flask"):
+              assert importlib.util.find_spec(package) is None, package
+          PY
+              ;;
+            *)
+              echo "Unexpected capability extra: ${{ matrix.extra }}" >&2
+              exit 1
+              ;;
+          esac
+
   docker-thin-build-check:
     runs-on: ubuntu-latest
     timeout-minutes: 45
