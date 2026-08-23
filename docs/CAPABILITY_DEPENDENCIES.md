@@ -16,7 +16,7 @@ The base package declares `pydantic`, which is used directly by generic applicat
 python -m pip install "document-intelligence-pipeline[semantic]"
 ```
 
-This extra supports the provider-neutral semantic indexing/retrieval surface and the current HTTP embedding adapters. It intentionally does not install local OCR/GPU packages or NumPy.
+This extra supports the provider-neutral semantic indexing/retrieval surface and the current HTTP embedding adapters. It includes NumPy because the generic semantic retriever performs vector scoring with NumPy. It intentionally does not install local OCR/GPU packages.
 
 Representative import surface:
 
@@ -35,7 +35,7 @@ from receipt_intelligence.rag.item_retriever import ItemSemanticRetriever
 python -m pip install "document-intelligence-pipeline[rag-sql]"
 ```
 
-This extra adds LangGraph for the generic RAG-SQL orchestration adapter. It remains separate from semantic retrieval so consumers that only need indexing/retrieval do not install graph orchestration.
+This extra adds LangGraph for the generic RAG-SQL orchestration adapter and NumPy for the semantic candidate-resolution path reused by query-filter resolution. It remains separate from the HTTP embedding-provider adapters, so consumers that only need RAG-SQL orchestration do not install those adapters' transport dependencies.
 
 ## OpenAI one-shot extraction
 
