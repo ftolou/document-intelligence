@@ -77,7 +77,7 @@ jobs:
           case "${{ matrix.extra }}" in
             semantic)
               python - <<'PY'
-          import importlib.util
+          import numpy
           from receipt_intelligence.adapters.embeddings.factory import (
               EmbeddingProviderConfig,
               build_embedding_gateway,
@@ -86,21 +86,23 @@ jobs:
           from receipt_intelligence.rag.item_retriever import ItemSemanticRetriever
           from receipt_intelligence.rag.ports import IndexableItemSource, SemanticSearchCandidate
 
+          assert numpy
           assert EmbeddingProviderConfig
           assert build_embedding_gateway
           assert ItemEmbeddingIndexer
           assert ItemSemanticRetriever
           assert IndexableItemSource
           assert SemanticSearchCandidate
-          assert importlib.util.find_spec("numpy") is None
           PY
               ;;
             rag-sql)
               python - <<'PY'
           import langgraph
+          import numpy
           import receipt_intelligence.rag_sql.orchestration.langgraph
 
           assert langgraph
+          assert numpy
           PY
               ;;
             openai-extraction)
