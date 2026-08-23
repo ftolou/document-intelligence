@@ -13,12 +13,14 @@ dependencies = [
 
 [project.optional-dependencies]
 semantic = [
+    "numpy==2.2.6",
     "requests==2.32.4",
     "urllib3>=2.2,<3",
     "charset-normalizer>=3.3,<4",
 ]
 rag-sql = [
     "langgraph==1.2.7",
+    "numpy==2.2.6",
 ]
 openai-extraction = [
     "openai>=1.99.0",
