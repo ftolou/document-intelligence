@@ -25,6 +25,9 @@ class ExtractionConfig:
     model: str
 
     extraction_backend: str = "local_specialized"
+    source_image_max_width: int = 12000
+    source_image_max_height: int = 12000
+    source_image_max_pixels: int = 40_000_000
     openai_model: str = "gpt-5.6-luna"
     openai_reasoning_effort: str = "medium"
     openai_image_detail: str = "high"
@@ -70,6 +73,13 @@ class ExtractionConfig:
                 raise ValueError("ollama_url must not be empty")
         if backend == "openai_one_shot" and not self.openai_model.strip():
             raise ValueError("openai_model must not be empty")
+        for field_name in (
+            "source_image_max_width",
+            "source_image_max_height",
+            "source_image_max_pixels",
+        ):
+            if getattr(self, field_name) < 1:
+                raise ValueError(f"{field_name} must be positive")
         if self.openai_reasoning_effort not in {"none", "minimal", "low", "medium", "high"}:
             raise ValueError("openai_reasoning_effort must be none/minimal/low/medium/high")
         if self.openai_image_detail not in {"low", "high", "auto"}:
