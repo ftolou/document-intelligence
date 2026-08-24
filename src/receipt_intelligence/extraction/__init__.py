@@ -13,6 +13,14 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "StageContractError": ("receipt_intelligence.extraction.state", "StageContractError"),
     "PreparedArtifacts": ("receipt_intelligence.extraction.state", "PreparedArtifacts"),
     "FinalizationArtifacts": ("receipt_intelligence.extraction.state", "FinalizationArtifacts"),
+    "SourceImageValidationError": (
+        "receipt_intelligence.extraction.source_image",
+        "SourceImageValidationError",
+    ),
+    "validate_source_image": (
+        "receipt_intelligence.extraction.source_image",
+        "validate_source_image",
+    ),
     "ReceiptExtractionWorkflow": (
         "receipt_intelligence.extraction.workflow",
         "ReceiptExtractionWorkflow",

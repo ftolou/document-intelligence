@@ -11,6 +11,7 @@ from receipt_intelligence.extraction.config import ExtractionRequest
 from receipt_intelligence.extraction.context import ExtractionContext
 from receipt_intelligence.extraction.dependencies import ExtractionDependencies
 from receipt_intelligence.extraction.factory import build_extraction_workflow
+from receipt_intelligence.extraction.source_image import validate_source_image
 from receipt_intelligence.observability.timing import utc_now_iso
 
 
@@ -20,6 +21,13 @@ def run_receipt_extraction(
     dependencies: ExtractionDependencies | None = None,
 ) -> dict[str, Any]:
     """Run one receipt image through the selected extraction backend."""
+
+    validate_source_image(
+        request.source_image_path,
+        max_width=request.source_image_max_width,
+        max_height=request.source_image_max_height,
+        max_pixels=request.source_image_max_pixels,
+    )
 
     if request.extraction_backend == "openai_one_shot":
         from receipt_intelligence.extraction.openai_observability import (
