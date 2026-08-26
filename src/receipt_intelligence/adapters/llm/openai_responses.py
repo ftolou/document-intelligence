@@ -31,6 +31,25 @@ from receipt_intelligence.application.ports.multimodal import (
 
 _DEFAULT_BASE_URL = "https://api.openai.com/v1"
 _SCHEMA_NAME = re.compile(r"[^a-zA-Z0-9_-]+")
+_UNSUPPORTED_STRICT_SCHEMA_KEYWORDS = {
+    "$schema",
+    "default",
+    "examples",
+    "exclusiveMaximum",
+    "exclusiveMinimum",
+    "format",
+    "maxItems",
+    "maxLength",
+    "maxProperties",
+    "maximum",
+    "minItems",
+    "minLength",
+    "minProperties",
+    "minimum",
+    "multipleOf",
+    "pattern",
+    "uniqueItems",
+}
 
 
 class _OpenAIResponsesAdapter:
@@ -106,7 +125,7 @@ class _OpenAIResponsesAdapter:
                 "format": {
                     "type": "json_schema",
                     "name": _schema_name(operation),
-                    "schema": response_json_schema,
+                    "schema": _openai_strict_schema(response_json_schema),
                     "strict": True,
                 }
             }
@@ -114,8 +133,7 @@ class _OpenAIResponsesAdapter:
             payload["text"] = {"format": {"type": "json_object"}}
         if self.reasoning_effort is not None and think:
             payload["reasoning"] = {"effort": self.reasoning_effort}
-        if temperature != 0.0:
-            payload["temperature"] = temperature
+        payload["temperature"] = temperature
 
         started = time.perf_counter()
         try:
@@ -307,6 +325,85 @@ def _response_to_dict(response: Any) -> dict[str, Any]:
 def _schema_name(operation: str) -> str:
     value = _SCHEMA_NAME.sub("_", str(operation or "generation")).strip("_")
     return (value or "generation")[:64]
+
+
+def _openai_strict_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """Translate a neutral JSON Schema to OpenAI's strict supported subset."""
+
+    return _normalize_strict_schema_node(schema)
+
+
+def _normalize_strict_schema_node(value: Any) -> Any:
+    if isinstance(value, list):
+        return [_normalize_strict_schema_node(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+
+    original_required = {str(name) for name in value.get("required", []) if isinstance(name, str)}
+    normalized: dict[str, Any] = {}
+    for key, item in value.items():
+        if key in _UNSUPPORTED_STRICT_SCHEMA_KEYWORDS or key in {
+            "additionalProperties",
+            "required",
+        }:
+            continue
+        if key == "properties" and isinstance(item, dict):
+            properties: dict[str, Any] = {}
+            for name, property_schema in item.items():
+                normalized_property = _normalize_strict_schema_node(property_schema)
+                if name not in original_required:
+                    normalized_property = _make_schema_nullable(normalized_property)
+                properties[name] = normalized_property
+            normalized[key] = properties
+        else:
+            normalized[key] = _normalize_strict_schema_node(item)
+
+    properties = normalized.get("properties")
+    if normalized.get("type") == "object" or isinstance(properties, dict):
+        properties = properties if isinstance(properties, dict) else {}
+        normalized["required"] = list(properties)
+        normalized["additionalProperties"] = False
+    return normalized
+
+
+def _make_schema_nullable(schema: Any) -> Any:
+    if not isinstance(schema, dict) or _schema_allows_null(schema):
+        return schema
+    if "const" in schema:
+        return {"anyOf": [schema, {"type": "null"}]}
+
+    schema_type = schema.get("type")
+    if isinstance(schema_type, str):
+        schema["type"] = [schema_type, "null"]
+        enum = schema.get("enum")
+        if isinstance(enum, list) and None not in enum:
+            enum.append(None)
+        return schema
+    if isinstance(schema_type, list):
+        schema["type"] = [*schema_type, "null"]
+        enum = schema.get("enum")
+        if isinstance(enum, list) and None not in enum:
+            enum.append(None)
+        return schema
+
+    any_of = schema.get("anyOf")
+    if isinstance(any_of, list):
+        schema["anyOf"] = [*any_of, {"type": "null"}]
+        return schema
+    return {"anyOf": [schema, {"type": "null"}]}
+
+
+def _schema_allows_null(schema: dict[str, Any]) -> bool:
+    schema_type = schema.get("type")
+    if schema_type == "null" or (isinstance(schema_type, list) and "null" in schema_type):
+        return True
+    enum = schema.get("enum")
+    if isinstance(enum, list) and None in enum:
+        return True
+    any_of = schema.get("anyOf")
+    return isinstance(any_of, list) and any(
+        isinstance(option, dict) and _schema_allows_null(option) for option in any_of
+    )
 
 
 def _image_to_data_url(path: Path) -> str:

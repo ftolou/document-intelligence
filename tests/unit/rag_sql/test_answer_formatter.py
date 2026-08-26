@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from receipt_intelligence.application.ports.llm import GenerationRequest, GenerationResult
 from receipt_intelligence.rag_sql.answer_formatter import (
     AnswerFormatterConfig,
     AnswerFormatterResult,
@@ -12,6 +13,16 @@ from receipt_intelligence.rag_sql.answer_formatter import (
     render_validated_answer,
     validate_answer_formatter_result,
 )
+
+
+class FakeGateway:
+    def __init__(self, payload: dict[str, object]) -> None:
+        self.payload = payload
+        self.requests: list[GenerationRequest] = []
+
+    def generate(self, request: GenerationRequest) -> GenerationResult:
+        self.requests.append(request)
+        return GenerationResult(text=json.dumps(self.payload))
 
 
 def _rows() -> list[dict[str, object]]:
@@ -41,7 +52,7 @@ def _formatter(payload: dict[str, object]) -> EvidenceBoundAnswerFormatter:
 
 
 def test_formatter_returns_structured_evidence_only() -> None:
-    formatter = _formatter(
+    gateway = FakeGateway(
         {
             "schema_version": "rag_sql_answer_format_v1",
             "status": "resolved",
@@ -50,6 +61,10 @@ def test_formatter_returns_structured_evidence_only() -> None:
             "evidence_fields": ["description", "category_reason"],
             "reason": "Starbucks is explicitly identified as the product brand.",
         }
+    )
+    formatter = EvidenceBoundAnswerFormatter(
+        AnswerFormatterConfig(model="test-model", retry_count=0, format_json=False),
+        llm_gateway=gateway,
     )
 
     result = formatter.format(
@@ -63,6 +78,8 @@ def test_formatter_returns_structured_evidence_only() -> None:
     assert result.status == "resolved"
     assert result.values == ["Starbucks"]
     assert result.model == "test-model"
+    assert gateway.requests[0].format_json is False
+    assert gateway.requests[0].response_json_schema is None
 
 
 def test_validator_accepts_supported_brand_and_renders_deterministically() -> None:

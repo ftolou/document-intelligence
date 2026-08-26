@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 
+from receipt_intelligence.application.ports.llm import GenerationRequest, GenerationResult
+from receipt_intelligence.extraction.categorization.items import (
+    _categorization_output_schema,
+    categorize_receipt_items_llm,
+)
 from receipt_intelligence.extraction.contracts.presentation import (
     CategorizationRequest,
     CategorizationStatus,
@@ -15,6 +21,56 @@ from receipt_intelligence.extraction.presentation.categorization import (
 class FakeGateway:
     def generate(self, request):  # pragma: no cover - categorizer stub owns the call
         raise AssertionError("gateway should not be called directly")
+
+
+class CapturingGateway:
+    def __init__(self, response: dict[str, object]) -> None:
+        self.response = response
+        self.requests: list[GenerationRequest] = []
+
+    def generate(self, request: GenerationRequest) -> GenerationResult:
+        self.requests.append(request)
+        return GenerationResult(text=json.dumps(self.response))
+
+
+def test_categorization_without_provider_formatting_still_validates_locally() -> None:
+    schema = _categorization_output_schema()
+    properties = schema["properties"]
+    gateway = CapturingGateway(
+        {
+            "schema_version": properties["schema_version"]["const"],
+            "taxonomy_version": properties["taxonomy_version"]["const"],
+            "merchant_taxonomy_version": properties["merchant_taxonomy_version"]["const"],
+            "merchant_classification": {
+                "category_key": "unknown",
+                "confidence": 0.0,
+                "reason": "Merchant type is not explicit.",
+            },
+            "items": [
+                {
+                    "item_index": 0,
+                    "category_key": "unknown",
+                    "confidence": 0.0,
+                    "text_certainty": "ambiguous",
+                    "evidence_terms": ["Milk"],
+                    "reason": "The product category is ambiguous.",
+                }
+            ],
+            "warnings": [],
+        }
+    )
+
+    result = categorize_receipt_items_llm(
+        {"items": [{"description": "Milk", "line_total": 1.29}]},
+        ollama_url="http://ollama.test",
+        model="test-model",
+        format_json=False,
+        llm_gateway=gateway,
+    )
+
+    assert result["status"] in {"ok", "ok_with_warnings"}
+    assert gateway.requests[0].format_json is False
+    assert gateway.requests[0].response_json_schema is None
 
 
 def test_disabled_categorization_keeps_receipt_unchanged() -> None:

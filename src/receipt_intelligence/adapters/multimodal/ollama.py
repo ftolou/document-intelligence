@@ -44,6 +44,7 @@ class OllamaMultimodalGateway(MultimodalGateway):
             "num_predict": request.num_predict,
         }
         options.update(self.generation_options)
+        options.update(request.provider_options)
         payload: dict[str, Any] = {
             "model": request.model,
             "messages": _messages(request, images),

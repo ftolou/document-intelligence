@@ -1074,7 +1074,7 @@ def categorize_receipt_items_llm(
                 keep_alive=keep_alive,
                 timeout_seconds=timeout,
                 format_json=format_json,
-                response_json_schema=response_schema,
+                response_json_schema=response_schema if format_json else None,
             )
         )
         raw = generation.text

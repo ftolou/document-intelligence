@@ -128,7 +128,10 @@ def test_analyzer_retries_invalid_json_without_deterministic_fallback() -> None:
         calls += 1
         return "not-json"
 
-    analyzer = RagSqlQuestionAnalyzer(QuestionAnalyzerConfig(retry_count=1), generate=generate)
+    analyzer = RagSqlQuestionAnalyzer(
+        QuestionAnalyzerConfig(retry_count=1, format_json=False),
+        generate=generate,
+    )
     with pytest.raises(QuestionAnalysisError, match="2 attempt"):
         analyzer.analyze("Schuhe")
 
@@ -228,12 +231,14 @@ def test_analyzer_accepts_provider_neutral_gateway() -> None:
     )
 
     result = RagSqlQuestionAnalyzer(
-        QuestionAnalyzerConfig(retry_count=0), llm_gateway=gateway
+        QuestionAnalyzerConfig(retry_count=0, format_json=False), llm_gateway=gateway
     ).analyze("Wie viel habe ich ausgegeben?")
 
     assert result.status == "ready"
     assert len(gateway.requests) == 1
     assert gateway.requests[0].model == "gemma4:latest"
+    assert gateway.requests[0].format_json is False
+    assert gateway.requests[0].response_json_schema is None
 
 
 def test_analyzer_emits_generic_merchant_filter_for_at_merchant_question() -> None:

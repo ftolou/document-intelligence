@@ -14,6 +14,7 @@ from receipt_intelligence.adapters.llm.openai_responses import (
     OpenAIGenerationGateway,
     OpenAIMultimodalGateway,
 )
+from receipt_intelligence.adapters.multimodal.ollama import OllamaMultimodalGateway
 from receipt_intelligence.application.llm_json import LLMJsonParseError, parse_json_from_llm
 from receipt_intelligence.application.ports.chat import ChatGenerationRequest
 from receipt_intelligence.application.ports.llm import (
@@ -61,6 +62,39 @@ def _response(text: str, **overrides: Any) -> SimpleNamespace:
     return SimpleNamespace(**values)
 
 
+def _assert_openai_strict_schema(schema: Any) -> None:
+    if isinstance(schema, list):
+        for item in schema:
+            _assert_openai_strict_schema(item)
+        return
+    if not isinstance(schema, dict):
+        return
+
+    unsupported = {
+        "$schema",
+        "default",
+        "exclusiveMaximum",
+        "exclusiveMinimum",
+        "format",
+        "maxItems",
+        "maxLength",
+        "maximum",
+        "minItems",
+        "minLength",
+        "minimum",
+        "multipleOf",
+        "pattern",
+        "uniqueItems",
+    }
+    assert unsupported.isdisjoint(schema)
+    properties = schema.get("properties")
+    if isinstance(properties, dict):
+        assert schema["required"] == list(properties)
+        assert schema["additionalProperties"] is False
+    for value in schema.values():
+        _assert_openai_strict_schema(value)
+
+
 def test_openai_text_adapter_runs_existing_rag_workflow_with_structured_schema() -> None:
     payload = {
         "schema_version": "rag_sql_question_analysis_v2",
@@ -86,6 +120,11 @@ def test_openai_text_adapter_runs_existing_rag_workflow_with_structured_schema()
     request = responses.calls[0]
     assert request["text"]["format"]["type"] == "json_schema"
     assert request["text"]["format"]["strict"] is True
+    schema = request["text"]["format"]["schema"]
+    _assert_openai_strict_schema(schema)
+    assert set(schema["required"]) == set(schema["properties"])
+    assert schema["properties"]["language"]["type"] == ["string", "null"]
+    assert request["temperature"] == 0.0
     assert request["timeout"] == 120.0
 
 
@@ -145,6 +184,45 @@ def test_openai_multimodal_adapter_preserves_separate_image_contract(tmp_path: P
     image = request["input"][0]["content"][1]
     assert image["image_url"].startswith("data:image/png;base64,")
     assert image["detail"] == "high"
+
+
+def test_ollama_multimodal_adapter_honors_deprecated_request_options(
+    tmp_path: Path,
+) -> None:
+    image_path = tmp_path / "receipt.png"
+    image_path.write_bytes(b"image")
+    captured: dict[str, Any] = {}
+
+    def fake_http_json(
+        _url: str,
+        *,
+        payload: dict[str, Any],
+        timeout: float,
+    ) -> dict[str, Any]:
+        captured.update(payload)
+        assert timeout == 300.0
+        return {"done": True, "message": {"content": "receipt text"}}
+
+    gateway = OllamaMultimodalGateway(
+        "http://ollama.test",
+        generation_options={"seed": 7},
+    )
+    with pytest.deprecated_call(match="provider_options"):
+        request = MultimodalGenerationRequest(
+            model="local-model",
+            prompt="extract receipt",
+            image_paths=(image_path,),
+            provider_options={"top_k": 20},
+        )
+    with patch(
+        "receipt_intelligence.adapters.multimodal.ollama._http_json",
+        side_effect=fake_http_json,
+    ):
+        result = gateway.generate(request)
+
+    assert result.text == "receipt text"
+    assert captured["options"]["seed"] == 7
+    assert captured["options"]["top_k"] == 20
 
 
 @pytest.mark.parametrize(

@@ -37,7 +37,9 @@ Text completion, structured chat, and image-aware generation remain separate Cor
 do not inherit a provider transport shape. Ollama and OpenAI Responses are adapter implementations
 of those ports. Adapters normalize unavailable, refused, incomplete, and malformed responses into
 stable Core failures; structured callers validate JSON against the same schema they supplied with
-the neutral request.
+the neutral request. Provider-native sampling options belong to adapter composition.
+`MultimodalGenerationRequest.provider_options` remains only as a deprecated compatibility bridge
+for existing callers and is scheduled for removal in the next major release.
 
 ## Application boundary
 

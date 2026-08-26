@@ -138,7 +138,7 @@ def test_resolver_maps_selected_identity_to_all_occurrence_ids() -> None:
             )
         ]
     )
-    resolver = CandidateResolver(_config(), llm_gateway=gateway)
+    resolver = CandidateResolver(_config(format_json=False), llm_gateway=gateway)
 
     result = resolver.resolve(
         "Schuhe",
@@ -155,6 +155,8 @@ def test_resolver_maps_selected_identity_to_all_occurrence_ids() -> None:
     assert result.rejected_item_ids == [20]
     assert result.attempts == 1
     assert len(gateway.requests) == 1
+    assert gateway.requests[0].format_json is False
+    assert gateway.requests[0].response_json_schema is None
 
 
 def test_resolver_classifies_ambiguous_description_as_uncertain() -> None:

@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from receipt_intelligence.application.ports.llm import GenerationRequest, GenerationResult
 from receipt_intelligence.rag_sql.models import (
     QueryFilter,
     QuestionAnalysisResult,
@@ -19,6 +20,16 @@ from receipt_intelligence.rag_sql.planner import (
     build_protected_filter_parameters,
     build_protected_item_parameters,
 )
+
+
+class FakeGateway:
+    def __init__(self, generate) -> None:
+        self._generate = generate
+        self.requests: list[GenerationRequest] = []
+
+    def generate(self, request: GenerationRequest) -> GenerationResult:
+        self.requests.append(request)
+        return GenerationResult(text=self._generate(prompt=request.prompt))
 
 
 def _analysis() -> QuestionAnalysisResult:
@@ -87,7 +98,11 @@ def test_planner_preserves_app_owned_item_parameters() -> None:
             }
         )
 
-    result = RagSqlPlanner(RagSqlPlannerConfig(retry_count=0), generate=generate).plan(
+    gateway = FakeGateway(generate)
+    result = RagSqlPlanner(
+        RagSqlPlannerConfig(retry_count=0, format_json=False),
+        llm_gateway=gateway,
+    ).plan(
         "Wie viel habe ich für Schuhe ausgegeben?",
         analysis=_analysis(),
         resolved_entities=_resolved(),
@@ -97,6 +112,8 @@ def test_planner_preserves_app_owned_item_parameters() -> None:
     assert result.parameters == protected
     assert result.status == "ready"
     assert result.result_entity == "spending_amount"
+    assert gateway.requests[0].format_json is False
+    assert gateway.requests[0].response_json_schema is None
 
 
 def test_planner_preserves_receipt_lookup_semantics() -> None:

@@ -41,6 +41,18 @@ def test_multimodal_request_supports_thinking_and_schema_independently(
     assert MultimodalGenerationResult(text="receipt text").text == "receipt text"
 
 
+def test_multimodal_request_preserves_legacy_positional_order(tmp_path: Path) -> None:
+    request = MultimodalGenerationRequest(
+        "qwen3.5:4b",
+        "Transcribe the receipt.",
+        (tmp_path / "receipt.jpg",),
+        "legacy_operation",
+    )
+
+    assert request.operation == "legacy_operation"
+    assert request.system_prompt is None
+
+
 def test_text_detection_contract_is_provider_neutral(tmp_path: Path) -> None:
     request = TextDetectionRequest(image_path=tmp_path / "receipt.jpg")
     region = DetectedTextRegion(
