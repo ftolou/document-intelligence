@@ -8,19 +8,18 @@ final publication, review, and persistence.
 
 from __future__ import annotations
 
-import base64
-import io
 import json
-import mimetypes
-import os
 import time
 from pathlib import Path
 from typing import Any
 
-from PIL import Image
-
 from receipt_intelligence.app_version import get_app_version
+from receipt_intelligence.application.llm_json import parse_json_from_llm
 from receipt_intelligence.application.ports.artifacts import ArtifactKind
+from receipt_intelligence.application.ports.multimodal import (
+    MultimodalGateway,
+    MultimodalGenerationRequest,
+)
 from receipt_intelligence.domain.categorization_taxonomy import (
     ITEM_TAXONOMY_VERSION,
     MERCHANT_TAXONOMY_VERSION,
@@ -390,110 +389,37 @@ def _emit(config: ExtractionRequest, stage: str, status: str, message: str, **de
     )
 
 
-def _image_to_data_url(path: Path) -> str:
-    path = Path(path).resolve()
-    if not path.is_file():
-        raise FileNotFoundError(f"Receipt image does not exist: {path}")
-
-    mime, _ = mimetypes.guess_type(path.name)
-    if mime in {"image/jpeg", "image/png", "image/webp", "image/gif"}:
-        payload = path.read_bytes()
-        return f"data:{mime};base64,{base64.b64encode(payload).decode('ascii')}"
-
-    # The app also accepts BMP/TIFF. Normalize those formats in-memory so the
-    # backend keeps the same upload contract without adding an extra AI/OCR step.
-    with Image.open(path) as image:
-        converted = image.convert("RGB")
-        buffer = io.BytesIO()
-        converted.save(buffer, format="PNG")
-    return f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode('ascii')}"
-
-
-def _response_to_dict(response: Any) -> dict[str, Any]:
-    if hasattr(response, "model_dump"):
-        return response.model_dump()
-    if hasattr(response, "to_dict"):
-        return response.to_dict()
-    return {"repr": repr(response)}
-
-
-def _usage_to_dict(response: Any) -> dict[str, Any] | None:
-    usage = getattr(response, "usage", None)
-    if usage is None:
-        return None
-    if hasattr(usage, "model_dump"):
-        return usage.model_dump()
-    if isinstance(usage, dict):
-        return dict(usage)
-    return {"value": str(usage)}
+def _usage_to_dict(response: dict[str, Any]) -> dict[str, Any] | None:
+    usage = response.get("usage")
+    return dict(usage) if isinstance(usage, dict) else None
 
 
 def _call_openai_once(
-    config: ExtractionRequest, *, client: Any | None = None
-) -> tuple[dict[str, Any], Any, float]:
-    if client is None:
-        if not os.getenv("OPENAI_API_KEY"):
-            raise RuntimeError("OPENAI_API_KEY is not set for the OpenAI extraction backend.")
-        try:
-            from openai import OpenAI
-        except ImportError as exc:  # pragma: no cover - dependency error is operational
-            raise RuntimeError(
-                "OpenAI backend requires the 'openai' package. Rebuild/install requirements/app.txt."
-            ) from exc
-        client = OpenAI(timeout=config.openai_timeout_seconds)
-
-    request: dict[str, Any] = {
-        "model": config.openai_model,
-        "store": False,
-        "max_output_tokens": config.openai_max_output_tokens,
-        "instructions": SYSTEM_INSTRUCTIONS,
-        "input": [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "input_text", "text": USER_PROMPT},
-                    {
-                        "type": "input_image",
-                        "image_url": _image_to_data_url(config.source_image_path),
-                        "detail": config.openai_image_detail,
-                    },
-                ],
-            }
-        ],
-        "text": {
-            "format": {
-                "type": "json_schema",
-                "name": "receipt_one_shot_extraction_and_categorization",
-                "description": "Complete receipt extraction and categorization from one image.",
-                "schema": RECEIPT_SCHEMA,
-                "strict": True,
-            }
-        },
-    }
-    if config.openai_reasoning_effort != "none":
-        request["reasoning"] = {"effort": config.openai_reasoning_effort}
-
+    config: ExtractionRequest,
+    *,
+    gateway: MultimodalGateway,
+) -> tuple[dict[str, Any], dict[str, Any], float]:
     started = time.perf_counter()
-    # Intentionally exactly ONE OpenAI model request. No retry or repair call.
-    response = client.responses.create(**request)
-    elapsed_seconds = time.perf_counter() - started
-
-    status = str(getattr(response, "status", "") or "")
-    if status and status != "completed":
-        raise RuntimeError(
-            f"OpenAI response status is {status!r}; "
-            f"incomplete_details={getattr(response, 'incomplete_details', None)!r}"
+    result = gateway.generate(
+        MultimodalGenerationRequest(
+            model=config.openai_model,
+            system_prompt=SYSTEM_INSTRUCTIONS,
+            prompt=USER_PROMPT,
+            image_paths=(config.source_image_path,),
+            operation="receipt_one_shot_extraction_and_categorization",
+            think=config.openai_reasoning_effort != "none",
+            num_predict=config.openai_max_output_tokens,
+            timeout_seconds=config.openai_timeout_seconds,
+            format_json=True,
+            response_json_schema=RECEIPT_SCHEMA,
         )
-    output_text = str(getattr(response, "output_text", "") or "").strip()
-    if not output_text:
-        raise RuntimeError("OpenAI returned no output_text.")
-    try:
-        payload = json.loads(output_text)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError("OpenAI structured output was not valid JSON.") from exc
-    if not isinstance(payload, dict):
-        raise RuntimeError("OpenAI structured result root is not an object.")
-    return payload, response, elapsed_seconds
+    )
+    elapsed_seconds = time.perf_counter() - started
+    payload = parse_json_from_llm(
+        result,
+        response_json_schema=RECEIPT_SCHEMA,
+    )
+    return payload, dict(result.raw_response or {}), elapsed_seconds
 
 
 def _money_payload(field: str, value: Any, currency: str | None) -> dict[str, Any] | None:
@@ -767,7 +693,7 @@ def _finalize_openai(
     categorization: CategorizationResult,
     stage_trace: list[dict[str, Any]],
     api_elapsed: float,
-    response: Any,
+    response: dict[str, Any],
 ) -> dict[str, Any]:
     store = CompatibilityFilesystemArtifactStore(request.result_dir)
     store.prepare_run(run_id=request.run_id, overwrite=True)
@@ -817,7 +743,7 @@ def _finalize_openai(
         "openai": {
             "elapsed_seconds": api_elapsed,
             "usage": _usage_to_dict(response),
-            "response_id": getattr(response, "id", None),
+            "response_id": response.get("id"),
         },
     }
     final_receipt["pipeline"] = {
@@ -920,7 +846,7 @@ def _finalize_openai(
 def run_openai_one_shot_extraction(
     request: ExtractionRequest,
     *,
-    client: Any | None = None,
+    gateway: MultimodalGateway,
 ) -> dict[str, Any]:
     """Run the cloud one-shot backend and return the canonical application result."""
 
@@ -944,7 +870,7 @@ def run_openai_one_shot_extraction(
         reasoning_effort=request.openai_reasoning_effort,
         image_detail=request.openai_image_detail,
     )
-    model_receipt, response, api_elapsed = _call_openai_once(request, client=client)
+    model_receipt, response, api_elapsed = _call_openai_once(request, gateway=gateway)
     stage_trace.append(
         _stage(
             "openai_one_shot",
@@ -967,7 +893,7 @@ def run_openai_one_shot_extraction(
     response_path = request.result_dir / f"{request.run_id}_openai_api_response.json"
     run_metadata_path = request.result_dir / f"{request.run_id}_openai_run_metadata.json"
     save_json(raw_path, model_receipt)
-    save_json(response_path, _response_to_dict(response))
+    save_json(response_path, response)
     save_json(
         run_metadata_path,
         {

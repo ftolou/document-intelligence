@@ -1058,6 +1058,7 @@ def categorize_receipt_items_llm(
             "error": None,
         }
     try:
+        response_schema = _categorization_output_schema()
         if llm_gateway is None:
             from receipt_intelligence.adapters.llm import OllamaGateway
 
@@ -1073,10 +1074,14 @@ def categorize_receipt_items_llm(
                 keep_alive=keep_alive,
                 timeout_seconds=timeout,
                 format_json=format_json,
+                response_json_schema=response_schema,
             )
         )
         raw = generation.text
-        parsed = parse_json_from_llm(generation)
+        parsed = parse_json_from_llm(
+            generation,
+            response_json_schema=response_schema,
+        )
         warnings.extend(_categorization_envelope_warnings(parsed))
         original_items = [item for item in (receipt.get("items") or []) if isinstance(item, dict)]
         merchant_classification, merchant_warnings = _coerce_merchant_classification(parsed)

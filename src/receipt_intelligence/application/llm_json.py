@@ -4,12 +4,22 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any
+from typing import Any, Protocol
 
-from receipt_intelligence.application.ports.llm import GenerationResult
+from jsonschema import SchemaError, ValidationError
+from jsonschema.validators import validator_for
+
+from receipt_intelligence.application.ports.llm import (
+    MalformedGenerationError,
+)
 
 
-class LLMJsonParseError(ValueError):
+class GenerationText(Protocol):
+    @property
+    def text(self) -> str: ...
+
+
+class LLMJsonParseError(MalformedGenerationError):
     """Raised when a model answered but did not return usable JSON."""
 
     def __init__(
@@ -62,10 +72,14 @@ def _extract_first_json_object(text: str) -> str | None:
     return None
 
 
-def parse_json_from_llm(raw: str | GenerationResult) -> dict[str, Any]:
-    """Parse one JSON object from a model result without provider coupling."""
+def parse_json_from_llm(
+    raw: str | GenerationText,
+    *,
+    response_json_schema: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Parse and optionally schema-validate one provider-neutral model result."""
 
-    raw_text = raw.text if isinstance(raw, GenerationResult) else raw
+    raw_text = raw if isinstance(raw, str) else raw.text
     text = _strip_code_fences(raw_text)
     raw_head = text[:240].replace("\n", " ")
     raw_tail = text[-240:].replace("\n", " ")
@@ -88,6 +102,8 @@ def parse_json_from_llm(raw: str | GenerationResult) -> dict[str, Any]:
                     raw_head=raw_head,
                     raw_tail=raw_tail,
                 )
+            if response_json_schema is not None:
+                _validate_json_schema(obj, response_json_schema, text=text)
             return obj
         except json.JSONDecodeError as exc:
             last_exc = exc
@@ -110,6 +126,30 @@ def parse_json_from_llm(raw: str | GenerationResult) -> dict[str, Any]:
         raw_head=raw_head,
         raw_tail=raw_tail,
     )
+
+
+def _validate_json_schema(
+    value: dict[str, Any],
+    schema: dict[str, Any],
+    *,
+    text: str,
+) -> None:
+    if not isinstance(schema, dict) or not schema:
+        raise ValueError("response_json_schema must be a non-empty object.")
+    try:
+        validator_class = validator_for(schema)
+        validator_class.check_schema(schema)
+        validator_class(schema).validate(value)
+    except SchemaError as exc:
+        raise ValueError(f"Invalid response_json_schema: {exc.message}") from exc
+    except ValidationError as exc:
+        path = ".".join(str(part) for part in exc.absolute_path) or "<root>"
+        raise LLMJsonParseError(
+            f"LLM JSON does not match the response schema at {path}: {exc.message}",
+            raw_len=len(text),
+            raw_head=text[:240].replace("\n", " "),
+            raw_tail=text[-240:].replace("\n", " "),
+        ) from exc
 
 
 __all__ = ["LLMJsonParseError", "parse_json_from_llm"]

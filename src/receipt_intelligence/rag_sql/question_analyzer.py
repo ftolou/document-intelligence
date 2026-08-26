@@ -89,6 +89,7 @@ class RagSqlQuestionAnalyzer:
         ollama_calls: list[ModelCallMetrics] = []
 
         for attempt in range(1, attempts + 1):
+            response_schema = QuestionAnalysisPayload.model_json_schema()
             retry_block = ""
             if previous_error:
                 retry_block = (
@@ -116,6 +117,7 @@ class RagSqlQuestionAnalyzer:
                         keep_alive=self.config.keep_alive,
                         timeout_seconds=self.config.timeout_seconds,
                         format_json=self.config.format_json,
+                        response_json_schema=response_schema,
                     ),
                     gateway=self.llm_gateway,
                     legacy_generate=self.generate,
@@ -123,7 +125,12 @@ class RagSqlQuestionAnalyzer:
                 )
                 if generation.metrics is not None:
                     ollama_calls.append(generation.metrics)
-                payload = QuestionAnalysisPayload.model_validate(parse_json_from_llm(generation))
+                payload = QuestionAnalysisPayload.model_validate(
+                    parse_json_from_llm(
+                        generation,
+                        response_json_schema=response_schema,
+                    )
+                )
                 if len(payload.filters) > self.config.maximum_entities:
                     raise ValueError(
                         f"The analysis returned {len(payload.filters)} filters; maximum is "

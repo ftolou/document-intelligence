@@ -9,9 +9,13 @@ import urllib.request
 from typing import Any, Literal
 
 from receipt_intelligence.application.ports.llm import (
+    GenerationError,
+    GenerationIncompleteError,
+    GenerationProviderUnavailableError,
     GenerationRequest,
     GenerationResult,
     LlmGateway,
+    MalformedGenerationError,
     ModelCallMetrics,
 )
 
@@ -30,8 +34,9 @@ class OllamaGateway(LlmGateway):
                 timeout=min(request.timeout_seconds, 20.0),
             )
         except Exception as exc:
-            raise RuntimeError(
-                f"Ollama is not reachable at {self.base_url}: {type(exc).__name__}: {exc}"
+            raise GenerationProviderUnavailableError(
+                f"Ollama is not reachable at {self.base_url}: {type(exc).__name__}: {exc}",
+                provider="ollama",
             ) from exc
 
         payload: dict[str, Any] = {
@@ -58,13 +63,16 @@ class OllamaGateway(LlmGateway):
                 payload=payload,
                 timeout=request.timeout_seconds,
             )
-        except urllib.error.HTTPError as exc:
-            message = exc.read().decode("utf-8", errors="replace")[:1000]
-            raise RuntimeError(f"Ollama HTTP error {exc.code}: {message}") from exc
+        except Exception as exc:
+            raise normalize_ollama_error(exc) from exc
         duration_ms = (time.perf_counter() - started) * 1000.0
+        validate_ollama_completion(response)
         text = str(response.get("response") or "").strip()
         if not text:
-            raise RuntimeError("Ollama returned an empty response")
+            raise MalformedGenerationError(
+                "Ollama returned an empty response.",
+                provider="ollama",
+            )
         return GenerationResult(
             text=text,
             metrics=model_metrics_from_ollama_payload(
@@ -112,6 +120,53 @@ def model_metrics_from_ollama_payload(
     )
 
 
+def validate_ollama_completion(payload: dict[str, Any]) -> None:
+    """Normalize provider completion markers before feature code sees a result."""
+
+    if payload.get("done") is False:
+        raise GenerationIncompleteError(
+            "Ollama returned an incomplete non-streaming response.",
+            provider="ollama",
+        )
+    done_reason = str(payload.get("done_reason") or "").strip().lower()
+    if done_reason in {"length", "max_tokens", "token_limit"}:
+        raise GenerationIncompleteError(
+            f"Ollama generation stopped before completion ({done_reason}).",
+            provider="ollama",
+        )
+    provider_error = str(payload.get("error") or "").strip()
+    if provider_error:
+        raise GenerationError(
+            f"Ollama generation failed: {provider_error}",
+            provider="ollama",
+        )
+
+
+def normalize_ollama_error(exc: Exception) -> GenerationError:
+    if isinstance(exc, GenerationError):
+        return exc
+    if isinstance(exc, urllib.error.HTTPError):
+        message = exc.read().decode("utf-8", errors="replace")[:1000]
+        error_type = (
+            GenerationProviderUnavailableError
+            if exc.code in {408, 429} or exc.code >= 500
+            else GenerationError
+        )
+        return error_type(
+            f"Ollama HTTP error {exc.code}: {message}",
+            provider="ollama",
+        )
+    if isinstance(exc, (urllib.error.URLError, TimeoutError, OSError)):
+        return GenerationProviderUnavailableError(
+            f"Ollama request failed: {type(exc).__name__}: {exc}",
+            provider="ollama",
+        )
+    return MalformedGenerationError(
+        f"Ollama returned an invalid response: {type(exc).__name__}: {exc}",
+        provider="ollama",
+    )
+
+
 def _http_json(
     url: str,
     payload: dict[str, Any] | None = None,
@@ -142,4 +197,9 @@ def _optional_nonnegative_int(value: Any) -> int | None:
     return parsed if parsed >= 0 else None
 
 
-__all__ = ["OllamaGateway", "model_metrics_from_ollama_payload"]
+__all__ = [
+    "OllamaGateway",
+    "model_metrics_from_ollama_payload",
+    "normalize_ollama_error",
+    "validate_ollama_completion",
+]

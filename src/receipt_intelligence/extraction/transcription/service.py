@@ -348,14 +348,6 @@ class CanonicalReceiptTranscriptionService(TranscriptionService):
                         temperature=self._transcription.temperature,
                         keep_alive=self._transcription.keep_alive,
                         timeout_seconds=self._transcription.timeout_seconds,
-                        provider_options={
-                            "seed": self._transcription.seed,
-                            "top_k": 1,
-                            "top_p": 1.0,
-                            "min_p": 0.0,
-                            "repeat_penalty": 1.0,
-                            "repeat_last_n": 0,
-                        },
                     )
                 )
                 clean_plain_lines(result.text)

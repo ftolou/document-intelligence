@@ -209,6 +209,7 @@ class EvidenceBoundAnswerFormatter:
         ollama_calls: list[ModelCallMetrics] = []
 
         for attempt in range(1, attempts + 1):
+            response_schema = AnswerFormatterPayload.model_json_schema()
             retry_block = ""
             if previous_error:
                 retry_block = (
@@ -242,6 +243,7 @@ class EvidenceBoundAnswerFormatter:
                         keep_alive=self.config.keep_alive,
                         timeout_seconds=self.config.timeout_seconds,
                         format_json=self.config.format_json,
+                        response_json_schema=response_schema,
                     ),
                     gateway=self.llm_gateway,
                     legacy_generate=self.generate,
@@ -249,7 +251,12 @@ class EvidenceBoundAnswerFormatter:
                 )
                 if generation.metrics is not None:
                     ollama_calls.append(generation.metrics)
-                payload = AnswerFormatterPayload.model_validate(parse_json_from_llm(generation))
+                payload = AnswerFormatterPayload.model_validate(
+                    parse_json_from_llm(
+                        generation,
+                        response_json_schema=response_schema,
+                    )
+                )
                 return AnswerFormatterResult(
                     **payload.model_dump(mode="python"),
                     model=self.config.model,

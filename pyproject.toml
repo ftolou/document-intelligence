@@ -8,6 +8,7 @@ version = "1.2.0"
 description = "Local-first image transcription and structured document intelligence pipeline, optimized for receipts."
 requires-python = ">=3.11"
 dependencies = [
+    "jsonschema>=4.22,<5",
     "pydantic>=2.7,<3",
 ]
 

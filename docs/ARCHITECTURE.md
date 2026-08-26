@@ -33,6 +33,12 @@ provider-neutral text and multimodal gateways, and Paddle is isolated behind the
 port. Deterministic validation never mutates the receipt. Correction candidates are accepted only
 when targeted validation failures improve without regressions.
 
+Text completion, structured chat, and image-aware generation remain separate Core ports so callers
+do not inherit a provider transport shape. Ollama and OpenAI Responses are adapter implementations
+of those ports. Adapters normalize unavailable, refused, incomplete, and malformed responses into
+stable Core failures; structured callers validate JSON against the same schema they supplied with
+the neutral request.
+
 ## Application boundary
 
 Flask blueprints parse transport data and call application use cases. Receipt and batch work is

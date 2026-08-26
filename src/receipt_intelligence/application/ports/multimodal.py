@@ -7,7 +7,7 @@ keeping them separate prevents optional image fields from leaking into every LLM
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -26,6 +26,7 @@ class MultimodalGenerationRequest:
     model: str
     prompt: str
     image_paths: tuple[Path, ...]
+    system_prompt: str | None = None
     operation: str = "multimodal_generation"
     attempt: int = 1
     think: bool = False
@@ -36,11 +37,11 @@ class MultimodalGenerationRequest:
     timeout_seconds: float = 300.0
     format_json: bool = False
     response_json_schema: dict[str, Any] | None = None
-    provider_options: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         model = str(self.model or "").strip()
         prompt = str(self.prompt or "").strip()
+        system_prompt = str(self.system_prompt or "").strip() or None
         operation = str(self.operation or "").strip()
         image_paths = tuple(Path(path) for path in self.image_paths)
 
@@ -69,9 +70,9 @@ class MultimodalGenerationRequest:
 
         object.__setattr__(self, "model", model)
         object.__setattr__(self, "prompt", prompt)
+        object.__setattr__(self, "system_prompt", system_prompt)
         object.__setattr__(self, "operation", operation)
         object.__setattr__(self, "image_paths", image_paths)
-        object.__setattr__(self, "provider_options", dict(self.provider_options))
 
 
 @dataclass(frozen=True, slots=True)

@@ -30,6 +30,7 @@ def run_receipt_extraction(
     )
 
     if request.extraction_backend == "openai_one_shot":
+        from receipt_intelligence.adapters.llm import OpenAIMultimodalGateway
         from receipt_intelligence.extraction.openai_observability import (
             build_observed_openai_client,
             publish_openai_extraction_metrics,
@@ -42,7 +43,18 @@ def run_receipt_extraction(
         started = time.perf_counter()
         try:
             client = build_observed_openai_client(request)
-            result = run_openai_one_shot_extraction(request, client=client)
+            result = run_openai_one_shot_extraction(
+                request,
+                gateway=OpenAIMultimodalGateway(
+                    client=client,
+                    reasoning_effort=(
+                        None
+                        if request.openai_reasoning_effort == "none"
+                        else request.openai_reasoning_effort
+                    ),
+                    image_detail=request.openai_image_detail,
+                ),
+            )
         except Exception as exc:
             publish_openai_extraction_metrics(
                 request,

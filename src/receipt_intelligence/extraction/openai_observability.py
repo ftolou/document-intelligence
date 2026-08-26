@@ -1,9 +1,8 @@
-"""Observability bridge for the OpenAI one-shot receipt backend.
+"""Composition and observability for the OpenAI one-shot receipt adapter.
 
-The OpenAI extraction path deliberately bypasses the local provider-neutral LLM
-ports because it performs one specialized multimodal Responses API request. This
-module reconnects that call to the application's existing model-call telemetry
-and extraction-run metrics without changing the extraction contract.
+The extraction workflow uses the provider-neutral multimodal port. This module
+owns provider client construction and reconnects the concrete adapter call to
+the application's existing model-call telemetry and extraction-run metrics.
 """
 
 from __future__ import annotations
