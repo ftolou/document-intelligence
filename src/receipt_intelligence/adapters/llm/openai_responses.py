@@ -31,6 +31,8 @@ from receipt_intelligence.application.ports.multimodal import (
 
 _DEFAULT_BASE_URL = "https://api.openai.com/v1"
 _SCHEMA_NAME = re.compile(r"[^a-zA-Z0-9_-]+")
+_ORIGINAL_GPT_5_REASONING_EFFORTS = {"minimal", "low", "medium", "high"}
+_LATER_GPT_5_REASONING_EFFORTS = {"none", "low", "medium", "high"}
 _UNSUPPORTED_STRICT_SCHEMA_KEYWORDS = {
     "$schema",
     "default",
@@ -134,7 +136,11 @@ class _OpenAIResponsesAdapter:
                 }
         elif format_json:
             payload["text"] = {"format": {"type": "json_object"}}
-        reasoning_effort = self.reasoning_effort if think else "none"
+        reasoning_effort = _reasoning_effort_for_request(
+            model=model,
+            configured_effort=self.reasoning_effort,
+            think=think,
+        )
         if reasoning_effort is not None:
             payload["reasoning"] = {"effort": reasoning_effort}
         payload["temperature"] = temperature
@@ -331,6 +337,28 @@ def _schema_name(operation: str) -> str:
     return (value or "generation")[:64]
 
 
+def _reasoning_effort_for_request(
+    *,
+    model: str,
+    configured_effort: str | None,
+    think: bool,
+) -> str | None:
+    """Return a configured effort only when it is valid for a known model family."""
+
+    if configured_effort is None:
+        return None
+
+    effort = configured_effort if think else "none"
+    model_id = str(model or "").strip().lower()
+    if model_id.startswith("gpt-4"):
+        return None
+    if model_id.startswith("gpt-5."):
+        return effort if effort in _LATER_GPT_5_REASONING_EFFORTS else None
+    if model_id == "gpt-5" or model_id.startswith("gpt-5-"):
+        return effort if effort in _ORIGINAL_GPT_5_REASONING_EFFORTS else None
+    return effort
+
+
 def _openai_strict_schema(schema: dict[str, Any]) -> dict[str, Any]:
     """Translate a neutral JSON Schema to OpenAI's strict supported subset."""
 
@@ -345,6 +373,11 @@ def _has_dynamic_object_shape(value: Any) -> bool:
     if not isinstance(value, dict):
         return False
     if "patternProperties" in value:
+        return True
+    properties = value.get("properties")
+    if (value.get("type") == "object" or isinstance(properties, dict)) and (
+        "additionalProperties" not in value
+    ):
         return True
     if "additionalProperties" in value and value["additionalProperties"] is not False:
         return True

@@ -136,6 +136,7 @@ def test_openai_text_adapter_runs_existing_rag_workflow_with_structured_schema()
     assert schema["properties"]["language"]["type"] == ["string", "null"]
     assert request["temperature"] == 0.0
     assert request["timeout"] == 120.0
+    assert "reasoning" not in request
 
 
 def test_openai_text_adapter_falls_back_for_planner_dynamic_parameters() -> None:
@@ -188,6 +189,67 @@ def test_openai_text_adapter_falls_back_for_planner_dynamic_parameters() -> None
     assert responses.calls[0]["text"]["format"] == {"type": "json_object"}
 
 
+@pytest.mark.parametrize(
+    "schema",
+    [
+        {"type": "object"},
+        {"type": "object", "properties": {"known": {"type": "string"}}},
+        {
+            "type": "object",
+            "properties": {
+                "nested": {
+                    "type": "object",
+                    "properties": {"known": {"type": "string"}},
+                }
+            },
+            "required": ["nested"],
+            "additionalProperties": False,
+        },
+    ],
+)
+def test_openai_text_adapter_falls_back_for_implicitly_open_objects(
+    schema: dict[str, Any],
+) -> None:
+    responses = FakeResponses(_response('{"known":"value"}'))
+    gateway = OpenAIGenerationGateway(client=FakeClient(responses))
+
+    gateway.generate(
+        GenerationRequest(
+            model="gpt-4.1",
+            prompt="return json",
+            response_json_schema=schema,
+        )
+    )
+
+    assert responses.calls[0]["text"]["format"] == {"type": "json_object"}
+
+
+@pytest.mark.parametrize(
+    ("reasoning_effort", "expected_reasoning"),
+    [
+        (None, None),
+        ("none", {"effort": "none"}),
+    ],
+)
+def test_openai_generation_adapter_distinguishes_unset_and_explicit_none(
+    reasoning_effort: str | None,
+    expected_reasoning: dict[str, str] | None,
+) -> None:
+    responses = FakeResponses(_response("done"))
+    gateway = OpenAIGenerationGateway(
+        client=FakeClient(responses),
+        reasoning_effort=reasoning_effort,
+    )
+
+    gateway.generate(GenerationRequest(model="gpt-5.6-luna", prompt="answer"))
+
+    request = responses.calls[0]
+    if expected_reasoning is None:
+        assert "reasoning" not in request
+    else:
+        assert request["reasoning"] == expected_reasoning
+
+
 def test_openai_chat_adapter_normalizes_refusal() -> None:
     responses = FakeResponses(
         _response(
@@ -208,6 +270,7 @@ def test_openai_chat_adapter_normalizes_refusal() -> None:
 
     assert raised.value.reason is GenerationFailureReason.REFUSED
     assert raised.value.provider == "openai"
+    assert "reasoning" not in responses.calls[0]
 
 
 def test_openai_multimodal_adapter_preserves_separate_image_contract(tmp_path: Path) -> None:
@@ -246,10 +309,21 @@ def test_openai_multimodal_adapter_preserves_separate_image_contract(tmp_path: P
     assert image["detail"] == "high"
 
 
-@pytest.mark.parametrize("reasoning_effort", ["none", "medium"])
+@pytest.mark.parametrize(
+    ("model", "reasoning_effort", "expected_reasoning"),
+    [
+        ("gpt-5.6-luna", None, None),
+        ("gpt-5.6-luna", "none", {"effort": "none"}),
+        ("gpt-5.6-luna", "medium", {"effort": "none"}),
+        ("gpt-5", "medium", None),
+        ("gpt-4.1", "medium", None),
+    ],
+)
 def test_openai_multimodal_adapter_translates_think_false_to_no_reasoning(
     tmp_path: Path,
-    reasoning_effort: str,
+    model: str,
+    reasoning_effort: str | None,
+    expected_reasoning: dict[str, str] | None,
 ) -> None:
     image_path = tmp_path / "receipt.png"
     image_path.write_bytes(b"image")
@@ -261,7 +335,7 @@ def test_openai_multimodal_adapter_translates_think_false_to_no_reasoning(
 
     gateway.generate(
         MultimodalGenerationRequest(
-            model="provider-model",
+            model=model,
             system_prompt=None,
             prompt="extract receipt",
             image_paths=(image_path,),
@@ -269,7 +343,46 @@ def test_openai_multimodal_adapter_translates_think_false_to_no_reasoning(
         )
     )
 
-    assert responses.calls[0]["reasoning"] == {"effort": "none"}
+    request = responses.calls[0]
+    if expected_reasoning is None:
+        assert "reasoning" not in request
+    else:
+        assert request["reasoning"] == expected_reasoning
+
+
+@pytest.mark.parametrize(
+    ("model", "reasoning_effort", "expected_reasoning"),
+    [
+        ("gpt-5", "minimal", {"effort": "minimal"}),
+        ("gpt-5.6-luna", "minimal", None),
+        ("gpt-4.1", "medium", None),
+    ],
+)
+def test_openai_chat_adapter_filters_reasoning_by_model_family(
+    model: str,
+    reasoning_effort: str,
+    expected_reasoning: dict[str, str] | None,
+) -> None:
+    responses = FakeResponses(_response("done"))
+    gateway = OpenAIChatGateway(
+        client=FakeClient(responses),
+        reasoning_effort=reasoning_effort,
+    )
+
+    gateway.generate(
+        ChatGenerationRequest(
+            model=model,
+            system_prompt=None,
+            user_prompt="answer",
+            think=True,
+        )
+    )
+
+    request = responses.calls[0]
+    if expected_reasoning is None:
+        assert "reasoning" not in request
+    else:
+        assert request["reasoning"] == expected_reasoning
 
 
 def test_ollama_multimodal_adapter_honors_deprecated_request_options(
