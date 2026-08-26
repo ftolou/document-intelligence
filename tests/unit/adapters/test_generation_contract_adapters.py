@@ -26,6 +26,16 @@ from receipt_intelligence.application.ports.llm import (
     GenerationRequest,
 )
 from receipt_intelligence.application.ports.multimodal import MultimodalGenerationRequest
+from receipt_intelligence.rag_sql.models import (
+    QuestionAnalysisResult,
+    ResolvedSemanticEntity,
+    SemanticEntity,
+)
+from receipt_intelligence.rag_sql.planner import (
+    RagSqlPlanner,
+    RagSqlPlannerConfig,
+    build_protected_item_parameters,
+)
 from receipt_intelligence.rag_sql.question_analyzer import (
     QuestionAnalyzerConfig,
     RagSqlQuestionAnalyzer,
@@ -128,6 +138,56 @@ def test_openai_text_adapter_runs_existing_rag_workflow_with_structured_schema()
     assert request["timeout"] == 120.0
 
 
+def test_openai_text_adapter_falls_back_for_planner_dynamic_parameters() -> None:
+    resolved = [
+        ResolvedSemanticEntity(
+            entity_id="e001",
+            search_text="shoes",
+            status="resolved",
+            selected_item_ids=[84, 126],
+        )
+    ]
+    protected = build_protected_item_parameters(resolved)
+    payload = {
+        "schema_version": "rag_sql_plan_v2",
+        "status": "ready",
+        "sql": (
+            "SELECT SUM(line_total) AS value FROM analytics_purchase_items "
+            "WHERE item_id IN (:e001_item_0, :e001_item_1)"
+        ),
+        "parameters": protected,
+        "result_shape": "scalar",
+        "result_entity": "spending_amount",
+        "display_columns": ["value"],
+        "answer_instruction": "Report spending on the resolved items.",
+        "clarification_question": None,
+        "reason": None,
+    }
+    responses = FakeResponses(_response(json.dumps(payload)))
+    gateway = OpenAIGenerationGateway(client=FakeClient(responses))
+
+    result = RagSqlPlanner(
+        RagSqlPlannerConfig(retry_count=0),
+        llm_gateway=gateway,
+    ).plan(
+        "How much did I spend on shoes?",
+        analysis=QuestionAnalysisResult(
+            status="ready",
+            language="en",
+            user_goal="Calculate spending on shoes.",
+            target_entity="spending_amount",
+            requested_operation="aggregate_sum",
+            requires_product_resolution=True,
+            entities=[SemanticEntity(entity_id="e001", search_text="shoes")],
+        ),
+        resolved_entities=resolved,
+        protected_parameters=protected,
+    )
+
+    assert result.parameters == {"e001_item_0": 84, "e001_item_1": 126}
+    assert responses.calls[0]["text"]["format"] == {"type": "json_object"}
+
+
 def test_openai_chat_adapter_normalizes_refusal() -> None:
     responses = FakeResponses(
         _response(
@@ -184,6 +244,32 @@ def test_openai_multimodal_adapter_preserves_separate_image_contract(tmp_path: P
     image = request["input"][0]["content"][1]
     assert image["image_url"].startswith("data:image/png;base64,")
     assert image["detail"] == "high"
+
+
+@pytest.mark.parametrize("reasoning_effort", ["none", "medium"])
+def test_openai_multimodal_adapter_translates_think_false_to_no_reasoning(
+    tmp_path: Path,
+    reasoning_effort: str,
+) -> None:
+    image_path = tmp_path / "receipt.png"
+    image_path.write_bytes(b"image")
+    responses = FakeResponses(_response("done"))
+    gateway = OpenAIMultimodalGateway(
+        client=FakeClient(responses),
+        reasoning_effort=reasoning_effort,
+    )
+
+    gateway.generate(
+        MultimodalGenerationRequest(
+            model="provider-model",
+            system_prompt=None,
+            prompt="extract receipt",
+            image_paths=(image_path,),
+            think=False,
+        )
+    )
+
+    assert responses.calls[0]["reasoning"] == {"effort": "none"}
 
 
 def test_ollama_multimodal_adapter_honors_deprecated_request_options(

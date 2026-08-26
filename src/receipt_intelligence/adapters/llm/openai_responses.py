@@ -72,7 +72,7 @@ class _OpenAIResponsesAdapter:
             raise ValueError("timeout_seconds must be positive.")
         if normalized_detail not in {"auto", "low", "high"}:
             raise ValueError("image_detail must be auto, low, or high.")
-        if normalized_effort not in {None, "minimal", "low", "medium", "high"}:
+        if normalized_effort not in {None, "none", "minimal", "low", "medium", "high"}:
             raise ValueError("reasoning_effort is not supported.")
 
         self.reasoning_effort = normalized_effort
@@ -121,18 +121,22 @@ class _OpenAIResponsesAdapter:
         if system_prompt:
             payload["instructions"] = system_prompt
         if response_json_schema is not None:
-            payload["text"] = {
-                "format": {
-                    "type": "json_schema",
-                    "name": _schema_name(operation),
-                    "schema": _openai_strict_schema(response_json_schema),
-                    "strict": True,
+            if _has_dynamic_object_shape(response_json_schema):
+                payload["text"] = {"format": {"type": "json_object"}}
+            else:
+                payload["text"] = {
+                    "format": {
+                        "type": "json_schema",
+                        "name": _schema_name(operation),
+                        "schema": _openai_strict_schema(response_json_schema),
+                        "strict": True,
+                    }
                 }
-            }
         elif format_json:
             payload["text"] = {"format": {"type": "json_object"}}
-        if self.reasoning_effort is not None and think:
-            payload["reasoning"] = {"effort": self.reasoning_effort}
+        reasoning_effort = self.reasoning_effort if think else "none"
+        if reasoning_effort is not None:
+            payload["reasoning"] = {"effort": reasoning_effort}
         payload["temperature"] = temperature
 
         started = time.perf_counter()
@@ -331,6 +335,20 @@ def _openai_strict_schema(schema: dict[str, Any]) -> dict[str, Any]:
     """Translate a neutral JSON Schema to OpenAI's strict supported subset."""
 
     return _normalize_strict_schema_node(schema)
+
+
+def _has_dynamic_object_shape(value: Any) -> bool:
+    """Return whether strict Structured Outputs would close a dynamic object."""
+
+    if isinstance(value, list):
+        return any(_has_dynamic_object_shape(item) for item in value)
+    if not isinstance(value, dict):
+        return False
+    if "patternProperties" in value:
+        return True
+    if "additionalProperties" in value and value["additionalProperties"] is not False:
+        return True
+    return any(_has_dynamic_object_shape(item) for item in value.values())
 
 
 def _normalize_strict_schema_node(value: Any) -> Any:

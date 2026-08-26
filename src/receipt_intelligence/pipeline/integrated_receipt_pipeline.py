@@ -47,11 +47,7 @@ def run_receipt_extraction(
                 request,
                 gateway=OpenAIMultimodalGateway(
                     client=client,
-                    reasoning_effort=(
-                        None
-                        if request.openai_reasoning_effort == "none"
-                        else request.openai_reasoning_effort
-                    ),
+                    reasoning_effort=request.openai_reasoning_effort,
                     image_detail=request.openai_image_detail,
                 ),
             )
