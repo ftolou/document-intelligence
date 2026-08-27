@@ -205,6 +205,12 @@ def test_openai_text_adapter_falls_back_for_planner_dynamic_parameters() -> None
             "required": ["nested"],
             "additionalProperties": False,
         },
+        {
+            "type": "object",
+            "properties": {"metadata": {"type": ["object", "null"]}},
+            "required": ["metadata"],
+            "additionalProperties": False,
+        },
     ],
 )
 def test_openai_text_adapter_falls_back_for_implicitly_open_objects(
@@ -285,7 +291,7 @@ def test_openai_multimodal_adapter_preserves_separate_image_contract(tmp_path: P
 
     result = gateway.generate(
         MultimodalGenerationRequest(
-            model="provider-model",
+            model="o3",
             system_prompt="extract carefully",
             prompt="extract receipt",
             image_paths=(image_path,),
@@ -304,6 +310,7 @@ def test_openai_multimodal_adapter_preserves_separate_image_contract(tmp_path: P
     request = responses.calls[0]
     assert request["instructions"] == "extract carefully"
     assert request["reasoning"] == {"effort": "medium"}
+    assert "temperature" not in request
     image = request["input"][0]["content"][1]
     assert image["image_url"].startswith("data:image/png;base64,")
     assert image["detail"] == "high"
@@ -316,6 +323,10 @@ def test_openai_multimodal_adapter_preserves_separate_image_contract(tmp_path: P
         ("gpt-5.6-luna", "none", {"effort": "none"}),
         ("gpt-5.6-luna", "medium", {"effort": "none"}),
         ("gpt-5", "medium", None),
+        ("gpt-5-pro", "high", None),
+        ("o3", "medium", None),
+        ("o4-mini", "low", None),
+        ("provider-model", "medium", None),
         ("gpt-4.1", "medium", None),
     ],
 )
@@ -351,17 +362,27 @@ def test_openai_multimodal_adapter_translates_think_false_to_no_reasoning(
 
 
 @pytest.mark.parametrize(
-    ("model", "reasoning_effort", "expected_reasoning"),
+    ("model", "reasoning_effort", "expected_reasoning", "has_temperature"),
     [
-        ("gpt-5", "minimal", {"effort": "minimal"}),
-        ("gpt-5.6-luna", "minimal", None),
-        ("gpt-4.1", "medium", None),
+        ("gpt-5", "minimal", {"effort": "minimal"}, False),
+        ("gpt-5-pro", "high", {"effort": "high"}, False),
+        ("gpt-5-pro", "medium", None, False),
+        ("gpt-5.1", "none", {"effort": "none"}, True),
+        ("gpt-5.1", "medium", {"effort": "medium"}, False),
+        ("gpt-5.2", "none", {"effort": "none"}, True),
+        ("o3", "none", None, False),
+        ("o3", "medium", {"effort": "medium"}, False),
+        ("o4-mini", "low", {"effort": "low"}, False),
+        ("gpt-5.6-luna", "minimal", None, False),
+        ("gpt-4.1", "medium", None, True),
+        ("provider-model", "medium", None, True),
     ],
 )
-def test_openai_chat_adapter_filters_reasoning_by_model_family(
+def test_openai_chat_adapter_filters_model_specific_request_parameters(
     model: str,
     reasoning_effort: str,
     expected_reasoning: dict[str, str] | None,
+    has_temperature: bool,
 ) -> None:
     responses = FakeResponses(_response("done"))
     gateway = OpenAIChatGateway(
@@ -383,6 +404,7 @@ def test_openai_chat_adapter_filters_reasoning_by_model_family(
         assert "reasoning" not in request
     else:
         assert request["reasoning"] == expected_reasoning
+    assert ("temperature" in request) is has_temperature
 
 
 def test_ollama_multimodal_adapter_honors_deprecated_request_options(

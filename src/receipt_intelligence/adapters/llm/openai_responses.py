@@ -33,6 +33,7 @@ _DEFAULT_BASE_URL = "https://api.openai.com/v1"
 _SCHEMA_NAME = re.compile(r"[^a-zA-Z0-9_-]+")
 _ORIGINAL_GPT_5_REASONING_EFFORTS = {"minimal", "low", "medium", "high"}
 _LATER_GPT_5_REASONING_EFFORTS = {"none", "low", "medium", "high"}
+_O_SERIES_REASONING_EFFORTS = {"low", "medium", "high"}
 _UNSUPPORTED_STRICT_SCHEMA_KEYWORDS = {
     "$schema",
     "default",
@@ -143,7 +144,8 @@ class _OpenAIResponsesAdapter:
         )
         if reasoning_effort is not None:
             payload["reasoning"] = {"effort": reasoning_effort}
-        payload["temperature"] = temperature
+        if _supports_temperature(model=model, reasoning_effort=reasoning_effort):
+            payload["temperature"] = temperature
 
         started = time.perf_counter()
         try:
@@ -352,11 +354,54 @@ def _reasoning_effort_for_request(
     model_id = str(model or "").strip().lower()
     if model_id.startswith("gpt-4"):
         return None
+    if model_id == "gpt-5-pro" or model_id.startswith("gpt-5-pro-"):
+        return effort if effort == "high" else None
     if model_id.startswith("gpt-5."):
+        if "-pro" in model_id:
+            return effort if effort in {"medium", "high"} else None
+        if "-codex" in model_id:
+            return effort if effort in _O_SERIES_REASONING_EFFORTS else None
         return effort if effort in _LATER_GPT_5_REASONING_EFFORTS else None
     if model_id == "gpt-5" or model_id.startswith("gpt-5-"):
+        if "-codex" in model_id:
+            return effort if effort in _O_SERIES_REASONING_EFFORTS else None
         return effort if effort in _ORIGINAL_GPT_5_REASONING_EFFORTS else None
-    return effort
+    if _is_standard_o_series_model(model_id):
+        return effort if effort in _O_SERIES_REASONING_EFFORTS else None
+    return None
+
+
+def _supports_temperature(*, model: str, reasoning_effort: str | None) -> bool:
+    """Return whether the Responses model accepts temperature for this request."""
+
+    model_id = str(model or "").strip().lower()
+    if any(
+        model_id == family or model_id.startswith(f"{family}-")
+        for family in ("o1", "o3", "o4-mini")
+    ):
+        return False
+    if any(
+        model_id == family or model_id.startswith(f"{family}-")
+        for family in ("gpt-5.1", "gpt-5.2")
+    ):
+        return not any(suffix in model_id for suffix in ("-pro", "-codex")) and (
+            reasoning_effort in {None, "none"}
+        )
+    if model_id == "gpt-5" or model_id.startswith(("gpt-5-", "gpt-5.")):
+        return False
+    return True
+
+
+def _is_standard_o_series_model(model_id: str) -> bool:
+    families = ("o1", "o1-mini", "o3", "o3-mini", "o4-mini")
+    return any(
+        model_id == family
+        or (
+            model_id.startswith(f"{family}-")
+            and model_id.removeprefix(f"{family}-")[:1].isdigit()
+        )
+        for family in families
+    )
 
 
 def _openai_strict_schema(schema: dict[str, Any]) -> dict[str, Any]:
@@ -375,7 +420,11 @@ def _has_dynamic_object_shape(value: Any) -> bool:
     if "patternProperties" in value:
         return True
     properties = value.get("properties")
-    if (value.get("type") == "object" or isinstance(properties, dict)) and (
+    schema_type = value.get("type")
+    is_object = schema_type == "object" or (
+        isinstance(schema_type, list) and "object" in schema_type
+    )
+    if (is_object or isinstance(properties, dict)) and (
         "additionalProperties" not in value
     ):
         return True
