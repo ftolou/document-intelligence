@@ -113,7 +113,10 @@ class _OpenAIResponsesAdapter:
         normalized_key = str(api_key or "").strip()
         if normalized_key:
             client_options["api_key"] = normalized_key
-        self._client = OpenAI(**client_options)
+        try:
+            self._client = OpenAI(**client_options)
+        except Exception as exc:
+            raise _normalize_openai_error(exc) from exc
 
     def _generate(
         self,

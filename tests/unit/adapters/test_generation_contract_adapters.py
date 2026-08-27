@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import copy
 import json
+import sys
+import types
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -14,6 +16,7 @@ from receipt_intelligence.adapters.llm import (
     OpenAIMultimodalGateway,
 )
 from receipt_intelligence.adapters.llm import ollama_gateway as ollama_module
+from receipt_intelligence.adapters.multimodal import ollama as multimodal_ollama_module
 from receipt_intelligence.application.llm_json import LLMJsonParseError, parse_json_from_llm
 from receipt_intelligence.application.ports.chat import ChatGenerationRequest
 from receipt_intelligence.application.ports.llm import (
@@ -413,6 +416,26 @@ def test_openai_transport_failures_are_normalized() -> None:
     assert service_down.value.reason is GenerationFailureReason.PROVIDER_UNAVAILABLE
 
 
+def test_openai_client_construction_failures_are_normalized(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeSdkError(Exception):
+        pass
+
+    error = FakeSdkError("client setup failed")
+
+    def failing_openai(**_options: Any) -> None:
+        raise error
+
+    monkeypatch.setitem(sys.modules, "openai", types.SimpleNamespace(OpenAI=failing_openai))
+
+    with pytest.raises(GenerationProviderUnavailableError) as captured:
+        OpenAIGenerationGateway(api_key="configured")
+    assert captured.value.reason is GenerationFailureReason.PROVIDER_UNAVAILABLE
+    assert captured.value.provider == "openai"
+    assert captured.value.__cause__ is error
+
+
 def test_ollama_temperature_omission_and_explicit_zero(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -437,6 +460,64 @@ def test_ollama_temperature_omission_and_explicit_zero(
 
     assert "temperature" not in payloads[0]["options"]
     assert payloads[1]["options"]["temperature"] == 0.0
+
+
+def test_ollama_multimodal_portable_options_override_provider_tuning(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    payloads: list[dict[str, Any]] = []
+
+    def fake_http_json(
+        _url: str,
+        *,
+        payload: dict[str, Any],
+        timeout: float,
+    ) -> dict[str, Any]:
+        del timeout
+        payloads.append(payload)
+        return {
+            "message": {"content": "ok"},
+            "done": True,
+            "model": "opaque-model",
+        }
+
+    monkeypatch.setattr(multimodal_ollama_module, "_http_json", fake_http_json)
+    image_path = tmp_path / "receipt.png"
+    image_path.write_bytes(b"image")
+    gateway = multimodal_ollama_module.OllamaMultimodalGateway(
+        "http://ollama.invalid",
+        generation_options={
+            "num_ctx": 1,
+            "num_predict": 2,
+            "temperature": 0.8,
+            "seed": 6,
+        },
+    )
+
+    with pytest.warns(DeprecationWarning):
+        request = MultimodalGenerationRequest(
+            model="opaque-model",
+            prompt="Read the receipt.",
+            image_paths=(image_path,),
+            num_ctx=4096,
+            num_predict=512,
+            temperature=0.0,
+            provider_options={
+                "num_ctx": 3,
+                "num_predict": 4,
+                "temperature": 0.9,
+                "seed": 7,
+            },
+        )
+    gateway.generate(request)
+
+    assert payloads[0]["options"] == {
+        "num_ctx": 4096,
+        "num_predict": 512,
+        "temperature": 0.0,
+        "seed": 7,
+    }
 
 
 def test_generation_adapter_contains_no_model_capability_policy() -> None:

@@ -37,14 +37,12 @@ class OllamaMultimodalGateway(MultimodalGateway):
 
     def generate(self, request: MultimodalGenerationRequest) -> MultimodalGenerationResult:
         images = [_encode_image(path) for path in request.image_paths]
-        options: dict[str, Any] = {
-            "num_ctx": request.num_ctx,
-            "num_predict": request.num_predict,
-        }
+        options = dict(self.generation_options)
+        options.update(request.provider_options)
+        options["num_ctx"] = request.num_ctx
+        options["num_predict"] = request.num_predict
         if request.temperature is not None:
             options["temperature"] = request.temperature
-        options.update(self.generation_options)
-        options.update(request.provider_options)
         payload: dict[str, Any] = {
             "model": request.model,
             "messages": _messages(request, images),
