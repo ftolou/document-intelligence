@@ -231,6 +231,127 @@ def test_optional_properties_fall_back_instead_of_becoming_required() -> None:
     assert parse_json_from_llm(result, response_json_schema=schema) == {}
 
 
+@pytest.mark.parametrize(
+    ("keyword", "constraint"),
+    [
+        ("allOf", [{"required": ["left"]}]),
+        ("not", {"required": ["other"]}),
+        ("dependentRequired", {"left": ["right"]}),
+        ("dependentSchemas", {"left": {"required": ["right"]}}),
+        ("if", {"required": ["left"]}),
+        ("then", {"required": ["right"]}),
+        ("else", {"required": ["right"]}),
+    ],
+)
+def test_unsupported_strict_compositions_fall_back_without_schema_narrowing(
+    keyword: str,
+    constraint: Any,
+) -> None:
+    value_schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {"left": {"type": "string"}, "right": {"type": "string"}},
+        "required": ["left", "right"],
+        keyword: constraint,
+    }
+    schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {"value": value_schema},
+        "required": ["value"],
+    }
+    output = {"value": {"left": "a", "right": "b"}}
+    client = _Client(_Response(output_text=json.dumps(output)))
+    result = OpenAIGenerationGateway(client=client).generate(_request(response_json_schema=schema))
+
+    assert client.responses.calls[-1]["text"] == {"format": {"type": "json_object"}}
+    assert parse_json_from_llm(result, response_json_schema=schema) == output
+
+
+@pytest.mark.parametrize(
+    ("schema", "output"),
+    [
+        (
+            {
+                "anyOf": [
+                    {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {"value": {"type": "string"}},
+                        "required": ["value"],
+                    },
+                    {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {"value": {"type": "integer"}},
+                        "required": ["value"],
+                    },
+                ]
+            },
+            {"value": "ok"},
+        ),
+        (
+            {
+                "additionalProperties": False,
+                "properties": {"value": {"type": "string"}},
+                "required": ["value"],
+            },
+            {"value": "ok"},
+        ),
+    ],
+)
+def test_unsupported_strict_root_shapes_fall_back_without_schema_narrowing(
+    schema: dict[str, Any],
+    output: Any,
+) -> None:
+    client = _Client(_Response(output_text=json.dumps(output)))
+    result = OpenAIGenerationGateway(client=client).generate(_request(response_json_schema=schema))
+
+    assert client.responses.calls[-1]["text"] == {"format": {"type": "json_object"}}
+    assert parse_json_from_llm(result, response_json_schema=schema) == output
+
+
+@pytest.mark.parametrize("keyword", ["const", "enum"])
+def test_strict_schema_preserves_object_literals(keyword: str) -> None:
+    literal = {
+        "required": "kept",
+        "minimum": 3,
+        "default": "kept",
+        "additionalProperties": True,
+        "allOf": "literal",
+    }
+    literal_schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "required": {"type": "string"},
+            "minimum": {"type": "integer"},
+            "default": {"type": "string"},
+            "additionalProperties": {"type": "boolean"},
+            "allOf": {"type": "string"},
+        },
+        "required": list(literal),
+        keyword: literal if keyword == "const" else [literal],
+    }
+    schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {"value": literal_schema},
+        "required": ["value"],
+    }
+    original = copy.deepcopy(schema)
+    output = {"value": literal}
+    client = _Client(_Response(output_text=json.dumps(output)))
+    result = OpenAIGenerationGateway(client=client).generate(_request(response_json_schema=schema))
+
+    transport = client.responses.calls[-1]["text"]["format"]
+    assert transport["type"] == "json_schema"
+    expected_constraint = literal if keyword == "const" else [literal]
+    assert transport["schema"]["properties"]["value"][keyword] == expected_constraint
+    assert schema == original
+    assert parse_json_from_llm(result, response_json_schema=schema) == output
+
+
 def test_original_schema_rejects_output_accepted_by_broader_transport() -> None:
     schema = {
         "type": "object",

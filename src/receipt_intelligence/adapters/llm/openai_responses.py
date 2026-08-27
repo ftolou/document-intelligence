@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import base64
+import copy
 import io
 import mimetypes
 import re
 import time
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -50,6 +52,36 @@ _UNSUPPORTED_STRICT_SCHEMA_KEYWORDS = {
     "pattern",
     "uniqueItems",
 }
+_UNSUPPORTED_STRICT_SCHEMA_COMPOSITIONS = {
+    "allOf",
+    "dependentRequired",
+    "dependentSchemas",
+    "else",
+    "if",
+    "not",
+    "then",
+}
+_SCHEMA_MAPPING_KEYWORDS = {
+    "$defs",
+    "definitions",
+    "dependentSchemas",
+    "patternProperties",
+    "properties",
+}
+_SCHEMA_SINGLE_KEYWORDS = {
+    "additionalProperties",
+    "contains",
+    "contentSchema",
+    "else",
+    "if",
+    "items",
+    "not",
+    "propertyNames",
+    "then",
+    "unevaluatedItems",
+    "unevaluatedProperties",
+}
+_SCHEMA_SEQUENCE_KEYWORDS = {"allOf", "anyOf", "oneOf", "prefixItems"}
 
 
 class _OpenAIResponsesAdapter:
@@ -330,16 +362,29 @@ def _schema_name(operation: str) -> str:
 def _strict_transport_schema(schema: dict[str, Any]) -> dict[str, Any] | None:
     """Return a non-narrowing strict transport schema, or request JSON mode."""
 
+    if schema.get("type") != "object" or "anyOf" in schema:
+        return None
     if _has_unfaithful_strict_shape(schema):
         return None
     return _normalize_strict_schema_node(schema)
 
 
-def _has_unfaithful_strict_shape(value: Any) -> bool:
-    if isinstance(value, list):
-        return any(_has_unfaithful_strict_shape(item) for item in value)
-    if not isinstance(value, dict):
-        return False
+def _schema_children(value: dict[str, Any]) -> Iterator[dict[str, Any]]:
+    for key, item in value.items():
+        if key in _SCHEMA_MAPPING_KEYWORDS and isinstance(item, dict):
+            yield from (child for child in item.values() if isinstance(child, dict))
+        elif key in _SCHEMA_SINGLE_KEYWORDS:
+            if isinstance(item, dict):
+                yield item
+            elif isinstance(item, list):
+                yield from (child for child in item if isinstance(child, dict))
+        elif key in _SCHEMA_SEQUENCE_KEYWORDS and isinstance(item, list):
+            yield from (child for child in item if isinstance(child, dict))
+
+
+def _has_unfaithful_strict_shape(value: dict[str, Any]) -> bool:
+    if _UNSUPPORTED_STRICT_SCHEMA_COMPOSITIONS.intersection(value):
+        return True
     if "patternProperties" in value:
         return True
     properties = value.get("properties")
@@ -354,7 +399,7 @@ def _has_unfaithful_strict_shape(value: Any) -> bool:
         required_names = {name for name in value.get("required", []) if isinstance(name, str)}
         if required_names != property_names:
             return True
-    return any(_has_unfaithful_strict_shape(item) for item in value.values())
+    return any(_has_unfaithful_strict_shape(child) for child in _schema_children(value))
 
 
 def _normalize_strict_schema_node(value: Any) -> Any:
@@ -375,8 +420,17 @@ def _normalize_strict_schema_node(value: Any) -> Any:
                 name: _normalize_strict_schema_node(property_schema)
                 for name, property_schema in item.items()
             }
-        else:
+        elif key in _SCHEMA_MAPPING_KEYWORDS and isinstance(item, dict):
+            normalized[key] = {
+                name: _normalize_strict_schema_node(child)
+                for name, child in item.items()
+            }
+        elif key in _SCHEMA_SINGLE_KEYWORDS and isinstance(item, (dict, list)):
             normalized[key] = _normalize_strict_schema_node(item)
+        elif key in _SCHEMA_SEQUENCE_KEYWORDS and isinstance(item, list):
+            normalized[key] = _normalize_strict_schema_node(item)
+        else:
+            normalized[key] = copy.deepcopy(item)
 
     properties = normalized.get("properties")
     schema_type = normalized.get("type")
