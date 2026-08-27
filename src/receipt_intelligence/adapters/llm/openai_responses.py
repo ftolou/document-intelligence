@@ -381,8 +381,7 @@ def _supports_temperature(*, model: str, reasoning_effort: str | None) -> bool:
     ):
         return False
     if any(
-        model_id == family or model_id.startswith(f"{family}-")
-        for family in ("gpt-5.1", "gpt-5.2")
+        model_id == family or model_id.startswith(f"{family}-") for family in ("gpt-5.1", "gpt-5.2")
     ):
         return not any(suffix in model_id for suffix in ("-pro", "-codex")) and (
             reasoning_effort in {None, "none"}
@@ -396,10 +395,7 @@ def _is_standard_o_series_model(model_id: str) -> bool:
     families = ("o1", "o1-mini", "o3", "o3-mini", "o4-mini")
     return any(
         model_id == family
-        or (
-            model_id.startswith(f"{family}-")
-            and model_id.removeprefix(f"{family}-")[:1].isdigit()
-        )
+        or (model_id.startswith(f"{family}-") and model_id.removeprefix(f"{family}-")[:1].isdigit())
         for family in families
     )
 
@@ -424,9 +420,7 @@ def _has_dynamic_object_shape(value: Any) -> bool:
     is_object = schema_type == "object" or (
         isinstance(schema_type, list) and "object" in schema_type
     )
-    if (is_object or isinstance(properties, dict)) and (
-        "additionalProperties" not in value
-    ):
+    if (is_object or isinstance(properties, dict)) and ("additionalProperties" not in value):
         return True
     if "additionalProperties" in value and value["additionalProperties"] is not False:
         return True
