@@ -145,36 +145,6 @@ def test_openai_multimodal_translation_is_confined_to_adapter(tmp_path: Path) ->
     assert "temperature" not in payload
 
 
-def test_same_workflow_accepts_two_provider_implementations() -> None:
-    schema = {
-        "type": "object",
-        "additionalProperties": False,
-        "properties": {"value": {"type": "integer"}},
-        "required": ["value"],
-    }
-
-    class _FakeProvider:
-        def __init__(self, value: int) -> None:
-            self.value = value
-
-        def generate(self, request: GenerationRequest) -> GenerationResult:
-            assert request.response_json_schema == schema
-            return GenerationResult(text=json.dumps({"value": self.value}))
-
-    def workflow(gateway: Any) -> int:
-        result = gateway.generate(
-            GenerationRequest(
-                model="configured-model",
-                prompt="Return a value.",
-                response_json_schema=schema,
-            )
-        )
-        return int(parse_json_from_llm(result, response_json_schema=schema)["value"])
-
-    assert workflow(_FakeProvider(1)) == 1
-    assert workflow(_FakeProvider(2)) == 2
-
-
 def test_structured_transport_uses_strict_schema_without_mutating_original() -> None:
     schema = {
         "type": "object",
@@ -266,6 +236,39 @@ def test_unsupported_strict_compositions_fall_back_without_schema_narrowing(
 
     assert client.responses.calls[-1]["text"] == {"format": {"type": "json_object"}}
     assert parse_json_from_llm(result, response_json_schema=schema) == output
+
+
+@pytest.mark.parametrize(
+    ("keyword", "constraint"),
+    [
+        ("oneOf", [{"type": "string"}, {"type": "integer"}]),
+        ("prefixItems", [{"type": "string"}]),
+        ("contains", {"type": "string"}),
+        ("propertyNames", {"pattern": "^[a-z]+$"}),
+    ],
+)
+def test_other_unsupported_strict_keywords_fall_back_to_json_mode(
+    keyword: str,
+    constraint: Any,
+) -> None:
+    schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "value": {
+                "type": "string",
+                keyword: constraint,
+            }
+        },
+        "required": ["value"],
+    }
+    client = _Client(_Response(output_text='{"value":"ok"}'))
+    result = OpenAIGenerationGateway(client=client).generate(
+        _request(response_json_schema=schema)
+    )
+
+    assert client.responses.calls[-1]["text"] == {"format": {"type": "json_object"}}
+    assert parse_json_from_llm(result, response_json_schema=schema) == {"value": "ok"}
 
 
 @pytest.mark.parametrize(

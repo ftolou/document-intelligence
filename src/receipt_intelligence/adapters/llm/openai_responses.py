@@ -52,36 +52,23 @@ _UNSUPPORTED_STRICT_SCHEMA_KEYWORDS = {
     "pattern",
     "uniqueItems",
 }
-_UNSUPPORTED_STRICT_SCHEMA_COMPOSITIONS = {
-    "allOf",
-    "dependentRequired",
-    "dependentSchemas",
-    "else",
-    "if",
-    "not",
-    "then",
-}
-_SCHEMA_MAPPING_KEYWORDS = {
+_SUPPORTED_STRICT_SCHEMA_KEYWORDS = _UNSUPPORTED_STRICT_SCHEMA_KEYWORDS | {
     "$defs",
-    "definitions",
-    "dependentSchemas",
-    "patternProperties",
-    "properties",
-}
-_SCHEMA_SINGLE_KEYWORDS = {
+    "$ref",
     "additionalProperties",
-    "contains",
-    "contentSchema",
-    "else",
-    "if",
+    "anyOf",
+    "const",
+    "description",
+    "enum",
     "items",
-    "not",
-    "propertyNames",
-    "then",
-    "unevaluatedItems",
-    "unevaluatedProperties",
+    "properties",
+    "required",
+    "title",
+    "type",
 }
-_SCHEMA_SEQUENCE_KEYWORDS = {"allOf", "anyOf", "oneOf", "prefixItems"}
+_SCHEMA_MAPPING_KEYWORDS = {"$defs", "properties"}
+_SCHEMA_SINGLE_KEYWORDS = {"items"}
+_SCHEMA_SEQUENCE_KEYWORDS = {"anyOf"}
 
 
 class _OpenAIResponsesAdapter:
@@ -383,9 +370,7 @@ def _schema_children(value: dict[str, Any]) -> Iterator[dict[str, Any]]:
 
 
 def _has_unfaithful_strict_shape(value: dict[str, Any]) -> bool:
-    if _UNSUPPORTED_STRICT_SCHEMA_COMPOSITIONS.intersection(value):
-        return True
-    if "patternProperties" in value:
+    if any(key not in _SUPPORTED_STRICT_SCHEMA_KEYWORDS for key in value):
         return True
     properties = value.get("properties")
     schema_type = value.get("type")
