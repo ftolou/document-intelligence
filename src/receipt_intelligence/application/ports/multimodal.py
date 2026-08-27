@@ -7,6 +7,7 @@ keeping them separate prevents optional image fields from leaking into every LLM
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
@@ -18,9 +19,9 @@ from receipt_intelligence.application.ports.llm import ModelCallMetrics
 class MultimodalGenerationRequest:
     """One image-aware generation request.
 
-    ``response_json_schema`` is optional because transcription normally returns text. Provider
-    options are copied at the port boundary so adapters may consume model-specific sampling
-    controls without leaking them into extraction services.
+    ``response_json_schema`` is optional because transcription normally returns text.
+    ``provider_options`` is retained only as a deprecated compatibility field. New callers
+    configure provider-native options when composing the concrete adapter.
     """
 
     model: str
@@ -31,16 +32,18 @@ class MultimodalGenerationRequest:
     think: bool = False
     num_ctx: int = 8192
     num_predict: int = 4096
-    temperature: float = 0.0
+    temperature: float | None = None
     keep_alive: str | None = None
     timeout_seconds: float = 300.0
     format_json: bool = False
     response_json_schema: dict[str, Any] | None = None
     provider_options: dict[str, Any] = field(default_factory=dict)
+    system_prompt: str | None = None
 
     def __post_init__(self) -> None:
         model = str(self.model or "").strip()
         prompt = str(self.prompt or "").strip()
+        system_prompt = str(self.system_prompt or "").strip() or None
         operation = str(self.operation or "").strip()
         image_paths = tuple(Path(path) for path in self.image_paths)
 
@@ -67,11 +70,21 @@ class MultimodalGenerationRequest:
                 raise ValueError("response_json_schema requires format_json=True.")
             object.__setattr__(self, "response_json_schema", dict(schema))
 
+        provider_options = dict(self.provider_options)
+        if provider_options:
+            warnings.warn(
+                "MultimodalGenerationRequest.provider_options is deprecated; configure "
+                "provider-native options on the multimodal adapter instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
         object.__setattr__(self, "model", model)
         object.__setattr__(self, "prompt", prompt)
+        object.__setattr__(self, "system_prompt", system_prompt)
         object.__setattr__(self, "operation", operation)
         object.__setattr__(self, "image_paths", image_paths)
-        object.__setattr__(self, "provider_options", dict(self.provider_options))
+        object.__setattr__(self, "provider_options", provider_options)
 
 
 @dataclass(frozen=True, slots=True)

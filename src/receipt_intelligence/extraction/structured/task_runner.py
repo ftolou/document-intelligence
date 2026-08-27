@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+from receipt_intelligence.application.llm_json import parse_json_from_llm
 from receipt_intelligence.application.ports.chat import ChatGateway, ChatGenerationRequest
 from receipt_intelligence.extraction.contracts.extraction import (
     GemmaTaskResult,
@@ -64,14 +65,7 @@ class GemmaTaskRunner:
                 timeout_seconds=self._settings.timeout_seconds,
             )
         )
-        try:
-            answer = json.loads(result.text)
-        except json.JSONDecodeError as exc:
-            raise RuntimeError(
-                f"Gemma task {definition.task_name!r} returned invalid JSON: {result.text[:1000]}"
-            ) from exc
-        if not isinstance(answer, dict):
-            raise RuntimeError(f"Gemma task {definition.task_name!r} did not return an object.")
+        answer = parse_json_from_llm(result, response_json_schema=schema)
         answer, normalization_changes = normalize_task_answer(
             task_name=definition.task_name,
             answer=answer,
@@ -88,7 +82,7 @@ class GemmaTaskRunner:
             metrics=result.metrics,
             diagnostics={
                 "prompt_version": definition.prompt.version,
-                "schema_delivery": "ollama_format_json_schema",
+                "schema_delivery": "provider_neutral_json_schema",
                 "think": self._settings.think,
                 "num_predict": (
                     self._settings.item_num_predict

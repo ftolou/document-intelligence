@@ -24,7 +24,10 @@ def build_canonical_transcription_service(
             model_name=settings.detection.model_name,
         ),
         multimodal_gateway=multimodal_gateway
-        or OllamaMultimodalGateway(settings.transcription.ollama_url),
+        or OllamaMultimodalGateway(
+            settings.transcription.ollama_url,
+            generation_options=ollama_transcription_options(settings),
+        ),
         prompt_registry=default_prompt_registry(),
         result_dir=settings.runtime.result_dir,
         detection_settings=settings.detection,
@@ -34,4 +37,17 @@ def build_canonical_transcription_service(
     )
 
 
-__all__ = ["build_canonical_transcription_service"]
+def ollama_transcription_options(settings: PipelineSettings) -> dict[str, object]:
+    """Return explicitly configured Ollama-only transcription tuning."""
+
+    return {
+        "seed": settings.transcription.seed,
+        "top_k": 1,
+        "top_p": 1.0,
+        "min_p": 0.0,
+        "repeat_penalty": 1.0,
+        "repeat_last_n": 0,
+    }
+
+
+__all__ = ["build_canonical_transcription_service", "ollama_transcription_options"]

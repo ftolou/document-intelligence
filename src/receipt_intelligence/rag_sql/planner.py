@@ -172,6 +172,7 @@ class RagSqlPlanner:
         ollama_calls: list[ModelCallMetrics] = []
         previous_raw_response: str | None = None
         validation_repair_block = ""
+        response_schema = RagSqlPlanPayload.model_json_schema()
         if previous_plan is not None and validation_error is not None:
             previous_payload = previous_plan.model_dump(
                 mode="json",
@@ -239,6 +240,7 @@ class RagSqlPlanner:
                         keep_alive=self.config.keep_alive,
                         timeout_seconds=self.config.timeout_seconds,
                         format_json=self.config.format_json,
+                        response_json_schema=(response_schema if self.config.format_json else None),
                     ),
                     gateway=self.llm_gateway,
                     legacy_generate=self.generate,
@@ -247,7 +249,12 @@ class RagSqlPlanner:
                 if generation.metrics is not None:
                     ollama_calls.append(generation.metrics)
                 previous_raw_response = generation.text[:12000]
-                payload = RagSqlPlanPayload.model_validate(parse_json_from_llm(generation))
+                payload = RagSqlPlanPayload.model_validate(
+                    parse_json_from_llm(
+                        generation,
+                        response_json_schema=response_schema,
+                    )
+                )
                 _validate_protected_parameters(payload, protected_parameters)
                 return RagSqlPlanResult(
                     **payload.model_dump(mode="python"),

@@ -144,7 +144,7 @@ class _ObservedRequest(Protocol):
     attempt: int
     num_ctx: int
     num_predict: int
-    temperature: float
+    temperature: float | None
     timeout_seconds: float
 
 

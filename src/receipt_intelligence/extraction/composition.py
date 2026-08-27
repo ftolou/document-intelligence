@@ -27,6 +27,7 @@ from receipt_intelligence.extraction.structured.composition import (
 )
 from receipt_intelligence.extraction.transcription.composition import (
     build_canonical_transcription_service,
+    ollama_transcription_options,
 )
 from receipt_intelligence.extraction.validation.composition import (
     build_deterministic_validation_service,
@@ -61,7 +62,10 @@ def build_extraction_dependencies(config: ExtractionConfig) -> ExtractionDepende
         default_context=call_context,
     )
     multimodal_gateway = ObservedMultimodalGateway(
-        OllamaMultimodalGateway(config.ollama_url),
+        OllamaMultimodalGateway(
+            config.ollama_url,
+            generation_options=ollama_transcription_options(grouped),
+        ),
         model_call_sink,
         default_context=call_context,
     )

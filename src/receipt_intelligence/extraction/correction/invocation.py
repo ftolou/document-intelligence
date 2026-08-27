@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from receipt_intelligence.application.llm_json import LLMJsonParseError, parse_json_from_llm
 from receipt_intelligence.application.ports.chat import ChatGateway, ChatGenerationRequest
 from receipt_intelligence.application.ports.llm import ModelCallMetrics
 from receipt_intelligence.extraction.correction.profile import StrategyConfig
@@ -74,8 +75,8 @@ class PromptBoundSourceEvidenceInvoker(SourceEvidenceInvoker):
         repair: dict[str, Any] = {"triggered": False, "status": "not_needed"}
         repaired_content: str | None = None
         try:
-            answer = json.loads(content)
-        except json.JSONDecodeError as original_error:
+            answer = parse_json_from_llm(content, response_json_schema=schema)
+        except LLMJsonParseError as original_error:
             done_reason = _done_reason(generated)
             if done_reason != "stop":
                 return self._result(
@@ -118,7 +119,10 @@ class PromptBoundSourceEvidenceInvoker(SourceEvidenceInvoker):
                     )
                 )
                 repaired_content = repaired.text
-                answer = json.loads(_strip_code_fences(repaired.text))
+                answer = parse_json_from_llm(
+                    repaired,
+                    response_json_schema=schema,
+                )
                 repair = {
                     "triggered": True,
                     "status": "completed",
@@ -211,7 +215,7 @@ class PromptBoundSourceEvidenceInvoker(SourceEvidenceInvoker):
                     "version": strategy.prompt_version,
                 },
                 "schema_delivery": "embedded_once_in_prompt",
-                "ollama_format_field": False,
+                "provider_structured_output": False,
                 "current_structured_result_supplied_to_model": False,
                 "think": self._think(strategy.strategy_id),
                 "temperature": self.settings.temperature,

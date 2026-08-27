@@ -137,6 +137,7 @@ class CandidateResolver:
         last_error: Exception | None = None
         attempts = max(1, self.config.retry_count + 1)
         ollama_calls: list[ModelCallMetrics] = []
+        response_schema = CandidateResolutionPayload.model_json_schema()
 
         for attempt in range(1, attempts + 1):
             prompt = build_candidate_resolution_prompt(
@@ -158,6 +159,7 @@ class CandidateResolver:
                         keep_alive=self.config.keep_alive,
                         timeout_seconds=self.config.timeout_seconds,
                         format_json=self.config.format_json,
+                        response_json_schema=(response_schema if self.config.format_json else None),
                     ),
                     gateway=self.llm_gateway,
                     legacy_generate=self.generate,
@@ -165,7 +167,12 @@ class CandidateResolver:
                 )
                 if generation.metrics is not None:
                     ollama_calls.append(generation.metrics)
-                payload = CandidateResolutionPayload.model_validate(parse_json_from_llm(generation))
+                payload = CandidateResolutionPayload.model_validate(
+                    parse_json_from_llm(
+                        generation,
+                        response_json_schema=response_schema,
+                    )
+                )
                 _validate_payload_against_candidates(payload, records, entity)
                 return _map_resolution(
                     payload,

@@ -69,6 +69,16 @@ class FakeGateway:
         return GenerationResult(text=self.responses.pop(0))
 
 
+class AlternateFakeGateway:
+    def __init__(self, response: dict[str, object]) -> None:
+        self.response = response
+        self.request: GenerationRequest | None = None
+
+    def generate(self, request: GenerationRequest) -> GenerationResult:
+        self.request = request
+        return GenerationResult(text=json.dumps(self.response))
+
+
 def _config(**changes: object) -> CandidateResolverConfig:
     values = {
         "enabled": True,
@@ -108,6 +118,41 @@ def test_candidate_records_preserve_reviewed_semantic_description() -> None:
     )
 
     assert records[0].semantic_description == "Vittel is a brand of mineral water."
+
+
+def test_candidate_resolver_runs_unchanged_with_distinct_provider_gateways() -> None:
+    response = {
+        "schema_version": "rag_candidate_resolution_v2",
+        "status": "resolved",
+        "semantic_entity": "Schuhe",
+        "decisions": [
+            {
+                "candidate_id": "c001",
+                "decision": "selected",
+                "evidence_strength": "explicit",
+                "evidence": "'Halbschuhe' directly names a footwear subtype.",
+            }
+        ],
+        "clarification_question": None,
+        "notes": [],
+    }
+    first_gateway = FakeGateway([json.dumps(response)])
+    second_gateway = AlternateFakeGateway(response)
+
+    results = [
+        CandidateResolver(_config(), llm_gateway=gateway).resolve(
+            "Schuhe",
+            [_match(10, "HS-Halbschuhe")],
+        )
+        for gateway in (first_gateway, second_gateway)
+    ]
+
+    assert second_gateway.request is not None
+    assert first_gateway.requests == [second_gateway.request]
+    assert first_gateway.requests[0].operation == "rag_candidate_resolution"
+    assert results[0].model_dump(exclude={"duration_ms"}) == results[1].model_dump(
+        exclude={"duration_ms"}
+    )
 
 
 def test_resolver_maps_selected_identity_to_all_occurrence_ids() -> None:
