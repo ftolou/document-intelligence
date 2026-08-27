@@ -422,8 +422,7 @@ def _normalize_strict_schema_node(value: Any) -> Any:
             }
         elif key in _SCHEMA_MAPPING_KEYWORDS and isinstance(item, dict):
             normalized[key] = {
-                name: _normalize_strict_schema_node(child)
-                for name, child in item.items()
+                name: _normalize_strict_schema_node(child) for name, child in item.items()
             }
         elif key in _SCHEMA_SINGLE_KEYWORDS and isinstance(item, (dict, list)):
             normalized[key] = _normalize_strict_schema_node(item)
