@@ -262,9 +262,7 @@ def test_other_unsupported_strict_keywords_fall_back_to_json_mode(
         "required": ["value"],
     }
     client = _Client(_Response(output_text='{"value":"ok"}'))
-    result = OpenAIGenerationGateway(client=client).generate(
-        _request(response_json_schema=schema)
-    )
+    result = OpenAIGenerationGateway(client=client).generate(_request(response_json_schema=schema))
 
     assert client.responses.calls[-1]["text"] == {"format": {"type": "json_object"}}
     assert parse_json_from_llm(result, response_json_schema=schema) == {"value": "ok"}
