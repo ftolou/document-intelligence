@@ -3,9 +3,46 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any, Literal, Protocol, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+
+class GenerationFailureReason(StrEnum):
+    """Stable failure reasons exposed by generation adapters."""
+
+    PROVIDER_UNAVAILABLE = "provider_unavailable"
+    REFUSED = "refused"
+    INCOMPLETE = "incomplete"
+    MALFORMED_OUTPUT = "malformed_output"
+    PROVIDER_ERROR = "provider_error"
+
+
+class GenerationError(RuntimeError):
+    """Provider-neutral failure raised at a generation boundary."""
+
+    reason = GenerationFailureReason.PROVIDER_ERROR
+
+    def __init__(self, message: str, *, provider: str | None = None) -> None:
+        super().__init__(message)
+        self.provider = str(provider or "").strip() or None
+
+
+class GenerationProviderUnavailableError(GenerationError):
+    reason = GenerationFailureReason.PROVIDER_UNAVAILABLE
+
+
+class GenerationRefusedError(GenerationError):
+    reason = GenerationFailureReason.REFUSED
+
+
+class GenerationIncompleteError(GenerationError):
+    reason = GenerationFailureReason.INCOMPLETE
+
+
+class MalformedGenerationError(GenerationError, ValueError):
+    reason = GenerationFailureReason.MALFORMED_OUTPUT
 
 
 class ModelCallMetrics(BaseModel):
@@ -71,7 +108,7 @@ class GenerationRequest:
     attempt: int = 1
     num_ctx: int = 16384
     num_predict: int = 8192
-    temperature: float = 0.0
+    temperature: float | None = None
     keep_alive: str | None = None
     timeout_seconds: float = 240.0
     format_json: bool = True
@@ -147,10 +184,16 @@ def _tokens_per_second(count: int | None, duration_ns: int | None) -> float | No
 
 
 __all__ = [
+    "GenerationError",
+    "GenerationFailureReason",
+    "GenerationIncompleteError",
+    "GenerationProviderUnavailableError",
+    "GenerationRefusedError",
     "GenerationRequest",
     "GenerationResult",
     "GenerationValue",
     "LlmGateway",
+    "MalformedGenerationError",
     "ModelCallMetrics",
     "coerce_generation_result",
     "metrics_to_diagnostics",

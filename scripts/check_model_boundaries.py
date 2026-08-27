@@ -21,6 +21,7 @@ required_files = (
     SRC / "application" / "ports" / "multimodal.py",
     SRC / "application" / "ports" / "text_detection.py",
     SRC / "adapters" / "llm" / "ollama_gateway.py",
+    SRC / "adapters" / "llm" / "openai_responses.py",
     SRC / "adapters" / "multimodal" / "ollama.py",
     SRC / "adapters" / "text_detection" / "paddle.py",
     SRC / "extraction" / "dependencies.py",
@@ -32,6 +33,26 @@ for required in required_files:
 job_source = (SRC / "services" / "job_processing.py").read_text(encoding="utf-8")
 if "paddleocr" in job_source.lower() or "OcrRequest" in job_source:
     violations.append("JobProcessingService must not invoke Paddle directly")
+
+openai_workflow = (SRC / "extraction" / "openai_one_shot.py").read_text(encoding="utf-8")
+for token in ("from openai import", ".responses.create(", "urllib.request", "requests.post"):
+    if token in openai_workflow:
+        violations.append(f"OpenAI extraction workflow bypasses the multimodal port: {token}")
+
+capability_policy_tokens = (
+    "model.startswith(",
+    "model_id.startswith(",
+    "supports_temperature(",
+    "reasoning_effort_for_request(",
+    "MODEL_CAPABILIT",
+)
+for path in SRC.rglob("*.py"):
+    source = path.read_text(encoding="utf-8")
+    for token in capability_policy_tokens:
+        if token in source:
+            violations.append(
+                f"{path.relative_to(ROOT)} infers generation capabilities from model names: {token}"
+            )
 
 if violations:
     print("Model boundary violations detected:")

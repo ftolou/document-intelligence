@@ -19,7 +19,7 @@ class ChatGenerationRequest:
     think: bool = False
     num_ctx: int = 16384
     num_predict: int = 4096
-    temperature: float = 0.0
+    temperature: float | None = None
     seed: int = 42
     keep_alive: str | None = None
     timeout_seconds: float = 300.0

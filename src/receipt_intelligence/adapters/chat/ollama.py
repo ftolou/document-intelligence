@@ -4,16 +4,20 @@ from __future__ import annotations
 
 import json
 import time
-import urllib.error
 import urllib.request
 from typing import Any
 
-from receipt_intelligence.adapters.llm.ollama_gateway import model_metrics_from_ollama_payload
+from receipt_intelligence.adapters.llm.ollama_gateway import (
+    model_metrics_from_ollama_payload,
+    normalize_ollama_error,
+    validate_ollama_completion,
+)
 from receipt_intelligence.application.ports.chat import (
     ChatGateway,
     ChatGenerationRequest,
     ChatGenerationResult,
 )
+from receipt_intelligence.application.ports.llm import MalformedGenerationError
 
 
 class OllamaChatGateway(ChatGateway):
@@ -28,17 +32,19 @@ class OllamaChatGateway(ChatGateway):
         if request.system_prompt:
             messages.append({"role": "system", "content": request.system_prompt})
         messages.append({"role": "user", "content": request.user_prompt})
+        options: dict[str, Any] = {
+            "seed": request.seed,
+            "num_ctx": request.num_ctx,
+            "num_predict": request.num_predict,
+        }
+        if request.temperature is not None:
+            options["temperature"] = request.temperature
         payload: dict[str, Any] = {
             "model": request.model,
             "messages": messages,
             "stream": False,
             "think": request.think,
-            "options": {
-                "temperature": request.temperature,
-                "seed": request.seed,
-                "num_ctx": request.num_ctx,
-                "num_predict": request.num_predict,
-            },
+            "options": options,
         }
         if request.response_json_schema is not None:
             payload["format"] = request.response_json_schema
@@ -52,16 +58,22 @@ class OllamaChatGateway(ChatGateway):
                 payload=payload,
                 timeout=request.timeout_seconds,
             )
-        except urllib.error.HTTPError as exc:
-            message = exc.read().decode("utf-8", errors="replace")[:1000]
-            raise RuntimeError(f"Ollama HTTP error {exc.code}: {message}") from exc
+        except Exception as exc:
+            raise normalize_ollama_error(exc) from exc
         duration_ms = (time.perf_counter() - started) * 1000.0
+        validate_ollama_completion(response)
         message = response.get("message")
         if not isinstance(message, dict):
-            raise RuntimeError("Ollama chat response has no message object.")
+            raise MalformedGenerationError(
+                "Ollama chat response has no message object.",
+                provider="ollama",
+            )
         text = str(message.get("content") or "").strip()
         if not text:
-            raise RuntimeError("Ollama chat returned empty content.")
+            raise MalformedGenerationError(
+                "Ollama chat returned empty content.",
+                provider="ollama",
+            )
         return ChatGenerationResult(
             text=text,
             thinking=(str(message.get("thinking") or "").strip() or None),

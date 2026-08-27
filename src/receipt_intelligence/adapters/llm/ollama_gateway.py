@@ -9,9 +9,13 @@ import urllib.request
 from typing import Any, Literal
 
 from receipt_intelligence.application.ports.llm import (
+    GenerationError,
+    GenerationIncompleteError,
+    GenerationProviderUnavailableError,
     GenerationRequest,
     GenerationResult,
     LlmGateway,
+    MalformedGenerationError,
     ModelCallMetrics,
 )
 
@@ -30,19 +34,22 @@ class OllamaGateway(LlmGateway):
                 timeout=min(request.timeout_seconds, 20.0),
             )
         except Exception as exc:
-            raise RuntimeError(
-                f"Ollama is not reachable at {self.base_url}: {type(exc).__name__}: {exc}"
+            raise GenerationProviderUnavailableError(
+                f"Ollama is not reachable at {self.base_url}: {type(exc).__name__}: {exc}",
+                provider="ollama",
             ) from exc
 
+        options: dict[str, Any] = {
+            "num_ctx": request.num_ctx,
+            "num_predict": request.num_predict,
+        }
+        if request.temperature is not None:
+            options["temperature"] = request.temperature
         payload: dict[str, Any] = {
             "model": request.model,
             "prompt": request.prompt,
             "stream": False,
-            "options": {
-                "temperature": request.temperature,
-                "num_ctx": request.num_ctx,
-                "num_predict": request.num_predict,
-            },
+            "options": options,
         }
         if request.keep_alive not in (None, ""):
             payload["keep_alive"] = request.keep_alive
@@ -58,13 +65,16 @@ class OllamaGateway(LlmGateway):
                 payload=payload,
                 timeout=request.timeout_seconds,
             )
-        except urllib.error.HTTPError as exc:
-            message = exc.read().decode("utf-8", errors="replace")[:1000]
-            raise RuntimeError(f"Ollama HTTP error {exc.code}: {message}") from exc
+        except Exception as exc:
+            raise normalize_ollama_error(exc) from exc
         duration_ms = (time.perf_counter() - started) * 1000.0
+        validate_ollama_completion(response)
         text = str(response.get("response") or "").strip()
         if not text:
-            raise RuntimeError("Ollama returned an empty response")
+            raise MalformedGenerationError(
+                "Ollama returned an empty response.",
+                provider="ollama",
+            )
         return GenerationResult(
             text=text,
             metrics=model_metrics_from_ollama_payload(
@@ -112,6 +122,44 @@ def model_metrics_from_ollama_payload(
     )
 
 
+def normalize_ollama_error(exc: Exception) -> GenerationError:
+    """Translate Ollama transport failures into stable Core failures."""
+
+    if isinstance(exc, GenerationError):
+        return exc
+    if isinstance(exc, urllib.error.HTTPError):
+        message = exc.read().decode("utf-8", errors="replace")[:1000]
+        error_type = (
+            GenerationProviderUnavailableError if exc.code >= 500 else GenerationError
+        )
+        return error_type(
+            f"Ollama HTTP error {exc.code}: {message}",
+            provider="ollama",
+        )
+    if isinstance(exc, (urllib.error.URLError, TimeoutError, ConnectionError)):
+        return GenerationProviderUnavailableError(
+            f"Ollama request failed: {type(exc).__name__}: {exc}",
+            provider="ollama",
+        )
+    if isinstance(exc, ValueError):
+        return MalformedGenerationError(
+            f"Ollama returned a malformed response: {exc}",
+            provider="ollama",
+        )
+    return GenerationError(
+        f"Ollama request failed: {type(exc).__name__}: {exc}",
+        provider="ollama",
+    )
+
+
+def validate_ollama_completion(response: dict[str, Any]) -> None:
+    if response.get("done") is False:
+        raise GenerationIncompleteError(
+            f"Ollama generation was incomplete: {response.get('done_reason')!r}",
+            provider="ollama",
+        )
+
+
 def _http_json(
     url: str,
     payload: dict[str, Any] | None = None,
@@ -142,4 +190,9 @@ def _optional_nonnegative_int(value: Any) -> int | None:
     return parsed if parsed >= 0 else None
 
 
-__all__ = ["OllamaGateway", "model_metrics_from_ollama_payload"]
+__all__ = [
+    "OllamaGateway",
+    "model_metrics_from_ollama_payload",
+    "normalize_ollama_error",
+    "validate_ollama_completion",
+]

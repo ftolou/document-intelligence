@@ -33,6 +33,19 @@ provider-neutral text and multimodal gateways, and Paddle is isolated behind the
 port. Deterministic validation never mutates the receipt. Correction candidates are accepted only
 when targeted validation failures improve without regressions.
 
+## Generation boundary
+
+Generic extraction and query workflows express prompts, optional images, structured-output
+schemas, output limits, sampling intent, and timeouts through the Core generation ports. Ollama
+and OpenAI adapters translate those requests into provider transports and normalize provider
+failures. Provider and opaque model identifiers are selected by runtime composition; workflows
+do not infer capabilities from model names.
+
+Provider-specific tuning is configured on concrete adapters. An unset temperature is omitted,
+while an explicit `0.0` is forwarded unchanged. Structured responses are validated against the
+original neutral JSON Schema after provider transport translation. Schemas that cannot be
+represented faithfully in a provider's strict mode use JSON mode without narrowing Core's schema.
+
 ## Application boundary
 
 Flask blueprints parse transport data and call application use cases. Receipt and batch work is
