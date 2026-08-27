@@ -23,7 +23,6 @@ from receipt_intelligence.application.ports.llm import (
     GenerationProviderUnavailableError,
     GenerationRefusedError,
     GenerationRequest,
-    GenerationResult,
     MalformedGenerationError,
 )
 from receipt_intelligence.application.ports.multimodal import MultimodalGenerationRequest
