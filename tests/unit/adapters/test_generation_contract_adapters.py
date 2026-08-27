@@ -184,9 +184,7 @@ def test_structured_transport_uses_strict_schema_without_mutating_original() -> 
     }
     original = copy.deepcopy(schema)
     client = _Client()
-    result = OpenAIGenerationGateway(client=client).generate(
-        _request(response_json_schema=schema)
-    )
+    result = OpenAIGenerationGateway(client=client).generate(_request(response_json_schema=schema))
 
     transport = client.responses.calls[-1]["text"]["format"]
     assert transport["type"] == "json_schema"
@@ -214,14 +212,10 @@ def test_dynamic_and_nullable_objects_fall_back_without_schema_narrowing(
         "required": ["metadata"],
     }
     client = _Client(_Response(output_text='{"metadata":{"extra":"ok"}}'))
-    result = OpenAIGenerationGateway(client=client).generate(
-        _request(response_json_schema=schema)
-    )
+    result = OpenAIGenerationGateway(client=client).generate(_request(response_json_schema=schema))
 
     assert client.responses.calls[-1]["text"] == {"format": {"type": "json_object"}}
-    assert parse_json_from_llm(result, response_json_schema=schema)["metadata"] == {
-        "extra": "ok"
-    }
+    assert parse_json_from_llm(result, response_json_schema=schema)["metadata"] == {"extra": "ok"}
 
 
 def test_optional_properties_fall_back_instead_of_becoming_required() -> None:
@@ -231,9 +225,7 @@ def test_optional_properties_fall_back_instead_of_becoming_required() -> None:
         "properties": {"optional_value": {"type": "string"}},
     }
     client = _Client(_Response(output_text="{}"))
-    result = OpenAIGenerationGateway(client=client).generate(
-        _request(response_json_schema=schema)
-    )
+    result = OpenAIGenerationGateway(client=client).generate(_request(response_json_schema=schema))
 
     assert client.responses.calls[-1]["text"] == {"format": {"type": "json_object"}}
     assert parse_json_from_llm(result, response_json_schema=schema) == {}
@@ -247,9 +239,7 @@ def test_original_schema_rejects_output_accepted_by_broader_transport() -> None:
         "required": ["value"],
     }
     client = _Client(_Response(output_text='{"value":7}'))
-    result = OpenAIGenerationGateway(client=client).generate(
-        _request(response_json_schema=schema)
-    )
+    result = OpenAIGenerationGateway(client=client).generate(_request(response_json_schema=schema))
 
     with pytest.raises(LLMJsonParseError, match="does not match"):
         parse_json_from_llm(result, response_json_schema=schema)

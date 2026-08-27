@@ -351,9 +351,7 @@ def _has_unfaithful_strict_shape(value: Any) -> bool:
         if value.get("additionalProperties") is not False:
             return True
         property_names = set(properties) if isinstance(properties, dict) else set()
-        required_names = {
-            name for name in value.get("required", []) if isinstance(name, str)
-        }
+        required_names = {name for name in value.get("required", []) if isinstance(name, str)}
         if required_names != property_names:
             return True
     return any(_has_unfaithful_strict_shape(item) for item in value.values())

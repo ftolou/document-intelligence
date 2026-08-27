@@ -243,9 +243,7 @@ class EvidenceBoundAnswerFormatter:
                         keep_alive=self.config.keep_alive,
                         timeout_seconds=self.config.timeout_seconds,
                         format_json=self.config.format_json,
-                        response_json_schema=(
-                            response_schema if self.config.format_json else None
-                        ),
+                        response_json_schema=(response_schema if self.config.format_json else None),
                     ),
                     gateway=self.llm_gateway,
                     legacy_generate=self.generate,

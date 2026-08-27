@@ -129,9 +129,7 @@ def normalize_ollama_error(exc: Exception) -> GenerationError:
         return exc
     if isinstance(exc, urllib.error.HTTPError):
         message = exc.read().decode("utf-8", errors="replace")[:1000]
-        error_type = (
-            GenerationProviderUnavailableError if exc.code >= 500 else GenerationError
-        )
+        error_type = GenerationProviderUnavailableError if exc.code >= 500 else GenerationError
         return error_type(
             f"Ollama HTTP error {exc.code}: {message}",
             provider="ollama",
