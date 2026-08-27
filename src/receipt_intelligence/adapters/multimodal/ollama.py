@@ -39,6 +39,8 @@ class OllamaMultimodalGateway(MultimodalGateway):
         images = [_encode_image(path) for path in request.image_paths]
         options = dict(self.generation_options)
         options.update(request.provider_options)
+        for portable_option in ("num_ctx", "num_predict", "temperature"):
+            options.pop(portable_option, None)
         options["num_ctx"] = request.num_ctx
         options["num_predict"] = request.num_predict
         if request.temperature is not None:

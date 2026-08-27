@@ -495,24 +495,30 @@ def test_ollama_multimodal_portable_options_override_provider_tuning(
         },
     )
 
-    with pytest.warns(DeprecationWarning):
-        request = MultimodalGenerationRequest(
-            model="opaque-model",
-            prompt="Read the receipt.",
-            image_paths=(image_path,),
-            num_ctx=4096,
-            num_predict=512,
-            temperature=0.0,
-            provider_options={
-                "num_ctx": 3,
-                "num_predict": 4,
-                "temperature": 0.9,
-                "seed": 7,
-            },
-        )
-    gateway.generate(request)
+    for temperature in (None, 0.0):
+        with pytest.warns(DeprecationWarning):
+            request = MultimodalGenerationRequest(
+                model="opaque-model",
+                prompt="Read the receipt.",
+                image_paths=(image_path,),
+                num_ctx=4096,
+                num_predict=512,
+                temperature=temperature,
+                provider_options={
+                    "num_ctx": 3,
+                    "num_predict": 4,
+                    "temperature": 0.9,
+                    "seed": 7,
+                },
+            )
+        gateway.generate(request)
 
     assert payloads[0]["options"] == {
+        "num_ctx": 4096,
+        "num_predict": 512,
+        "seed": 7,
+    }
+    assert payloads[1]["options"] == {
         "num_ctx": 4096,
         "num_predict": 512,
         "temperature": 0.0,
