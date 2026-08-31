@@ -136,13 +136,13 @@ def test_interpretation_represents_atomic_evidence_backed_candidate_fact() -> No
             EvidenceReference(
                 evidence_id="e-1",
                 source_id="document-1",
-                page=SourcePageReference(page_number=1, locator="characters 0-15"),
+                locator="characters 0-15",
                 excerpt=" Amount: 12,? ",
             ),
             EvidenceReference(
                 evidence_id="e-2",
                 source_id="document-1",
-                page=SourcePageReference(page_number=1, locator="characters 8-12"),
+                locator="characters 8-12",
                 excerpt="12,?",
             ),
         ),
@@ -231,7 +231,7 @@ def test_interpretation_rejects_dangling_evidence_and_entity_references() -> Non
                 EvidenceReference(
                     evidence_id="e-1",
                     source_id="document-1",
-                    page=SourcePageReference(page_number=1, locator="line 1"),
+                    locator="line 1",
                 ),
             ),
             candidate_facts=(
@@ -366,15 +366,33 @@ def test_classification_is_bounded_by_caller_dimensions_options_and_cardinality(
         )
 
 
-def test_evidence_requires_a_valid_structured_source_page() -> None:
-    with pytest.raises(ValidationError, match="Field required"):
-        EvidenceReference.model_validate(
-            {
-                "evidence_id": "e-1",
-                "source_id": "document-1",
-                "locator": "somewhere",
-            }
-        )
+def test_evidence_supports_paginated_and_non_paginated_source_locations() -> None:
+    text_evidence = EvidenceReference(
+        evidence_id="text-evidence",
+        source_id="text-document",
+        locator="characters 10-24",
+    )
+    audio_evidence = EvidenceReference(
+        evidence_id="audio-evidence",
+        source_id="audio-document",
+        locator="00:01:12.500-00:01:16.000",
+    )
+    page_evidence = EvidenceReference(
+        evidence_id="page-evidence",
+        source_id="paged-document",
+        page=SourcePageReference(page_number=2),
+    )
+
+    assert text_evidence.page is None
+    assert text_evidence.locator == "characters 10-24"
+    assert audio_evidence.page is None
+    assert audio_evidence.locator == "00:01:12.500-00:01:16.000"
+    assert page_evidence.page == SourcePageReference(page_number=2)
+
+
+def test_evidence_requires_a_valid_source_location() -> None:
+    with pytest.raises(ValidationError, match="requires a locator or page"):
+        EvidenceReference(evidence_id="e-1", source_id="document-1")
 
     with pytest.raises(ValidationError, match="greater than or equal to 1"):
         SourcePageReference(page_number=0)

@@ -173,19 +173,25 @@ class DocumentInterpretationRequest(ContractModel):
 
 
 class SourcePageReference(ContractModel):
-    """A validated one-based source page plus an optional finer-grained locator."""
+    """A validated one-based page within a paginated source."""
 
     page_number: int = Field(ge=1)
-    locator: NonBlankText | None = None
 
 
 class EvidenceReference(ContractModel):
-    """A stable reference to source evidence; ``excerpt`` preserves source text."""
+    """A stable source location; ``excerpt`` preserves observed source text."""
 
     evidence_id: Identifier
     source_id: Identifier
-    page: SourcePageReference
+    locator: NonBlankText | None = None
+    page: SourcePageReference | None = None
     excerpt: str | None = Field(default=None, max_length=10000)
+
+    @model_validator(mode="after")
+    def validate_location(self) -> Self:
+        if self.locator is None and self.page is None:
+            raise ValueError("EvidenceReference requires a locator or page.")
+        return self
 
 
 class ClassificationStatus(StrEnum):

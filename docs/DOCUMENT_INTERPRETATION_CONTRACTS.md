@@ -26,8 +26,9 @@ A `DocumentInterpretation` can contain:
   entities;
 - atomic `CandidateFact` values with exactly one subject, predicate, and
   object, which are not authoritative facts;
-- source evidence references with a validated one-based page number and warning
-  or Human Review signals that can target candidate facts.
+- source evidence references with a provider-neutral locator, optional validated
+  one-based page metadata, and warning or Human Review signals that can target
+  candidate facts.
 
 `LiteralValue.observed` preserves the source content as supplied. A structural
 literal type distinguishes text, identifiers, dates, times, date-times, amounts,
