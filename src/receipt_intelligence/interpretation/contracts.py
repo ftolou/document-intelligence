@@ -339,9 +339,9 @@ class LiteralValue(ContractModel):
         if self.literal_type is LiteralType.BOOLEAN:
             valid_type = isinstance(normalized, bool)
         elif self.literal_type is LiteralType.AMOUNT:
-            valid_type = isinstance(normalized, str) and fullmatch(
-                _DECIMAL_PATTERN, normalized
-            ) is not None
+            valid_type = (
+                isinstance(normalized, str) and fullmatch(_DECIMAL_PATTERN, normalized) is not None
+            )
         elif self.literal_type in {LiteralType.MEASUREMENT, LiteralType.NUMBER}:
             valid_type = isinstance(normalized, (int, float)) and not isinstance(normalized, bool)
             if valid_type and isinstance(normalized, float) and not isfinite(normalized):
@@ -520,9 +520,7 @@ def _unique_ids(kind: str, values: Iterable[str]) -> set[str]:
     return set(identifiers)
 
 
-def _matches_temporal_format(
-    value: str, pattern: str, parser: Callable[[str], object]
-) -> bool:
+def _matches_temporal_format(value: str, pattern: str, parser: Callable[[str], object]) -> bool:
     if fullmatch(pattern, value) is None:
         return False
     try:
