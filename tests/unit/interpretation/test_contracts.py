@@ -189,9 +189,7 @@ def test_interpretation_represents_atomic_evidence_backed_candidate_fact() -> No
     assert fact.object.normalized is None
     assert fact.object.normalization_status is NormalizationStatus.FAILED
     assert fact.object.currency == "EUR"
-    assert interpretation.classification.dimensions[0].option_paths == (
-        ("record", "supported"),
-    )
+    assert interpretation.classification.dimensions[0].option_paths == (("record", "supported"),)
     assert interpretation.evidence[0].excerpt == " Amount: 12,? "
     assert interpretation.requires_review is True
 

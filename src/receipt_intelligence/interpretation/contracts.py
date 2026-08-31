@@ -44,9 +44,7 @@ class ClassificationOption(ContractModel):
 
     key: Identifier
     description: NonBlankText
-    children: tuple[ClassificationOption, ...] = Field(
-        default=(), max_length=MAX_COLLECTION_SIZE
-    )
+    children: tuple[ClassificationOption, ...] = Field(default=(), max_length=MAX_COLLECTION_SIZE)
 
     @model_validator(mode="after")
     def validate_unique_children(self) -> Self:
@@ -61,9 +59,7 @@ class ClassificationDimension(ContractModel):
 
     key: Identifier
     description: NonBlankText
-    options: tuple[ClassificationOption, ...] = Field(
-        min_length=1, max_length=MAX_COLLECTION_SIZE
-    )
+    options: tuple[ClassificationOption, ...] = Field(min_length=1, max_length=MAX_COLLECTION_SIZE)
     min_selections: int = Field(default=1, ge=0, le=MAX_COLLECTION_SIZE)
     max_selections: int = Field(default=1, ge=1, le=MAX_COLLECTION_SIZE)
 
@@ -91,7 +87,9 @@ class ClassificationDimension(ContractModel):
                 )
             stack.extend((child, depth + 1) for child in option.children)
 
-        selectable_count = sum(1 for option in _flatten_options(self.options) if not option.children)
+        selectable_count = sum(
+            1 for option in _flatten_options(self.options) if not option.children
+        )
         if self.max_selections > selectable_count:
             raise ValueError("Classification maximum selections exceeds the selectable options.")
         return self
@@ -519,9 +517,7 @@ def _flatten_options(
     return flattened
 
 
-def _option_path_exists(
-    options: tuple[ClassificationOption, ...], path: tuple[str, ...]
-) -> bool:
+def _option_path_exists(options: tuple[ClassificationOption, ...], path: tuple[str, ...]) -> bool:
     remaining = options
     for key in path:
         option = next((item for item in remaining if item.key == key), None)
