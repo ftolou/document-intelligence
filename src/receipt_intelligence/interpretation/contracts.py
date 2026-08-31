@@ -7,8 +7,11 @@ domain-specific taxonomy.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
+from datetime import date, datetime, time
 from enum import StrEnum
+from math import isfinite
+from re import fullmatch
 from typing import Annotated, Literal, Self, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -23,6 +26,14 @@ JsonScalar: TypeAlias = str | int | float | bool | None
 ClassificationOptionPath: TypeAlias = Annotated[
     tuple[Identifier, ...], Field(min_length=1, max_length=MAX_SPECIFICATION_DEPTH)
 ]
+
+_DATE_PATTERN = r"[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])"
+_TIME_PATTERN = (
+    r"(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]"
+    r"(?:\.[0-9]{1,6})?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])?"
+)
+_DATETIME_PATTERN = rf"{_DATE_PATTERN}T{_TIME_PATTERN}"
+_DECIMAL_PATTERN = r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?"
 
 
 class ContractModel(BaseModel):
@@ -327,12 +338,26 @@ class LiteralValue(ContractModel):
             return self
         if self.literal_type is LiteralType.BOOLEAN:
             valid_type = isinstance(normalized, bool)
-        elif self.literal_type in {
-            LiteralType.AMOUNT,
-            LiteralType.MEASUREMENT,
-            LiteralType.NUMBER,
-        }:
+        elif self.literal_type is LiteralType.AMOUNT:
+            valid_type = isinstance(normalized, str) and fullmatch(
+                _DECIMAL_PATTERN, normalized
+            ) is not None
+        elif self.literal_type in {LiteralType.MEASUREMENT, LiteralType.NUMBER}:
             valid_type = isinstance(normalized, (int, float)) and not isinstance(normalized, bool)
+            if valid_type and isinstance(normalized, float) and not isfinite(normalized):
+                raise ValueError("Normalized numeric values must be finite.")
+        elif self.literal_type is LiteralType.DATE:
+            valid_type = isinstance(normalized, str) and _matches_temporal_format(
+                normalized, _DATE_PATTERN, date.fromisoformat
+            )
+        elif self.literal_type is LiteralType.TIME:
+            valid_type = isinstance(normalized, str) and _matches_temporal_format(
+                normalized, _TIME_PATTERN, time.fromisoformat
+            )
+        elif self.literal_type is LiteralType.DATETIME:
+            valid_type = isinstance(normalized, str) and _matches_temporal_format(
+                normalized, _DATETIME_PATTERN, datetime.fromisoformat
+            )
         else:
             valid_type = isinstance(normalized, str)
         if not valid_type:
@@ -493,6 +518,18 @@ def _unique_ids(kind: str, values: Iterable[str]) -> set[str]:
     if len(identifiers) != len(set(identifiers)):
         raise ValueError(f"{kind.capitalize()} IDs must be unique.")
     return set(identifiers)
+
+
+def _matches_temporal_format(
+    value: str, pattern: str, parser: Callable[[str], object]
+) -> bool:
+    if fullmatch(pattern, value) is None:
+        return False
+    try:
+        parser(value)
+    except ValueError:
+        return False
+    return True
 
 
 def _flatten_map(nodes: tuple[DocumentMapNode, ...]) -> list[DocumentMapNode]:

@@ -139,6 +139,12 @@ def test_interpretation_represents_atomic_evidence_backed_candidate_fact() -> No
                 page=SourcePageReference(page_number=1, locator="characters 0-15"),
                 excerpt=" Amount: 12,? ",
             ),
+            EvidenceReference(
+                evidence_id="e-2",
+                source_id="document-1",
+                page=SourcePageReference(page_number=1, locator="characters 8-12"),
+                excerpt="12,?",
+            ),
         ),
         mentions=(
             Mention(
@@ -166,7 +172,7 @@ def test_interpretation_represents_atomic_evidence_backed_candidate_fact() -> No
                     normalization_status=NormalizationStatus.FAILED,
                     currency="EUR",
                 ),
-                evidence_refs=("e-1",),
+                evidence_refs=("e-1", "e-2"),
             ),
         ),
         review_signals=(
@@ -189,6 +195,7 @@ def test_interpretation_represents_atomic_evidence_backed_candidate_fact() -> No
     assert fact.object.normalized is None
     assert fact.object.normalization_status is NormalizationStatus.FAILED
     assert fact.object.currency == "EUR"
+    assert fact.evidence_refs == ("e-1", "e-2")
     assert interpretation.classification.dimensions[0].option_paths == (("record", "supported"),)
     assert interpretation.evidence[0].excerpt == " Amount: 12,? "
     assert interpretation.requires_review is True
@@ -236,6 +243,39 @@ def test_interpretation_rejects_dangling_evidence_and_entity_references() -> Non
                     evidence_refs=("e-1",),
                 ),
             ),
+        )
+
+    with pytest.raises(ValidationError, match="Unknown mention references"):
+        DocumentInterpretation(
+            source=source,
+            specification=specification,
+            classification=classification,
+            candidate_entities=(
+                CandidateEntity(
+                    candidate_entity_id="entity-1",
+                    entity_type="document_party",
+                    mention_refs=("missing-mention",),
+                ),
+            ),
+        )
+
+
+def test_candidate_fact_rejects_multiple_objects() -> None:
+    literal = {
+        "kind": "literal",
+        "literal_type": "identifier",
+        "observed": "A-1",
+    }
+
+    with pytest.raises(ValidationError):
+        CandidateFact.model_validate(
+            {
+                "fact_id": "fact-1",
+                "subject": {"kind": "document", "source_id": "document-1"},
+                "predicate": "reference",
+                "object": [literal, literal],
+                "evidence_refs": ["e-1"],
+            }
         )
 
 
@@ -348,7 +388,7 @@ def test_evidence_requires_a_valid_structured_source_page() -> None:
         (LiteralType.DATE, "2026-08-31", None, None),
         (LiteralType.TIME, "14:30:00", None, None),
         (LiteralType.DATETIME, "2026-08-31T14:30:00Z", None, None),
-        (LiteralType.AMOUNT, 12.5, "EUR", None),
+        (LiteralType.AMOUNT, "12.50", "EUR", None),
         (LiteralType.MEASUREMENT, 42, None, "kg"),
         (LiteralType.NUMBER, 7, None, None),
         (LiteralType.BOOLEAN, False, None, None),
@@ -372,6 +412,7 @@ def test_literal_normalization_preserves_structural_type_and_metadata(
     assert value.observed == " source content "
     assert value.literal_type is literal_type
     assert value.normalized == normalized
+    assert LiteralValue.model_validate_json(value.model_dump_json()) == value
 
 
 @pytest.mark.parametrize(
@@ -416,6 +457,36 @@ def test_literal_rejects_inconsistent_normalization_and_metadata() -> None:
 
     with pytest.raises(ValidationError, match="Unit is valid only"):
         LiteralValue(literal_type=LiteralType.NUMBER, observed="12", unit="kg")
+
+
+@pytest.mark.parametrize(
+    ("literal_type", "normalized"),
+    [
+        (LiteralType.DATE, "not-a-date"),
+        (LiteralType.DATE, "2026-02-30"),
+        (LiteralType.TIME, "25:00:00"),
+        (LiteralType.TIME, "14:30"),
+        (LiteralType.DATETIME, "2026-08-31 14:30:00"),
+        (LiteralType.DATETIME, "2026-02-30T14:30:00Z"),
+        (LiteralType.AMOUNT, 12.5),
+        (LiteralType.AMOUNT, "12,50"),
+        (LiteralType.AMOUNT, "NaN"),
+        (LiteralType.AMOUNT, "Infinity"),
+        (LiteralType.NUMBER, float("nan")),
+        (LiteralType.NUMBER, float("inf")),
+        (LiteralType.MEASUREMENT, float("-inf")),
+    ],
+)
+def test_literal_rejects_malformed_or_non_finite_normalized_values(
+    literal_type: LiteralType, normalized: str | float
+) -> None:
+    with pytest.raises(ValidationError):
+        LiteralValue(
+            literal_type=literal_type,
+            observed="source content",
+            normalization_status=NormalizationStatus.NORMALIZED,
+            normalized=normalized,
+        )
 
 
 def test_review_signal_rejects_dangling_candidate_fact_reference() -> None:

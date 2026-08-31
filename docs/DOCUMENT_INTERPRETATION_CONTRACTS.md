@@ -34,5 +34,7 @@ literal type distinguishes text, identifiers, dates, times, date-times, amounts,
 measurements, numbers, and booleans. Normalization status distinguishes values
 that were not attempted, normalized, failed, or unsafe; amount currency and
 measurement units remain available without silently correcting malformed source
-content. Candidate facts refer to evidence by ID, and the result contract rejects
-dangling source, evidence, mention, entity, and fact references.
+content. Normalized temporal values use valid ISO 8601 syntax, normalized numeric
+values are finite, and normalized amounts use decimal strings to preserve exact
+JSON round trips. Candidate facts refer to evidence by ID, and the result contract
+rejects dangling source, evidence, mention, entity, and fact references.
