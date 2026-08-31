@@ -7,6 +7,8 @@ from receipt_intelligence.interpretation import (
     CandidateEntity,
     CandidateEntityReference,
     CandidateFact,
+    ClassificationDimension,
+    ClassificationDimensionResult,
     ClassificationOption,
     ClassificationStatus,
     DocumentClassification,
@@ -19,11 +21,53 @@ from receipt_intelligence.interpretation import (
     EvidenceReference,
     InterpretationField,
     InterpretationSpecification,
+    LiteralType,
     LiteralValue,
     Mention,
+    NormalizationStatus,
     ReviewSeverity,
     ReviewSignal,
+    SourcePageReference,
 )
+
+
+def _specification() -> InterpretationSpecification:
+    return InterpretationSpecification(
+        specification_id="caller-spec-v1",
+        description="Interpret the supplied document.",
+        classifications=(
+            ClassificationDimension(
+                key="document_kind",
+                description="The caller's document classification.",
+                options=(
+                    ClassificationOption(
+                        key="record",
+                        description="A record.",
+                        children=(
+                            ClassificationOption(
+                                key="supported", description="A supported record."
+                            ),
+                            ClassificationOption(key="other", description="Another record."),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        fields=(InterpretationField(key="reference", description="A reference."),),
+    )
+
+
+def _classification() -> DocumentClassification:
+    return DocumentClassification(
+        status=ClassificationStatus.CLASSIFIED,
+        dimensions=(
+            ClassificationDimensionResult(
+                dimension_key="document_kind",
+                option_paths=(("record", "supported"),),
+                confidence=0.9,
+            ),
+        ),
+    )
 
 
 def test_specification_supports_flat_and_hierarchical_caller_fields() -> None:
@@ -31,7 +75,13 @@ def test_specification_supports_flat_and_hierarchical_caller_fields() -> None:
         specification_id="caller-spec-v1",
         description="Interpret the supplied document.",
         classifications=(
-            ClassificationOption(key="supported", description="A supported document."),
+            ClassificationDimension(
+                key="document_kind",
+                description="The document kind.",
+                options=(
+                    ClassificationOption(key="supported", description="A supported document."),
+                ),
+            ),
         ),
         fields=(
             InterpretationField(key="reference", description="A top-level reference."),
@@ -77,11 +127,8 @@ def test_interpretation_represents_atomic_evidence_backed_candidate_fact() -> No
             media_type="text/plain",
             name="example.txt",
         ),
-        classification=DocumentClassification(
-            status=ClassificationStatus.CLASSIFIED,
-            label="supported",
-            evidence_refs=("e-1",),
-        ),
+        specification=_specification(),
+        classification=_classification(),
         document_map=DocumentMap(
             nodes=(DocumentMapNode(node_id="section-1", label="Header", evidence_refs=("e-1",)),)
         ),
@@ -89,7 +136,7 @@ def test_interpretation_represents_atomic_evidence_backed_candidate_fact() -> No
             EvidenceReference(
                 evidence_id="e-1",
                 source_id="document-1",
-                locator="characters 0-15",
+                page=SourcePageReference(page_number=1, locator="characters 0-15"),
                 excerpt=" Amount: 12,? ",
             ),
         ),
@@ -113,7 +160,12 @@ def test_interpretation_represents_atomic_evidence_backed_candidate_fact() -> No
                 fact_id="fact-1",
                 subject=CandidateEntityReference(candidate_entity_id="entity-1"),
                 predicate="observed_amount",
-                object=LiteralValue(observed="12,?"),
+                object=LiteralValue(
+                    literal_type=LiteralType.AMOUNT,
+                    observed="12,?",
+                    normalization_status=NormalizationStatus.FAILED,
+                    currency="EUR",
+                ),
                 evidence_refs=("e-1",),
             ),
         ),
@@ -123,36 +175,43 @@ def test_interpretation_represents_atomic_evidence_backed_candidate_fact() -> No
                 message="The observed amount is malformed.",
                 severity=ReviewSeverity.REVIEW_REQUIRED,
                 evidence_refs=("e-1",),
+                fact_refs=("fact-1",),
             ),
         ),
     )
 
     fact = interpretation.candidate_facts[0]
+    assert isinstance(fact.subject, CandidateEntityReference)
+    assert isinstance(fact.object, LiteralValue)
     assert fact.subject.candidate_entity_id == "entity-1"
     assert fact.predicate == "observed_amount"
     assert fact.object.observed == "12,?"
     assert fact.object.normalized is None
+    assert fact.object.normalization_status is NormalizationStatus.FAILED
+    assert fact.object.currency == "EUR"
+    assert interpretation.classification.dimensions[0].option_paths == (
+        ("record", "supported"),
+    )
     assert interpretation.evidence[0].excerpt == " Amount: 12,? "
     assert interpretation.requires_review is True
 
 
 def test_interpretation_rejects_dangling_evidence_and_entity_references() -> None:
     source = DocumentSource(source_id="document-1", media_type="text/plain")
-    classification = DocumentClassification(
-        status=ClassificationStatus.CLASSIFIED,
-        label="supported",
-    )
+    specification = _specification()
+    classification = _classification()
 
     with pytest.raises(ValidationError, match="Unknown evidence"):
         DocumentInterpretation(
             source=source,
+            specification=specification,
             classification=classification,
             candidate_facts=(
                 CandidateFact(
                     fact_id="fact-1",
                     subject=DocumentReference(source_id="document-1"),
                     predicate="reference",
-                    object=LiteralValue(observed="A-1"),
+                    object=LiteralValue(literal_type=LiteralType.IDENTIFIER, observed="A-1"),
                     evidence_refs=("missing",),
                 ),
             ),
@@ -161,12 +220,13 @@ def test_interpretation_rejects_dangling_evidence_and_entity_references() -> Non
     with pytest.raises(ValidationError, match="unknown candidate entity"):
         DocumentInterpretation(
             source=source,
+            specification=specification,
             classification=classification,
             evidence=(
                 EvidenceReference(
                     evidence_id="e-1",
                     source_id="document-1",
-                    locator="line 1",
+                    page=SourcePageReference(page_number=1, locator="line 1"),
                 ),
             ),
             candidate_facts=(
@@ -174,7 +234,7 @@ def test_interpretation_rejects_dangling_evidence_and_entity_references() -> Non
                     fact_id="fact-1",
                     subject=CandidateEntityReference(candidate_entity_id="missing"),
                     predicate="reference",
-                    object=LiteralValue(observed="A-1"),
+                    object=LiteralValue(literal_type=LiteralType.IDENTIFIER, observed="A-1"),
                     evidence_refs=("e-1",),
                 ),
             ),
@@ -187,11 +247,190 @@ def test_unsupported_classification_is_an_explicit_safe_fallback() -> None:
         reason="No caller-supplied classification applies.",
     )
 
-    assert fallback.label is None
+    assert fallback.dimensions == ()
 
-    with pytest.raises(ValidationError, match="cannot have a classification label"):
+    with pytest.raises(ValidationError, match="cannot have classification selections"):
         DocumentClassification(
             status=ClassificationStatus.UNSUPPORTED,
-            label="other",
+            dimensions=(
+                ClassificationDimensionResult(
+                    dimension_key="document_kind",
+                    option_paths=(("other",),),
+                ),
+            ),
             reason="No classification applies.",
+        )
+
+
+def test_classification_is_bounded_by_caller_dimensions_options_and_cardinality() -> None:
+    source = DocumentSource(source_id="document-1", media_type="text/plain")
+    specification = _specification()
+
+    with pytest.raises(ValidationError, match="requires classification selections"):
+        DocumentClassification(status=ClassificationStatus.CLASSIFIED)
+
+    with pytest.raises(ValidationError, match="caller-supplied dimensions"):
+        DocumentInterpretation(
+            source=source,
+            specification=specification,
+            classification=DocumentClassification(
+                status=ClassificationStatus.CLASSIFIED,
+                dimensions=(
+                    ClassificationDimensionResult(
+                        dimension_key="not_declared",
+                        option_paths=(("record", "supported"),),
+                    ),
+                ),
+            ),
+        )
+
+    with pytest.raises(ValidationError, match="Unknown classification option path"):
+        DocumentInterpretation(
+            source=source,
+            specification=specification,
+            classification=DocumentClassification(
+                status=ClassificationStatus.CLASSIFIED,
+                dimensions=(
+                    ClassificationDimensionResult(
+                        dimension_key="document_kind",
+                        option_paths=(("record", "not_allowed"),),
+                    ),
+                ),
+            ),
+        )
+
+    with pytest.raises(ValidationError, match="selection cardinality"):
+        DocumentInterpretation(
+            source=source,
+            specification=specification,
+            classification=DocumentClassification(
+                status=ClassificationStatus.CLASSIFIED,
+                dimensions=(
+                    ClassificationDimensionResult(
+                        dimension_key="document_kind",
+                        option_paths=(),
+                    ),
+                ),
+            ),
+        )
+
+    with pytest.raises(ValidationError, match="less than or equal to 1"):
+        ClassificationDimensionResult(
+            dimension_key="document_kind",
+            option_paths=(("record", "supported"),),
+            confidence=1.01,
+        )
+
+    with pytest.raises(ValidationError, match="at most 8 items"):
+        ClassificationDimensionResult(
+            dimension_key="document_kind",
+            option_paths=(("1", "2", "3", "4", "5", "6", "7", "8", "9"),),
+        )
+
+
+def test_evidence_requires_a_valid_structured_source_page() -> None:
+    with pytest.raises(ValidationError, match="Field required"):
+        EvidenceReference.model_validate(
+            {
+                "evidence_id": "e-1",
+                "source_id": "document-1",
+                "locator": "somewhere",
+            }
+        )
+
+    with pytest.raises(ValidationError, match="greater than or equal to 1"):
+        SourcePageReference(page_number=0)
+
+
+@pytest.mark.parametrize(
+    ("literal_type", "normalized", "currency", "unit"),
+    [
+        (LiteralType.TEXT, "normalized text", None, None),
+        (LiteralType.IDENTIFIER, "A-1", None, None),
+        (LiteralType.DATE, "2026-08-31", None, None),
+        (LiteralType.TIME, "14:30:00", None, None),
+        (LiteralType.DATETIME, "2026-08-31T14:30:00Z", None, None),
+        (LiteralType.AMOUNT, 12.5, "EUR", None),
+        (LiteralType.MEASUREMENT, 42, None, "kg"),
+        (LiteralType.NUMBER, 7, None, None),
+        (LiteralType.BOOLEAN, False, None, None),
+    ],
+)
+def test_literal_normalization_preserves_structural_type_and_metadata(
+    literal_type: LiteralType,
+    normalized: str | int | float | bool,
+    currency: str | None,
+    unit: str | None,
+) -> None:
+    value = LiteralValue(
+        literal_type=literal_type,
+        observed=" source content ",
+        normalization_status=NormalizationStatus.NORMALIZED,
+        normalized=normalized,
+        currency=currency,
+        unit=unit,
+    )
+
+    assert value.observed == " source content "
+    assert value.literal_type is literal_type
+    assert value.normalized == normalized
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        NormalizationStatus.NOT_ATTEMPTED,
+        NormalizationStatus.FAILED,
+        NormalizationStatus.UNSAFE,
+    ],
+)
+def test_literal_non_normalized_states_preserve_malformed_observation(
+    status: NormalizationStatus,
+) -> None:
+    value = LiteralValue(
+        literal_type=LiteralType.DATE,
+        observed="2026-99-?",
+        normalization_status=status,
+    )
+
+    assert value.normalized is None
+    assert value.observed == "2026-99-?"
+
+
+def test_literal_rejects_inconsistent_normalization_and_metadata() -> None:
+    with pytest.raises(ValidationError, match="require a normalized value"):
+        LiteralValue(
+            literal_type=LiteralType.NUMBER,
+            observed="seven",
+            normalization_status=NormalizationStatus.NORMALIZED,
+        )
+
+    with pytest.raises(ValidationError, match="does not match the literal type"):
+        LiteralValue(
+            literal_type=LiteralType.BOOLEAN,
+            observed="yes",
+            normalization_status=NormalizationStatus.NORMALIZED,
+            normalized="true",
+        )
+
+    with pytest.raises(ValidationError, match="Currency is valid only"):
+        LiteralValue(literal_type=LiteralType.TEXT, observed="EUR", currency="EUR")
+
+    with pytest.raises(ValidationError, match="Unit is valid only"):
+        LiteralValue(literal_type=LiteralType.NUMBER, observed="12", unit="kg")
+
+
+def test_review_signal_rejects_dangling_candidate_fact_reference() -> None:
+    with pytest.raises(ValidationError, match="Unknown candidate fact references"):
+        DocumentInterpretation(
+            source=DocumentSource(source_id="document-1", media_type="text/plain"),
+            specification=_specification(),
+            classification=_classification(),
+            review_signals=(
+                ReviewSignal(
+                    code="normalization_failed",
+                    message="The candidate fact could not be normalized.",
+                    fact_refs=("missing-fact",),
+                ),
+            ),
         )
