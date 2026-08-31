@@ -48,9 +48,7 @@ class InterpretationField(ContractModel):
 
     key: Identifier
     description: NonBlankText
-    children: tuple[InterpretationField, ...] = Field(
-        default=(), max_length=MAX_COLLECTION_SIZE
-    )
+    children: tuple[InterpretationField, ...] = Field(default=(), max_length=MAX_COLLECTION_SIZE)
 
     @model_validator(mode="after")
     def validate_unique_children(self) -> Self:
@@ -72,9 +70,7 @@ class InterpretationSpecification(ContractModel):
     classifications: tuple[ClassificationOption, ...] = Field(
         default=(), max_length=MAX_COLLECTION_SIZE
     )
-    fields: tuple[InterpretationField, ...] = Field(
-        default=(), max_length=MAX_COLLECTION_SIZE
-    )
+    fields: tuple[InterpretationField, ...] = Field(default=(), max_length=MAX_COLLECTION_SIZE)
 
     @model_validator(mode="after")
     def validate_bounds(self) -> Self:
@@ -254,13 +250,9 @@ class DocumentInterpretation(ContractModel):
     candidate_entities: tuple[CandidateEntity, ...] = Field(
         default=(), max_length=MAX_COLLECTION_SIZE
     )
-    candidate_facts: tuple[CandidateFact, ...] = Field(
-        default=(), max_length=MAX_COLLECTION_SIZE
-    )
+    candidate_facts: tuple[CandidateFact, ...] = Field(default=(), max_length=MAX_COLLECTION_SIZE)
     evidence: tuple[EvidenceReference, ...] = Field(default=(), max_length=MAX_COLLECTION_SIZE)
-    review_signals: tuple[ReviewSignal, ...] = Field(
-        default=(), max_length=MAX_COLLECTION_SIZE
-    )
+    review_signals: tuple[ReviewSignal, ...] = Field(default=(), max_length=MAX_COLLECTION_SIZE)
 
     @model_validator(mode="after")
     def validate_references(self) -> Self:

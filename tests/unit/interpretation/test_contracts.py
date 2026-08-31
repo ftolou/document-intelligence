@@ -38,9 +38,7 @@ def test_specification_supports_flat_and_hierarchical_caller_fields() -> None:
             InterpretationField(
                 key="party",
                 description="A party described by the document.",
-                children=(
-                    InterpretationField(key="name", description="The observed party name."),
-                ),
+                children=(InterpretationField(key="name", description="The observed party name."),),
             ),
         ),
     )
@@ -85,9 +83,7 @@ def test_interpretation_represents_atomic_evidence_backed_candidate_fact() -> No
             evidence_refs=("e-1",),
         ),
         document_map=DocumentMap(
-            nodes=(
-                DocumentMapNode(node_id="section-1", label="Header", evidence_refs=("e-1",)),
-            )
+            nodes=(DocumentMapNode(node_id="section-1", label="Header", evidence_refs=("e-1",)),)
         ),
         evidence=(
             EvidenceReference(
