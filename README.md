@@ -183,6 +183,7 @@ for retrieval and analytics.
 
 - [Engineering evolution](docs/ENGINEERING_EVOLUTION.md)
 - [Architecture](docs/ARCHITECTURE.md)
+- [Generic document interpretation contracts](docs/DOCUMENT_INTERPRETATION_CONTRACTS.md)
 - [Extraction configuration](docs/EXTRACTION_CONFIGURATION.md)
 - [Human review](docs/HUMAN_REVIEW.md)
 - [Background jobs](docs/BACKGROUND_JOB_EXECUTION.md)
