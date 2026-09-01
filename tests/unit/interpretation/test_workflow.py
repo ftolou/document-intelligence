@@ -258,12 +258,73 @@ def test_interprets_all_outputs_through_one_provider_neutral_call(tmp_path: Path
     assert result.evidence[0].source_id == "document-1"
     assert result.review_signals[0].severity is ReviewSeverity.REVIEW_REQUIRED
     assert result.requires_review is True
-    assert result.review_signals[-1].code == "explicit_review_signal"
+    assert tuple(signal.code for signal in result.review_signals) == ("ambiguous_value",)
     fact_value = result.candidate_facts[0].object
     assert isinstance(fact_value, LiteralValue)
     assert fact_value.observed == "12,?"
     assert fact_value.normalized is None
     assert fact_value.normalization_status is NormalizationStatus.FAILED
+
+
+def test_preserves_complete_maximum_capacity_review_signals(tmp_path: Path) -> None:
+    response = _response()
+    response["document_map"] = {"nodes": []}
+    response["mentions"] = []
+    response["candidate_entities"] = []
+    response["candidate_facts"] = [
+        {
+            "fact_id": f"fact-{index}",
+            "subject": {"kind": "document", "source_id": "document-1"},
+            "predicate": "stated_right",
+            "object": {
+                "kind": "literal",
+                "literal_type": "text",
+                "observed": f"observed-{index}",
+                "normalization_status": "not_attempted",
+            },
+            "evidence_refs": [f"e-{index}"],
+        }
+        for index in range(MAX_COLLECTION_SIZE)
+    ]
+    response["evidence"] = [
+        {
+            "evidence_id": f"e-{index}",
+            "source_id": "document-1",
+            "page": {"page_number": 1},
+            "excerpt": f"observed-{index}",
+        }
+        for index in range(MAX_COLLECTION_SIZE)
+    ]
+    response["review_signals"] = [
+        {
+            "code": f"signal_{index}",
+            "message": f"Review signal {index}.",
+            "severity": "review_required",
+            "evidence_refs": [f"e-{index}"],
+            "fact_refs": [f"fact-{index}"],
+        }
+        for index in range(MAX_COLLECTION_SIZE)
+    ]
+    classification = response["classification"]
+    assert isinstance(classification, dict)
+    classification["evidence_refs"] = ["e-0"]
+    dimensions = classification["dimensions"]
+    assert isinstance(dimensions, list)
+    dimensions[0]["evidence_refs"] = ["e-0"]
+    interpreter = OnePassDocumentInterpreter(
+        gateway=_RecordingGateway(response),
+        model="generic-multimodal-model",
+        source_limits=_limits(),
+    )
+
+    result = interpreter.interpret(_request(), _write_source(tmp_path / "source.png"))
+
+    assert len(result.review_signals) == MAX_COLLECTION_SIZE
+    assert tuple(signal.code for signal in result.review_signals) == tuple(
+        f"signal_{index}" for index in range(MAX_COLLECTION_SIZE)
+    )
+    assert result.review_signals[-1].evidence_refs == (f"e-{MAX_COLLECTION_SIZE - 1}",)
+    assert result.review_signals[-1].fact_refs == (f"fact-{MAX_COLLECTION_SIZE - 1}",)
 
 
 def test_accepts_unselected_optional_classification_dimension(tmp_path: Path) -> None:

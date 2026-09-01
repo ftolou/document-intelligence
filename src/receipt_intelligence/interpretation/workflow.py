@@ -33,6 +33,7 @@ from receipt_intelligence.interpretation.contracts import (
     ReviewSignal,
 )
 from receipt_intelligence.interpretation.validation import (
+    InterpretationValidationIssueCode,
     InterpretationValidationStatus,
     validate_document_interpretation,
 )
@@ -140,16 +141,18 @@ class OnePassDocumentInterpreter:
                     severity=ReviewSeverity.REVIEW_REQUIRED,
                 )
                 for issue in validation.issues
+                if issue.code is not InterpretationValidationIssueCode.EXPLICIT_REVIEW_SIGNAL
             )
-            model_signal_capacity = MAX_COLLECTION_SIZE - len(validation_signals)
-            interpretation = interpretation.model_copy(
-                update={
-                    "review_signals": (
-                        *interpretation.review_signals[:model_signal_capacity],
-                        *validation_signals,
-                    )
-                }
-            )
+            if validation_signals:
+                model_signal_capacity = MAX_COLLECTION_SIZE - len(validation_signals)
+                interpretation = interpretation.model_copy(
+                    update={
+                        "review_signals": (
+                            *interpretation.review_signals[:model_signal_capacity],
+                            *validation_signals,
+                        )
+                    }
+                )
 
         try:
             allowed_predicates = _field_keys(request)
