@@ -86,3 +86,33 @@ def test_domain_taxonomy_has_no_inward_application_dependencies() -> None:
     )
     violations = [module for module in imported_modules if module.startswith(forbidden_prefixes)]
     assert violations == []
+
+
+def test_receipt_extraction_does_not_depend_on_document_interpretation() -> None:
+    extraction_root = SRC_ROOT / "receipt_intelligence" / "extraction"
+    violations: list[str] = []
+    for path in extraction_root.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imports_interpretation = any(
+                    alias.name.startswith("receipt_intelligence.interpretation")
+                    for alias in node.names
+                )
+            elif isinstance(node, ast.ImportFrom):
+                module = node.module or ""
+                imports_interpretation = module.startswith(
+                    "receipt_intelligence.interpretation"
+                ) or (
+                    node.level > 0
+                    and (
+                        module.split(".", 1)[0] == "interpretation"
+                        or any(alias.name == "interpretation" for alias in node.names)
+                    )
+                )
+            else:
+                continue
+            if imports_interpretation:
+                violations.append(str(path.relative_to(SRC_ROOT)))
+
+    assert violations == []

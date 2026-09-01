@@ -21,6 +21,7 @@ from receipt_intelligence.interpretation.contracts import (
     MAX_COLLECTION_SIZE,
     CandidateEntity,
     CandidateFact,
+    ClassificationStatus,
     ContractModel,
     DocumentClassification,
     DocumentInterpretation,
@@ -114,6 +115,19 @@ class OnePassDocumentInterpreter:
                 specification=request.specification,
                 **generated.model_dump(),
             )
+        except ValidationError as exc:
+            raise MalformedGenerationError(
+                "Model output violates the document interpretation contract."
+            ) from exc
+
+        try:
+            _validate_source_grounding(interpretation, page_count=len(normalized.pages))
+        except ValueError as exc:
+            raise MalformedGenerationError(
+                "Model output violates the document interpretation contract."
+            ) from exc
+
+        try:
             allowed_predicates = _field_keys(request)
             unexpected_predicates = {
                 fact.predicate
@@ -123,10 +137,6 @@ class OnePassDocumentInterpreter:
             if unexpected_predicates:
                 raise ValueError("Candidate facts contain concepts absent from the specification.")
             return interpretation
-        except ValidationError as exc:
-            raise MalformedGenerationError(
-                "Model output violates the document interpretation contract."
-            ) from exc
         except ValueError as exc:
             raise MalformedGenerationError(
                 "Model output violates the caller-supplied interpretation specification."
@@ -169,6 +179,32 @@ def _field_keys(request: DocumentInterpretationRequest) -> set[str]:
         keys.add(field.key)
         pending.extend(field.children)
     return keys
+
+
+def _validate_source_grounding(
+    interpretation: DocumentInterpretation,
+    *,
+    page_count: int,
+) -> None:
+    for evidence in interpretation.evidence:
+        if evidence.page is not None and evidence.page.page_number > page_count:
+            raise ValueError("Evidence references a page outside the normalized source.")
+
+    if interpretation.classification.status is ClassificationStatus.CLASSIFIED:
+        if not interpretation.classification.evidence_refs:
+            raise ValueError("A classified result requires evidence.")
+        if any(not dimension.evidence_refs for dimension in interpretation.classification.dimensions):
+            raise ValueError("Each classification selection requires evidence.")
+
+    pending_nodes = list(interpretation.document_map.nodes)
+    while pending_nodes:
+        node = pending_nodes.pop()
+        if not node.evidence_refs:
+            raise ValueError("Each document map node requires evidence.")
+        pending_nodes.extend(node.children)
+
+    if any(not entity.evidence_refs for entity in interpretation.candidate_entities):
+        raise ValueError("Each candidate entity requires evidence.")
 
 
 __all__ = ["OnePassDocumentInterpreter"]
