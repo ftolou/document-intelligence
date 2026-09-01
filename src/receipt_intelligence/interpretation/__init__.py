@@ -27,6 +27,7 @@ from receipt_intelligence.interpretation.contracts import (
     ReviewSignal,
     SourcePageReference,
 )
+from receipt_intelligence.interpretation.workflow import OnePassDocumentInterpreter
 
 __all__ = [
     "CandidateEntity",
@@ -51,6 +52,7 @@ __all__ = [
     "LiteralType",
     "Mention",
     "NormalizationStatus",
+    "OnePassDocumentInterpreter",
     "ReviewSeverity",
     "ReviewSignal",
     "SourcePageReference",
