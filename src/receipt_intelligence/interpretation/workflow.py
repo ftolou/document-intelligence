@@ -46,9 +46,7 @@ class _GeneratedInterpretation(ContractModel):
     classification: DocumentClassification
     document_map: DocumentMap
     mentions: tuple[Mention, ...] = Field(max_length=MAX_COLLECTION_SIZE)
-    candidate_entities: tuple[CandidateEntity, ...] = Field(
-        max_length=MAX_COLLECTION_SIZE
-    )
+    candidate_entities: tuple[CandidateEntity, ...] = Field(max_length=MAX_COLLECTION_SIZE)
     candidate_facts: tuple[CandidateFact, ...] = Field(max_length=MAX_COLLECTION_SIZE)
     evidence: tuple[EvidenceReference, ...] = Field(max_length=MAX_COLLECTION_SIZE)
     review_signals: tuple[ReviewSignal, ...] = Field(max_length=MAX_COLLECTION_SIZE)
