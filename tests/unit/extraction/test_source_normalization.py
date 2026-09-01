@@ -186,6 +186,26 @@ def test_malformed_source_has_stable_failure(tmp_path: Path) -> None:
     assert exc_info.value.code == "source_malformed"
 
 
+def test_malformed_pdf_has_stable_failure(tmp_path: Path) -> None:
+    path = tmp_path / "malformed.pdf"
+    path.write_bytes(b"%PDF-1.7\nnot a valid PDF")
+
+    with pytest.raises(SourceNormalizationError) as exc_info:
+        normalize_document_source(path, limits=_limits())
+
+    assert exc_info.value.code == "source_malformed"
+
+
+def test_empty_source_has_stable_failure(tmp_path: Path) -> None:
+    path = tmp_path / "empty.pdf"
+    path.write_bytes(b"")
+
+    with pytest.raises(SourceNormalizationError) as exc_info:
+        normalize_document_source(path, limits=_limits())
+
+    assert exc_info.value.code == "source_malformed"
+
+
 def test_normalized_source_rejects_unstable_page_indices(tmp_path: Path) -> None:
     source = normalize_document_source(
         _write_image(tmp_path / "source.png", image_format="PNG"),
