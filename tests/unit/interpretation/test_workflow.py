@@ -31,6 +31,7 @@ from receipt_intelligence.interpretation import (
     OnePassDocumentInterpreter,
     ReviewSeverity,
 )
+from receipt_intelligence.interpretation.contracts import MAX_COLLECTION_SIZE
 
 
 class _RecordingGateway:
@@ -501,15 +502,39 @@ def test_accepts_unsupported_output_without_extracted_assertions(tmp_path: Path)
     assert result.requires_review is False
 
 
-def test_exposes_missing_source_page_coverage_as_review_required(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("coverage_status", "model_signal_count", "validation_codes"),
+    [
+        ("irrelevant", 0, ("missing_page_coverage",)),
+        ("irrelevant", MAX_COLLECTION_SIZE, ("missing_page_coverage",)),
+        (
+            "unreadable",
+            MAX_COLLECTION_SIZE,
+            ("missing_page_coverage", "unreadable_page"),
+        ),
+    ],
+)
+def test_exposes_validation_review_with_bounded_model_signal_capacity(
+    tmp_path: Path,
+    coverage_status: str,
+    model_signal_count: int,
+    validation_codes: tuple[str, ...],
+) -> None:
     request = _request().model_copy(
         update={"source": DocumentSource(source_id="document-1", media_type="application/pdf")}
     )
     response = _unsupported_response()
-    response["page_coverage"] = [{"page_number": 1, "status": "irrelevant"}]
-    gateway = _RecordingGateway(response)
+    response["page_coverage"] = [{"page_number": 1, "status": coverage_status}]
+    response["review_signals"] = [
+        {
+            "code": f"warning_{index}",
+            "message": "A model-owned warning.",
+            "severity": "warning",
+        }
+        for index in range(model_signal_count)
+    ]
     interpreter = OnePassDocumentInterpreter(
-        gateway=gateway,
+        gateway=_RecordingGateway(response),
         model="generic-multimodal-model",
         source_limits=_limits(),
     )
@@ -517,8 +542,16 @@ def test_exposes_missing_source_page_coverage_as_review_required(tmp_path: Path)
     result = interpreter.interpret(request, _write_pdf(tmp_path / "source.pdf", page_count=2))
 
     assert result.requires_review is True
-    assert result.review_signals[-1].code == "missing_page_coverage"
-    assert result.review_signals[-1].severity is ReviewSeverity.REVIEW_REQUIRED
+    assert len(result.review_signals) == min(
+        model_signal_count + len(validation_codes), MAX_COLLECTION_SIZE
+    )
+    assert tuple(
+        signal.code for signal in result.review_signals[-len(validation_codes) :]
+    ) == validation_codes
+    assert all(
+        signal.severity is ReviewSeverity.REVIEW_REQUIRED
+        for signal in result.review_signals[-len(validation_codes) :]
+    )
 
 
 def test_rejects_evidence_page_outside_normalized_source(tmp_path: Path) -> None:

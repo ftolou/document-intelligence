@@ -133,22 +133,20 @@ class OnePassDocumentInterpreter:
                 "Model output violates the document interpretation contract."
             )
         if validation.status is InterpretationValidationStatus.REVIEW_REQUIRED:
-            if len(interpretation.review_signals) + len(validation.issues) > MAX_COLLECTION_SIZE:
-                raise MalformedGenerationError(
-                    "Model output leaves no capacity for deterministic validation review."
+            validation_signals = tuple(
+                ReviewSignal(
+                    code=issue.code.value,
+                    message=issue.message,
+                    severity=ReviewSeverity.REVIEW_REQUIRED,
                 )
+                for issue in validation.issues
+            )
+            model_signal_capacity = MAX_COLLECTION_SIZE - len(validation_signals)
             interpretation = interpretation.model_copy(
                 update={
                     "review_signals": (
-                        *interpretation.review_signals,
-                        *(
-                            ReviewSignal(
-                                code=issue.code.value,
-                                message=issue.message,
-                                severity=ReviewSeverity.REVIEW_REQUIRED,
-                            )
-                            for issue in validation.issues
-                        ),
+                        *interpretation.review_signals[:model_signal_capacity],
+                        *validation_signals,
                     )
                 }
             )
