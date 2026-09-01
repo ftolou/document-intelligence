@@ -13,6 +13,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+source-normalization = [
+    "pillow==11.3.0",
+    "pypdfium2>=4.30,<5",
+]
 semantic = [
     "numpy==2.2.6",
     "requests==2.32.4",

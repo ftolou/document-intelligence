@@ -8,6 +8,15 @@ The Python package keeps its generic typed contracts lightweight and exposes opt
 python -m pip install document-intelligence-pipeline
 ```
 
+## Image and PDF source normalization
+
+Install the source-normalization extra for bounded JPEG, PNG, and PDF visual-page
+normalization:
+
+```bash
+python -m pip install "document-intelligence-pipeline[source-normalization]"
+```
+
 The base package declares `pydantic`, which is used directly by generic application and extraction contracts.
 
 ## Semantic retrieval and embeddings

@@ -7,7 +7,11 @@ import pytest
 from PIL import Image
 
 import receipt_intelligence.pipeline.integrated_receipt_pipeline as pipeline
-from receipt_intelligence.extraction import SourceImageValidationError, validate_source_image
+from receipt_intelligence.extraction import (
+    SourceImageValidationError,
+    source_normalization,
+    validate_source_image,
+)
 from receipt_intelligence.extraction.config import ExtractionRequest
 
 
@@ -156,9 +160,23 @@ def test_canonical_pipeline_validates_before_dependency_construction(
         source_image_max_pixels=47,
     )
 
+    def fail_generic_normalization(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("Receipt extraction must not use generic source normalization.")
+
     def fail_dependency_construction(_request: ExtractionRequest) -> None:
         pytest.fail("Dependencies must not be constructed for an invalid source image.")
 
+    monkeypatch.setattr(
+        source_normalization,
+        "normalize_document_source",
+        fail_generic_normalization,
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "normalize_document_source",
+        fail_generic_normalization,
+        raising=False,
+    )
     monkeypatch.setattr(pipeline, "build_extraction_dependencies", fail_dependency_construction)
 
     with pytest.raises(SourceImageValidationError) as exc_info:
