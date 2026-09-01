@@ -173,25 +173,61 @@ class DocumentInterpretationRequest(ContractModel):
 
 
 class SourcePageReference(ContractModel):
-    """A validated one-based page within a paginated source."""
+    """A one-based page or inclusive page range within a paginated source."""
 
     page_number: int = Field(ge=1)
+    end_page_number: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def validate_range(self) -> Self:
+        if self.end_page_number is not None and self.end_page_number < self.page_number:
+            raise ValueError("A source page range cannot end before it starts.")
+        return self
+
+    def page_numbers(self) -> range:
+        """Return every one-based page covered by this reference."""
+
+        return range(self.page_number, (self.end_page_number or self.page_number) + 1)
+
+
+class EvidenceTextOrigin(StrEnum):
+    """Provenance of text observed alongside a deterministically anchored location."""
+
+    MODEL_OBSERVED = "model_observed"
 
 
 class EvidenceReference(ContractModel):
-    """A stable source location; ``excerpt`` preserves observed source text."""
+    """A source location with optional, explicitly unverified observed text."""
 
     evidence_id: Identifier
     source_id: Identifier
     locator: NonBlankText | None = None
     page: SourcePageReference | None = None
     excerpt: str | None = Field(default=None, max_length=10000)
+    excerpt_origin: EvidenceTextOrigin = EvidenceTextOrigin.MODEL_OBSERVED
 
     @model_validator(mode="after")
     def validate_location(self) -> Self:
         if self.locator is None and self.page is None:
             raise ValueError("EvidenceReference requires a locator or page.")
         return self
+
+
+class PageInterpretationStatus(StrEnum):
+    """How one normalized source page was handled by an interpretation."""
+
+    INTERPRETED = "interpreted"
+    BLANK = "blank"
+    IRRELEVANT = "irrelevant"
+    UNREADABLE = "unreadable"
+    UNPROCESSED_REVIEW_REQUIRED = "unprocessed_review_required"
+
+
+class PageCoverage(ContractModel):
+    """Explicit handling state for exactly one normalized source page."""
+
+    page_number: int = Field(ge=1)
+    status: PageInterpretationStatus
 
 
 class ClassificationStatus(StrEnum):
@@ -416,6 +452,7 @@ class DocumentInterpretation(ContractModel):
     source: DocumentSource
     specification: InterpretationSpecification
     classification: DocumentClassification
+    page_coverage: tuple[PageCoverage, ...] = Field(default=(), max_length=MAX_COLLECTION_SIZE)
     document_map: DocumentMap = Field(default_factory=DocumentMap)
     mentions: tuple[Mention, ...] = Field(default=(), max_length=MAX_COLLECTION_SIZE)
     candidate_entities: tuple[CandidateEntity, ...] = Field(
@@ -516,6 +553,13 @@ class DocumentInterpretation(ContractModel):
     def requires_review(self) -> bool:
         return any(
             signal.severity is ReviewSeverity.REVIEW_REQUIRED for signal in self.review_signals
+        ) or any(
+            coverage.status
+            in {
+                PageInterpretationStatus.UNREADABLE,
+                PageInterpretationStatus.UNPROCESSED_REVIEW_REQUIRED,
+            }
+            for coverage in self.page_coverage
         )
 
 

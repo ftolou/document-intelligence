@@ -21,7 +21,6 @@ from receipt_intelligence.interpretation.contracts import (
     MAX_COLLECTION_SIZE,
     CandidateEntity,
     CandidateFact,
-    ClassificationStatus,
     ContractModel,
     DocumentClassification,
     DocumentInterpretation,
@@ -29,7 +28,12 @@ from receipt_intelligence.interpretation.contracts import (
     DocumentMap,
     EvidenceReference,
     Mention,
+    PageCoverage,
     ReviewSignal,
+)
+from receipt_intelligence.interpretation.validation import (
+    InterpretationValidationStatus,
+    validate_document_interpretation,
 )
 
 _SYSTEM_PROMPT = """You interpret exactly one document from ordered page images.
@@ -44,6 +48,7 @@ class _GeneratedInterpretation(ContractModel):
     """Model-owned fields; caller-owned source and specification are attached later."""
 
     classification: DocumentClassification
+    page_coverage: tuple[PageCoverage, ...] = Field(max_length=MAX_COLLECTION_SIZE)
     document_map: DocumentMap
     mentions: tuple[Mention, ...] = Field(max_length=MAX_COLLECTION_SIZE)
     candidate_entities: tuple[CandidateEntity, ...] = Field(max_length=MAX_COLLECTION_SIZE)
@@ -118,12 +123,14 @@ class OnePassDocumentInterpreter:
                 "Model output violates the document interpretation contract."
             ) from exc
 
-        try:
-            _validate_source_grounding(interpretation, page_count=len(normalized.pages))
-        except ValueError as exc:
+        validation = validate_document_interpretation(
+            interpretation,
+            source_page_count=len(normalized.pages),
+        )
+        if validation.status is InterpretationValidationStatus.INVALID:
             raise MalformedGenerationError(
                 "Model output violates the document interpretation contract."
-            ) from exc
+            )
 
         try:
             allowed_predicates = _field_keys(request)
@@ -158,6 +165,8 @@ Rules:
 - When the source is outside the supplied classification options, use the explicit unsupported result.
 - Return document map, mentions, candidate entities, atomic candidate facts, evidence, and warnings or
   review-required signals in this same response; use empty arrays when there are no supported results.
+- Account for every source page exactly once in page_coverage. Mark it interpreted, blank, irrelevant,
+  unreadable, or unprocessed_review_required. Unreadable and unprocessed pages require review.
 - Each candidate fact has exactly one subject, one predicate, and one literal or candidate-entity object.
 - Preserve each observed literal exactly as stated. Add a normalized value only when unambiguous.
 - Do not silently repair malformed or ambiguous content; keep it observed, mark normalization failed or
@@ -166,6 +175,8 @@ Rules:
   applicable, fulfilled, breached, enforceable, or otherwise consequential.
 - Every extracted assertion must cite evidence from this document. Do not perform cross-document entity
   resolution or introduce facts not grounded in the supplied pages.
+- Evidence must use an in-range page anchor. Its excerpt is model-observed metadata, not independently
+  verified source text; leave excerpt_origin as model_observed.
 """
 
 
@@ -177,35 +188,6 @@ def _field_keys(request: DocumentInterpretationRequest) -> set[str]:
         keys.add(field.key)
         pending.extend(field.children)
     return keys
-
-
-def _validate_source_grounding(
-    interpretation: DocumentInterpretation,
-    *,
-    page_count: int,
-) -> None:
-    for evidence in interpretation.evidence:
-        if evidence.page is not None and evidence.page.page_number > page_count:
-            raise ValueError("Evidence references a page outside the normalized source.")
-
-    if interpretation.classification.status is ClassificationStatus.CLASSIFIED:
-        if not interpretation.classification.evidence_refs:
-            raise ValueError("A classified result requires evidence.")
-        if any(
-            dimension.option_paths and not dimension.evidence_refs
-            for dimension in interpretation.classification.dimensions
-        ):
-            raise ValueError("Each classification selection requires evidence.")
-
-    pending_nodes = list(interpretation.document_map.nodes)
-    while pending_nodes:
-        node = pending_nodes.pop()
-        if not node.evidence_refs:
-            raise ValueError("Each document map node requires evidence.")
-        pending_nodes.extend(node.children)
-
-    if any(not entity.evidence_refs for entity in interpretation.candidate_entities):
-        raise ValueError("Each candidate entity requires evidence.")
 
 
 __all__ = ["OnePassDocumentInterpreter"]

@@ -105,6 +105,7 @@ def _request(
 
 def _response() -> dict[str, object]:
     return {
+        "page_coverage": [{"page_number": 1, "status": "interpreted"}],
         "classification": {
             "status": "classified",
             "dimensions": [
@@ -172,6 +173,7 @@ def _write_source(path: Path) -> Path:
 
 def _unsupported_response() -> dict[str, object]:
     return {
+        "page_coverage": [{"page_number": 1, "status": "irrelevant"}],
         "classification": {"status": "unsupported", "reason": "Outside the supplied options."},
         "document_map": {"nodes": []},
         "mentions": [],
@@ -358,6 +360,7 @@ def test_rejects_malformed_output_without_repair_call(tmp_path: Path) -> None:
     "missing_section",
     [
         "classification",
+        "page_coverage",
         "document_map",
         "mentions",
         "candidate_entities",

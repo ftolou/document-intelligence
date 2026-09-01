@@ -19,6 +19,7 @@ from receipt_intelligence.interpretation import (
     DocumentReference,
     DocumentSource,
     EvidenceReference,
+    EvidenceTextOrigin,
     InterpretationField,
     InterpretationSpecification,
     LiteralType,
@@ -388,6 +389,7 @@ def test_evidence_supports_paginated_and_non_paginated_source_locations() -> Non
     assert audio_evidence.page is None
     assert audio_evidence.locator == "00:01:12.500-00:01:16.000"
     assert page_evidence.page == SourcePageReference(page_number=2)
+    assert page_evidence.excerpt_origin is EvidenceTextOrigin.MODEL_OBSERVED
 
 
 def test_evidence_requires_a_valid_source_location() -> None:

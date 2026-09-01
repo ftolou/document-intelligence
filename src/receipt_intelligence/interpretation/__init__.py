@@ -17,15 +17,25 @@ from receipt_intelligence.interpretation.contracts import (
     DocumentReference,
     DocumentSource,
     EvidenceReference,
+    EvidenceTextOrigin,
     InterpretationField,
     InterpretationSpecification,
     LiteralType,
     LiteralValue,
     Mention,
     NormalizationStatus,
+    PageCoverage,
+    PageInterpretationStatus,
     ReviewSeverity,
     ReviewSignal,
     SourcePageReference,
+)
+from receipt_intelligence.interpretation.validation import (
+    InterpretationValidationIssue,
+    InterpretationValidationIssueCode,
+    InterpretationValidationResult,
+    InterpretationValidationStatus,
+    validate_document_interpretation,
 )
 from receipt_intelligence.interpretation.workflow import OnePassDocumentInterpreter
 
@@ -46,6 +56,7 @@ __all__ = [
     "DocumentReference",
     "DocumentSource",
     "EvidenceReference",
+    "EvidenceTextOrigin",
     "InterpretationField",
     "InterpretationSpecification",
     "LiteralValue",
@@ -53,7 +64,14 @@ __all__ = [
     "Mention",
     "NormalizationStatus",
     "OnePassDocumentInterpreter",
+    "PageCoverage",
+    "PageInterpretationStatus",
+    "InterpretationValidationIssue",
+    "InterpretationValidationIssueCode",
+    "InterpretationValidationResult",
+    "InterpretationValidationStatus",
     "ReviewSeverity",
     "ReviewSignal",
     "SourcePageReference",
+    "validate_document_interpretation",
 ]
