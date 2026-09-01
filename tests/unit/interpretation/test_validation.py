@@ -137,6 +137,16 @@ def test_missing_page_coverage_is_review_required_not_silently_valid() -> None:
     assert result.issues[0].page_numbers == (2, 3)
 
 
+def test_missing_page_coverage_larger_than_interpretation_collection_limit_is_reported() -> None:
+    interpretation = _interpretation(page_coverage=())
+
+    result = validate_document_interpretation(interpretation, source_page_count=257)
+
+    assert result.status is InterpretationValidationStatus.REVIEW_REQUIRED
+    assert result.issues[0].code is InterpretationValidationIssueCode.MISSING_PAGE_COVERAGE
+    assert result.issues[0].page_numbers == tuple(range(1, 258))
+
+
 def test_explicit_blank_and_irrelevant_pages_count_as_complete_coverage() -> None:
     interpretation = _interpretation(
         page_coverage=_coverage(

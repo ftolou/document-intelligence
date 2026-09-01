@@ -171,6 +171,16 @@ def _write_source(path: Path) -> Path:
     return path
 
 
+def _write_pdf(path: Path, *, page_count: int) -> Path:
+    pages = [Image.new("RGB", (8, 6), "white") for _ in range(page_count)]
+    try:
+        pages[0].save(path, format="PDF", save_all=True, append_images=pages[1:], resolution=72)
+    finally:
+        for page in pages:
+            page.close()
+    return path
+
+
 def _unsupported_response() -> dict[str, object]:
     return {
         "page_coverage": [{"page_number": 1, "status": "irrelevant"}],
@@ -246,6 +256,8 @@ def test_interprets_all_outputs_through_one_provider_neutral_call(tmp_path: Path
     assert result.candidate_entities[0].candidate_entity_id == "entity-1"
     assert result.evidence[0].source_id == "document-1"
     assert result.review_signals[0].severity is ReviewSeverity.REVIEW_REQUIRED
+    assert result.requires_review is True
+    assert result.review_signals[-1].code == "explicit_review_signal"
     fact_value = result.candidate_facts[0].object
     assert isinstance(fact_value, LiteralValue)
     assert fact_value.observed == "12,?"
@@ -486,6 +498,27 @@ def test_accepts_unsupported_output_without_extracted_assertions(tmp_path: Path)
 
     assert result.classification.status is ClassificationStatus.UNSUPPORTED
     assert result.evidence == ()
+    assert result.requires_review is False
+
+
+def test_exposes_missing_source_page_coverage_as_review_required(tmp_path: Path) -> None:
+    request = _request().model_copy(
+        update={"source": DocumentSource(source_id="document-1", media_type="application/pdf")}
+    )
+    response = _unsupported_response()
+    response["page_coverage"] = [{"page_number": 1, "status": "irrelevant"}]
+    gateway = _RecordingGateway(response)
+    interpreter = OnePassDocumentInterpreter(
+        gateway=gateway,
+        model="generic-multimodal-model",
+        source_limits=_limits(),
+    )
+
+    result = interpreter.interpret(request, _write_pdf(tmp_path / "source.pdf", page_count=2))
+
+    assert result.requires_review is True
+    assert result.review_signals[-1].code == "missing_page_coverage"
+    assert result.review_signals[-1].severity is ReviewSeverity.REVIEW_REQUIRED
 
 
 def test_rejects_evidence_page_outside_normalized_source(tmp_path: Path) -> None:

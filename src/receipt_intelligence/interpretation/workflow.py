@@ -29,6 +29,7 @@ from receipt_intelligence.interpretation.contracts import (
     EvidenceReference,
     Mention,
     PageCoverage,
+    ReviewSeverity,
     ReviewSignal,
 )
 from receipt_intelligence.interpretation.validation import (
@@ -130,6 +131,26 @@ class OnePassDocumentInterpreter:
         if validation.status is InterpretationValidationStatus.INVALID:
             raise MalformedGenerationError(
                 "Model output violates the document interpretation contract."
+            )
+        if validation.status is InterpretationValidationStatus.REVIEW_REQUIRED:
+            if len(interpretation.review_signals) + len(validation.issues) > MAX_COLLECTION_SIZE:
+                raise MalformedGenerationError(
+                    "Model output leaves no capacity for deterministic validation review."
+                )
+            interpretation = interpretation.model_copy(
+                update={
+                    "review_signals": (
+                        *interpretation.review_signals,
+                        *(
+                            ReviewSignal(
+                                code=issue.code.value,
+                                message=issue.message,
+                                severity=ReviewSeverity.REVIEW_REQUIRED,
+                            )
+                            for issue in validation.issues
+                        ),
+                    )
+                }
             )
 
         try:

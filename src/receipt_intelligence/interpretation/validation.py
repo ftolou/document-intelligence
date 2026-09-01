@@ -44,7 +44,7 @@ class InterpretationValidationIssue(ContractModel):
 
     code: InterpretationValidationIssueCode
     message: str = Field(min_length=1, max_length=4000)
-    page_numbers: tuple[int, ...] = Field(default=(), max_length=MAX_COLLECTION_SIZE)
+    page_numbers: tuple[int, ...] = ()
 
 
 class InterpretationValidationResult(ContractModel):
