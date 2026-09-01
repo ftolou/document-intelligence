@@ -193,7 +193,9 @@ def _validate_source_grounding(
     if interpretation.classification.status is ClassificationStatus.CLASSIFIED:
         if not interpretation.classification.evidence_refs:
             raise ValueError("A classified result requires evidence.")
-        if any(not dimension.evidence_refs for dimension in interpretation.classification.dimensions):
+        if any(
+            not dimension.evidence_refs for dimension in interpretation.classification.dimensions
+        ):
             raise ValueError("Each classification selection requires evidence.")
 
     pending_nodes = list(interpretation.document_map.nodes)
