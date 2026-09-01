@@ -545,9 +545,10 @@ def test_exposes_validation_review_with_bounded_model_signal_capacity(
     assert len(result.review_signals) == min(
         model_signal_count + len(validation_codes), MAX_COLLECTION_SIZE
     )
-    assert tuple(
-        signal.code for signal in result.review_signals[-len(validation_codes) :]
-    ) == validation_codes
+    assert (
+        tuple(signal.code for signal in result.review_signals[-len(validation_codes) :])
+        == validation_codes
+    )
     assert all(
         signal.severity is ReviewSeverity.REVIEW_REQUIRED
         for signal in result.review_signals[-len(validation_codes) :]
