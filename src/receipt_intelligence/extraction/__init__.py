@@ -21,6 +21,26 @@ _EXPORTS: dict[str, tuple[str, str]] = {
         "receipt_intelligence.extraction.source_image",
         "validate_source_image",
     ),
+    "NormalizedDocumentSource": (
+        "receipt_intelligence.extraction.source_normalization",
+        "NormalizedDocumentSource",
+    ),
+    "SourceNormalizationError": (
+        "receipt_intelligence.extraction.source_normalization",
+        "SourceNormalizationError",
+    ),
+    "SourceNormalizationLimits": (
+        "receipt_intelligence.extraction.source_normalization",
+        "SourceNormalizationLimits",
+    ),
+    "VisualPage": (
+        "receipt_intelligence.extraction.source_normalization",
+        "VisualPage",
+    ),
+    "normalize_document_source": (
+        "receipt_intelligence.extraction.source_normalization",
+        "normalize_document_source",
+    ),
     "ReceiptExtractionWorkflow": (
         "receipt_intelligence.extraction.workflow",
         "ReceiptExtractionWorkflow",
