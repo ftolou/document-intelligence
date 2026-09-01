@@ -354,9 +354,24 @@ def test_rejects_malformed_output_without_repair_call(tmp_path: Path) -> None:
     assert len(gateway.requests) == 1
 
 
-def test_rejects_schema_invalid_output_without_repair_call(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "missing_section",
+    [
+        "classification",
+        "document_map",
+        "mentions",
+        "candidate_entities",
+        "candidate_facts",
+        "evidence",
+        "review_signals",
+    ],
+)
+def test_rejects_response_with_missing_section_without_repair_call(
+    tmp_path: Path,
+    missing_section: str,
+) -> None:
     response = _response()
-    del response["classification"]
+    del response[missing_section]
     gateway = _RecordingGateway(response)
     interpreter = OnePassDocumentInterpreter(
         gateway=gateway,

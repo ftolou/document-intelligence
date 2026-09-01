@@ -44,14 +44,14 @@ class _GeneratedInterpretation(ContractModel):
     """Model-owned fields; caller-owned source and specification are attached later."""
 
     classification: DocumentClassification
-    document_map: DocumentMap = Field(default_factory=DocumentMap)
-    mentions: tuple[Mention, ...] = Field(default=(), max_length=MAX_COLLECTION_SIZE)
+    document_map: DocumentMap
+    mentions: tuple[Mention, ...] = Field(max_length=MAX_COLLECTION_SIZE)
     candidate_entities: tuple[CandidateEntity, ...] = Field(
-        default=(), max_length=MAX_COLLECTION_SIZE
+        max_length=MAX_COLLECTION_SIZE
     )
-    candidate_facts: tuple[CandidateFact, ...] = Field(default=(), max_length=MAX_COLLECTION_SIZE)
-    evidence: tuple[EvidenceReference, ...] = Field(default=(), max_length=MAX_COLLECTION_SIZE)
-    review_signals: tuple[ReviewSignal, ...] = Field(default=(), max_length=MAX_COLLECTION_SIZE)
+    candidate_facts: tuple[CandidateFact, ...] = Field(max_length=MAX_COLLECTION_SIZE)
+    evidence: tuple[EvidenceReference, ...] = Field(max_length=MAX_COLLECTION_SIZE)
+    review_signals: tuple[ReviewSignal, ...] = Field(max_length=MAX_COLLECTION_SIZE)
 
 
 class OnePassDocumentInterpreter:
