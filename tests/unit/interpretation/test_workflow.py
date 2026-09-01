@@ -251,6 +251,55 @@ def test_interprets_all_outputs_through_one_provider_neutral_call(tmp_path: Path
     assert fact_value.normalization_status is NormalizationStatus.FAILED
 
 
+def test_accepts_unselected_optional_classification_dimension(tmp_path: Path) -> None:
+    request = _request()
+    optional_dimension = ClassificationDimension(
+        key="optional_record_detail",
+        description="An optional caller-defined record detail.",
+        options=(
+            ClassificationOption(
+                key="available_detail",
+                description="A generic optional detail.",
+            ),
+        ),
+        min_selections=0,
+    )
+    request = request.model_copy(
+        update={
+            "specification": request.specification.model_copy(
+                update={
+                    "classifications": (*request.specification.classifications, optional_dimension)
+                }
+            )
+        }
+    )
+    response = _response()
+    classification = response["classification"]
+    assert isinstance(classification, dict)
+    dimensions = classification["dimensions"]
+    assert isinstance(dimensions, list)
+    dimensions.append(
+        {
+            "dimension_key": "optional_record_detail",
+            "option_paths": [],
+            "evidence_refs": [],
+        }
+    )
+    gateway = _RecordingGateway(response)
+    interpreter = OnePassDocumentInterpreter(
+        gateway=gateway,
+        model="generic-multimodal-model",
+        source_limits=_limits(),
+    )
+
+    result = interpreter.interpret(request, _write_source(tmp_path / "source.png"))
+
+    assert len(gateway.requests) == 1
+    assert result.classification.dimensions[0].evidence_refs == ("e-1",)
+    assert result.classification.dimensions[1].option_paths == ()
+    assert result.classification.dimensions[1].evidence_refs == ()
+
+
 def test_rejects_output_outside_caller_classification_without_repair_call(
     tmp_path: Path,
 ) -> None:
