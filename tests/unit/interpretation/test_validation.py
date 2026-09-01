@@ -128,9 +128,7 @@ def test_nonexistent_evidence_page_is_invalid(reference: SourcePageReference) ->
 
 
 def test_missing_page_coverage_is_review_required_not_silently_valid() -> None:
-    interpretation = _interpretation(
-        page_coverage=_coverage(PageInterpretationStatus.INTERPRETED)
-    )
+    interpretation = _interpretation(page_coverage=_coverage(PageInterpretationStatus.INTERPRETED))
 
     result = validate_document_interpretation(interpretation, source_page_count=3)
 
@@ -220,13 +218,15 @@ def test_visual_evidence_requires_page_anchor_and_interpreted_page() -> None:
         ),
     )
 
-    assert validate_document_interpretation(
-        locator_only, source_page_count=1
-    ).status is InterpretationValidationStatus.INVALID
+    assert (
+        validate_document_interpretation(locator_only, source_page_count=1).status
+        is InterpretationValidationStatus.INVALID
+    )
     assert InterpretationValidationIssueCode.MISSING_PAGE_ANCHOR in _codes(locator_only, 1)
-    assert validate_document_interpretation(
-        evidence_on_blank, source_page_count=1
-    ).status is InterpretationValidationStatus.INVALID
+    assert (
+        validate_document_interpretation(evidence_on_blank, source_page_count=1).status
+        is InterpretationValidationStatus.INVALID
+    )
     assert InterpretationValidationIssueCode.EVIDENCE_ON_NON_INTERPRETED_PAGE in _codes(
         evidence_on_blank, 1
     )
@@ -250,13 +250,15 @@ def test_required_evidence_and_explicit_review_signal_have_stable_outcomes() -> 
         ),
     )
 
-    assert validate_document_interpretation(
-        missing_evidence, source_page_count=1
-    ).status is InterpretationValidationStatus.INVALID
+    assert (
+        validate_document_interpretation(missing_evidence, source_page_count=1).status
+        is InterpretationValidationStatus.INVALID
+    )
     assert InterpretationValidationIssueCode.MISSING_REQUIRED_EVIDENCE in _codes(
         missing_evidence, 1
     )
-    assert validate_document_interpretation(
-        review_signal, source_page_count=1
-    ).status is InterpretationValidationStatus.REVIEW_REQUIRED
+    assert (
+        validate_document_interpretation(review_signal, source_page_count=1).status
+        is InterpretationValidationStatus.REVIEW_REQUIRED
+    )
     assert InterpretationValidationIssueCode.EXPLICIT_REVIEW_SIGNAL in _codes(review_signal, 1)
