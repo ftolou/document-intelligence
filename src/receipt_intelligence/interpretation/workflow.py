@@ -48,15 +48,9 @@ class _GeneratedInterpretation(ContractModel):
     candidate_entities: tuple[CandidateEntity, ...] = Field(
         default=(), max_length=MAX_COLLECTION_SIZE
     )
-    candidate_facts: tuple[CandidateFact, ...] = Field(
-        default=(), max_length=MAX_COLLECTION_SIZE
-    )
-    evidence: tuple[EvidenceReference, ...] = Field(
-        default=(), max_length=MAX_COLLECTION_SIZE
-    )
-    review_signals: tuple[ReviewSignal, ...] = Field(
-        default=(), max_length=MAX_COLLECTION_SIZE
-    )
+    candidate_facts: tuple[CandidateFact, ...] = Field(default=(), max_length=MAX_COLLECTION_SIZE)
+    evidence: tuple[EvidenceReference, ...] = Field(default=(), max_length=MAX_COLLECTION_SIZE)
+    review_signals: tuple[ReviewSignal, ...] = Field(default=(), max_length=MAX_COLLECTION_SIZE)
 
 
 class OnePassDocumentInterpreter:

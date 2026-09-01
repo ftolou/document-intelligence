@@ -97,9 +97,7 @@ def _response() -> dict[str, object]:
             "evidence_refs": ["e-1"],
         },
         "document_map": {
-            "nodes": [
-                {"node_id": "section-1", "label": "Statement", "evidence_refs": ["e-1"]}
-            ]
+            "nodes": [{"node_id": "section-1", "label": "Statement", "evidence_refs": ["e-1"]}]
         },
         "mentions": [
             {"mention_id": "mention-1", "observed_text": "12,?", "evidence_refs": ["e-1"]}
@@ -244,9 +242,7 @@ def test_rejects_malformed_output_without_repair_call(tmp_path: Path) -> None:
 
 def test_rejects_declared_media_type_that_does_not_match_source(tmp_path: Path) -> None:
     request = _request().model_copy(
-        update={
-            "source": DocumentSource(source_id="document-1", media_type="application/pdf")
-        }
+        update={"source": DocumentSource(source_id="document-1", media_type="application/pdf")}
     )
     gateway = _RecordingGateway(_response())
     interpreter = OnePassDocumentInterpreter(
