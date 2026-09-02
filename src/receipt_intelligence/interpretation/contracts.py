@@ -616,6 +616,8 @@ class DocumentInterpretationValidation(ContractModel):
         elif self.issues:
             expected = ValidationStatus.REVIEW_REQUIRED
         else:
+            if self.status is ValidationStatus.INVALID:
+                raise ValueError("Invalid validation requires a deterministic issue.")
             return self
         if self.status is not expected:
             raise ValueError("Validation status must reflect its deterministic issues.")
@@ -627,6 +629,22 @@ class DocumentInterpretationOutcome(ContractModel):
 
     interpretation: DocumentInterpretation
     validation: DocumentInterpretationValidation
+
+    @model_validator(mode="after")
+    def validate_status(self) -> Self:
+        if self.validation.issues:
+            return self
+        expected = (
+            ValidationStatus.REVIEW_REQUIRED
+            if self.interpretation.requires_review
+            else ValidationStatus.VALID
+        )
+        if self.validation.status is not expected:
+            raise ValueError(
+                "Validation status must reflect model review signals when deterministic issues "
+                "are absent."
+            )
+        return self
 
 
 def _unique_ids(kind: str, values: Iterable[str]) -> set[str]:

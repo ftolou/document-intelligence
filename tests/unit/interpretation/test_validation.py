@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
 from receipt_intelligence.interpretation import (
     MAX_COLLECTION_SIZE,
@@ -11,6 +12,7 @@ from receipt_intelligence.interpretation import (
     ClassificationStatus,
     DocumentClassification,
     DocumentInterpretation,
+    DocumentInterpretationOutcome,
     DocumentReference,
     DocumentSource,
     EvidenceReference,
@@ -322,3 +324,43 @@ def test_model_review_signal_alone_makes_authoritative_outcome_require_review() 
 
     assert result.status is ValidationStatus.REVIEW_REQUIRED
     assert result.issues == ()
+
+
+@pytest.mark.parametrize(
+    ("model_requires_review", "status", "is_valid"),
+    [
+        (False, ValidationStatus.VALID, True),
+        (False, ValidationStatus.REVIEW_REQUIRED, False),
+        (False, ValidationStatus.INVALID, False),
+        (True, ValidationStatus.VALID, False),
+        (True, ValidationStatus.REVIEW_REQUIRED, True),
+        (True, ValidationStatus.INVALID, False),
+    ],
+)
+def test_issue_free_outcome_status_reflects_model_review_signals(
+    model_requires_review: bool,
+    status: ValidationStatus,
+    is_valid: bool,
+) -> None:
+    signals = (
+        (
+            ReviewSignal(
+                code="model-review",
+                message="The model explicitly requests review.",
+                severity=ReviewSeverity.REVIEW_REQUIRED,
+            ),
+        )
+        if model_requires_review
+        else ()
+    )
+    values = {
+        "interpretation": _interpretation(_page(1, 1), review_signals=signals),
+        "validation": {"status": status, "issues": ()},
+    }
+
+    if is_valid:
+        outcome = DocumentInterpretationOutcome.model_validate(values)
+        assert outcome.validation.status is status
+    else:
+        with pytest.raises(ValidationError):
+            DocumentInterpretationOutcome.model_validate(values)
