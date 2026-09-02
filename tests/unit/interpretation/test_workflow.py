@@ -19,6 +19,7 @@ from receipt_intelligence.application.ports.multimodal import (
 )
 from receipt_intelligence.extraction import SourceNormalizationLimits
 from receipt_intelligence.interpretation import (
+    MAX_COLLECTION_SIZE,
     ClassificationDimension,
     ClassificationOption,
     ClassificationStatus,
@@ -30,6 +31,8 @@ from receipt_intelligence.interpretation import (
     NormalizationStatus,
     OnePassDocumentInterpreter,
     ReviewSeverity,
+    ValidationIssueCode,
+    ValidationStatus,
 )
 
 
@@ -105,6 +108,12 @@ def _request(
 
 def _response() -> dict[str, object]:
     return {
+        "page_interpretations": [
+            {
+                "page_range": {"start_page_number": 1, "end_page_number": 1},
+                "state": "interpreted",
+            }
+        ],
         "classification": {
             "status": "classified",
             "dimensions": [
@@ -151,6 +160,7 @@ def _response() -> dict[str, object]:
                 "source_id": "document-1",
                 "page": {"page_number": 1},
                 "excerpt": "12,?",
+                "excerpt_provenance": "model_observed",
             }
         ],
         "review_signals": [
@@ -172,6 +182,12 @@ def _write_source(path: Path) -> Path:
 
 def _unsupported_response() -> dict[str, object]:
     return {
+        "page_interpretations": [
+            {
+                "page_range": {"start_page_number": 1, "end_page_number": 1},
+                "state": "irrelevant",
+            }
+        ],
         "classification": {"status": "unsupported", "reason": "Outside the supplied options."},
         "document_map": {"nodes": []},
         "mentions": [],
@@ -224,9 +240,12 @@ def test_interprets_all_outputs_through_one_provider_neutral_call(tmp_path: Path
     )
     request = _request()
 
-    result = interpreter.interpret(request, _write_source(tmp_path / "source.png"))
+    outcome = interpreter.interpret(request, _write_source(tmp_path / "source.png"))
+    result = outcome.interpretation
 
     assert len(gateway.requests) == 1
+    assert outcome.validation.status is ValidationStatus.REVIEW_REQUIRED
+    assert outcome.validation.issues == ()
     generation_request = gateway.requests[0]
     assert generation_request.operation == "document_interpretation"
     assert generation_request.format_json is True
@@ -292,7 +311,8 @@ def test_accepts_unselected_optional_classification_dimension(tmp_path: Path) ->
         source_limits=_limits(),
     )
 
-    result = interpreter.interpret(request, _write_source(tmp_path / "source.png"))
+    outcome = interpreter.interpret(request, _write_source(tmp_path / "source.png"))
+    result = outcome.interpretation
 
     assert len(gateway.requests) == 1
     assert result.classification.dimensions[0].evidence_refs == ("e-1",)
@@ -357,6 +377,7 @@ def test_rejects_malformed_output_without_repair_call(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     "missing_section",
     [
+        "page_interpretations",
         "classification",
         "document_map",
         "mentions",
@@ -433,7 +454,7 @@ def test_preserves_source_stated_expiry_without_deriving_expired_state(tmp_path:
         field_description="An expiry date explicitly stated in the source.",
     )
 
-    result = interpreter.interpret(request, _write_source(tmp_path / "source.png"))
+    result = interpreter.interpret(request, _write_source(tmp_path / "source.png")).interpretation
 
     fact = result.candidate_facts[0]
     assert fact.predicate == "valid_until"
@@ -462,7 +483,7 @@ def test_preserves_relative_deadline_without_external_date_inference(tmp_path: P
         field_description="A relative deadline explicitly stated in the source.",
     )
 
-    result = interpreter.interpret(request, _write_source(tmp_path / "source.png"))
+    result = interpreter.interpret(request, _write_source(tmp_path / "source.png")).interpretation
 
     fact = result.candidate_facts[0]
     assert isinstance(fact.object, LiteralValue)
@@ -479,10 +500,12 @@ def test_accepts_unsupported_output_without_extracted_assertions(tmp_path: Path)
         source_limits=_limits(),
     )
 
-    result = interpreter.interpret(_request(), _write_source(tmp_path / "source.png"))
+    outcome = interpreter.interpret(_request(), _write_source(tmp_path / "source.png"))
+    result = outcome.interpretation
 
     assert result.classification.status is ClassificationStatus.UNSUPPORTED
     assert result.evidence == ()
+    assert outcome.validation.status is ValidationStatus.VALID
 
 
 def test_rejects_evidence_page_outside_normalized_source(tmp_path: Path) -> None:
@@ -497,8 +520,44 @@ def test_rejects_evidence_page_outside_normalized_source(tmp_path: Path) -> None
         source_limits=_limits(),
     )
 
-    with pytest.raises(MalformedGenerationError, match="interpretation contract"):
-        interpreter.interpret(_request(), _write_source(tmp_path / "source.png"))
+    outcome = interpreter.interpret(_request(), _write_source(tmp_path / "source.png"))
+
+    assert outcome.validation.status is ValidationStatus.INVALID
+    assert {issue.code for issue in outcome.validation.issues} >= {
+        ValidationIssueCode.EVIDENCE_PAGE_OUT_OF_BOUNDS
+    }
+    assert [signal.code for signal in outcome.interpretation.review_signals] == ["ambiguous_value"]
+
+
+def test_preserves_maximum_model_signals_when_page_coverage_is_missing(tmp_path: Path) -> None:
+    response = _unsupported_response()
+    response["page_interpretations"] = []
+    response["review_signals"] = [
+        {
+            "code": f"model-signal-{index}",
+            "message": f"Model signal {index}.",
+            "severity": "warning",
+            "evidence_refs": [],
+            "fact_refs": [],
+        }
+        for index in range(MAX_COLLECTION_SIZE)
+    ]
+    gateway = _RecordingGateway(response)
+    interpreter = OnePassDocumentInterpreter(
+        gateway=gateway,
+        model="generic-multimodal-model",
+        source_limits=_limits(),
+    )
+
+    outcome = interpreter.interpret(_request(), _write_source(tmp_path / "source.png"))
+
+    assert outcome.validation.status is ValidationStatus.REVIEW_REQUIRED
+    assert {issue.code for issue in outcome.validation.issues} == {
+        ValidationIssueCode.MISSING_PAGE_COVERAGE
+    }
+    assert [signal.code for signal in outcome.interpretation.review_signals] == [
+        f"model-signal-{index}" for index in range(MAX_COLLECTION_SIZE)
+    ]
 
 
 @pytest.mark.parametrize("assertion_kind", ["classification", "document-map", "candidate-entity"])
@@ -539,8 +598,9 @@ def test_rejects_extracted_assertions_without_evidence(
         source_limits=_limits(),
     )
 
-    with pytest.raises(MalformedGenerationError, match="interpretation contract"):
-        interpreter.interpret(_request(), _write_source(tmp_path / "source.png"))
+    outcome = interpreter.interpret(_request(), _write_source(tmp_path / "source.png"))
+
+    assert outcome.validation.status is ValidationStatus.INVALID
 
 
 def test_rejects_declared_media_type_that_does_not_match_source(tmp_path: Path) -> None:

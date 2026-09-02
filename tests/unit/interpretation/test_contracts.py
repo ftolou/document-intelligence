@@ -19,6 +19,7 @@ from receipt_intelligence.interpretation import (
     DocumentReference,
     DocumentSource,
     EvidenceReference,
+    EvidenceTextProvenance,
     InterpretationField,
     InterpretationSpecification,
     LiteralType,
@@ -138,12 +139,14 @@ def test_interpretation_represents_atomic_evidence_backed_candidate_fact() -> No
                 source_id="document-1",
                 locator="characters 0-15",
                 excerpt=" Amount: 12,? ",
+                excerpt_provenance=EvidenceTextProvenance.MODEL_OBSERVED,
             ),
             EvidenceReference(
                 evidence_id="e-2",
                 source_id="document-1",
                 locator="characters 8-12",
                 excerpt="12,?",
+                excerpt_provenance=EvidenceTextProvenance.MODEL_OBSERVED,
             ),
         ),
         mentions=(
