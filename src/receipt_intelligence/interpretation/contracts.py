@@ -178,6 +178,37 @@ class SourcePageReference(ContractModel):
     page_number: int = Field(ge=1)
 
 
+class SourcePageRange(ContractModel):
+    """An inclusive one-based page range whose source bounds are checked later."""
+
+    start_page: int = Field(ge=1)
+    end_page: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def validate_order(self) -> Self:
+        if self.end_page < self.start_page:
+            raise ValueError("SourcePageRange.end_page must not precede start_page.")
+        return self
+
+
+class SourcePageState(StrEnum):
+    """A model-reported processing state for one normalized source page."""
+
+    PROCESSED = "processed"
+    BLANK = "blank"
+    IRRELEVANT = "irrelevant"
+    UNREADABLE = "unreadable"
+    UNPROCESSED = "unprocessed"
+
+
+class SourcePageObservation(ContractModel):
+    """A model observation for one page, not independently verified OCR text."""
+
+    page: SourcePageReference
+    state: SourcePageState
+    model_observed_text: str | None = Field(default=None, max_length=10000)
+
+
 class EvidenceReference(ContractModel):
     """A stable source location; ``excerpt`` preserves observed source text."""
 
@@ -185,12 +216,15 @@ class EvidenceReference(ContractModel):
     source_id: Identifier
     locator: NonBlankText | None = None
     page: SourcePageReference | None = None
+    page_range: SourcePageRange | None = None
     excerpt: str | None = Field(default=None, max_length=10000)
 
     @model_validator(mode="after")
     def validate_location(self) -> Self:
-        if self.locator is None and self.page is None:
-            raise ValueError("EvidenceReference requires a locator or page.")
+        if self.locator is None and self.page is None and self.page_range is None:
+            raise ValueError("EvidenceReference requires a locator or page/page range.")
+        if self.page is not None and self.page_range is not None:
+            raise ValueError("EvidenceReference cannot contain both a page and page range.")
         return self
 
 
@@ -415,6 +449,9 @@ class DocumentInterpretation(ContractModel):
 
     source: DocumentSource
     specification: InterpretationSpecification
+    page_observations: tuple[SourcePageObservation, ...] = Field(
+        default=(), max_length=MAX_COLLECTION_SIZE
+    )
     classification: DocumentClassification
     document_map: DocumentMap = Field(default_factory=DocumentMap)
     mentions: tuple[Mention, ...] = Field(default=(), max_length=MAX_COLLECTION_SIZE)
@@ -512,11 +549,71 @@ class DocumentInterpretation(ContractModel):
                 raise ValueError("Candidate fact object references an unknown candidate entity.")
         return self
 
-    @property
-    def requires_review(self) -> bool:
-        return any(
-            signal.severity is ReviewSeverity.REVIEW_REQUIRED for signal in self.review_signals
-        )
+
+class InterpretationValidationStatus(StrEnum):
+    """Stable deterministic disposition for a typed interpretation."""
+
+    VALID = "VALID"
+    REVIEW_REQUIRED = "REVIEW_REQUIRED"
+    INVALID = "INVALID"
+
+
+class InterpretationValidationFindingCode(StrEnum):
+    """Provider-neutral reasons emitted by deterministic interpretation validation."""
+
+    EVIDENCE_PAGE_OUT_OF_RANGE = "evidence_page_out_of_range"
+    PAGE_OBSERVATION_OUT_OF_RANGE = "page_observation_out_of_range"
+    DUPLICATE_PAGE_OBSERVATION = "duplicate_page_observation"
+    MISSING_PAGE_COVERAGE = "missing_page_coverage"
+    UNREADABLE_PAGE = "unreadable_page"
+    UNPROCESSED_PAGE = "unprocessed_page"
+    MISSING_ASSERTION_EVIDENCE = "missing_assertion_evidence"
+    UNREQUESTED_PREDICATE = "unrequested_predicate"
+    MODEL_REVIEW_REQUIRED = "model_review_required"
+
+
+class InterpretationValidationFinding(ContractModel):
+    """One deterministic finding kept separate from model-authored review signals."""
+
+    code: InterpretationValidationFindingCode
+    status: InterpretationValidationStatus
+    message: NonBlankText
+
+    @model_validator(mode="after")
+    def validate_status(self) -> Self:
+        if self.status is InterpretationValidationStatus.VALID:
+            raise ValueError("A validation finding cannot have VALID status.")
+        return self
+
+
+class DocumentInterpretationValidation(ContractModel):
+    """Authoritative deterministic validation state and its findings."""
+
+    status: InterpretationValidationStatus
+    findings: tuple[InterpretationValidationFinding, ...] = Field(
+        default=(), max_length=MAX_COLLECTION_SIZE
+    )
+
+    @model_validator(mode="after")
+    def validate_status(self) -> Self:
+        if any(
+            finding.status is InterpretationValidationStatus.INVALID for finding in self.findings
+        ):
+            expected = InterpretationValidationStatus.INVALID
+        elif self.findings:
+            expected = InterpretationValidationStatus.REVIEW_REQUIRED
+        else:
+            expected = InterpretationValidationStatus.VALID
+        if self.status is not expected:
+            raise ValueError("Validation status must match the deterministic findings.")
+        return self
+
+
+class DocumentInterpretationOutcome(ContractModel):
+    """The typed model result paired with its authoritative validation disposition."""
+
+    interpretation: DocumentInterpretation
+    validation: DocumentInterpretationValidation
 
 
 def _unique_ids(kind: str, values: Iterable[str]) -> set[str]:
@@ -579,7 +676,9 @@ __all__ = [
     "ClassificationStatus",
     "DocumentClassification",
     "DocumentInterpretation",
+    "DocumentInterpretationOutcome",
     "DocumentInterpretationRequest",
+    "DocumentInterpretationValidation",
     "DocumentMap",
     "DocumentMapNode",
     "DocumentReference",
@@ -589,6 +688,9 @@ __all__ = [
     "FactSubject",
     "InterpretationField",
     "InterpretationSpecification",
+    "InterpretationValidationFinding",
+    "InterpretationValidationFindingCode",
+    "InterpretationValidationStatus",
     "JsonScalar",
     "LiteralValue",
     "LiteralType",
@@ -598,5 +700,8 @@ __all__ = [
     "NormalizationStatus",
     "ReviewSeverity",
     "ReviewSignal",
+    "SourcePageObservation",
+    "SourcePageRange",
     "SourcePageReference",
+    "SourcePageState",
 ]
