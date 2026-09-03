@@ -551,6 +551,7 @@ def test_preserves_maximum_model_signals_when_page_coverage_requires_review(
 
     assert outcome.validation.status is InterpretationValidationStatus.REVIEW_REQUIRED
     assert [issue.code for issue in outcome.validation.issues] == ["MISSING_PAGE_COVERAGE"]
+    assert not hasattr(outcome.interpretation, "requires_review")
     assert [signal.model_dump(mode="json") for signal in outcome.interpretation.review_signals] == (
         response["review_signals"]
     )

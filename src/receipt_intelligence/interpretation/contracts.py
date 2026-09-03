@@ -597,12 +597,6 @@ class DocumentInterpretation(ContractModel):
                 raise ValueError("Candidate fact object references an unknown candidate entity.")
         return self
 
-    @property
-    def requires_review(self) -> bool:
-        return any(
-            signal.severity is ReviewSeverity.REVIEW_REQUIRED for signal in self.review_signals
-        )
-
 
 class DocumentInterpretationOutcome(ContractModel):
     """The single completed result of the document interpretation workflow."""
