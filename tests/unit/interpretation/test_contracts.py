@@ -150,6 +150,7 @@ def test_interpretation_represents_atomic_evidence_backed_candidate_fact() -> No
             Mention(
                 mention_id="m-1",
                 observed_text=" Amount: 12,? ",
+                observed_text_provenance="model_observed",
                 evidence_refs=("e-1",),
             ),
         ),
@@ -391,7 +392,7 @@ def test_evidence_supports_paginated_and_non_paginated_source_locations() -> Non
 
 
 def test_evidence_requires_a_valid_source_location() -> None:
-    with pytest.raises(ValidationError, match="requires a locator or page"):
+    with pytest.raises(ValidationError, match="requires a locator, page, or page range"):
         EvidenceReference(evidence_id="e-1", source_id="document-1")
 
     with pytest.raises(ValidationError, match="greater than or equal to 1"):

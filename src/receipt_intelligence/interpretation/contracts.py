@@ -178,19 +178,59 @@ class SourcePageReference(ContractModel):
     page_number: int = Field(ge=1)
 
 
+class SourcePageRange(ContractModel):
+    """Inclusive one-based page endpoints validated against the trusted source later."""
+
+    start_page: int = Field(ge=1)
+    end_page: int = Field(ge=1)
+
+
+class PageInterpretationState(StrEnum):
+    """The model-declared handling state for normalized visual source pages."""
+
+    INTERPRETED = "interpreted"
+    BLANK = "blank"
+    IRRELEVANT = "irrelevant"
+    UNREADABLE = "unreadable"
+    UNPROCESSED = "unprocessed"
+
+
+class PageCoverage(ContractModel):
+    """A compact model declaration that a page range received one handling state."""
+
+    page_range: SourcePageRange
+    state: PageInterpretationState
+
+
+class EvidenceTextProvenance(StrEnum):
+    """Provenance of optional text attached to visual evidence."""
+
+    MODEL_OBSERVED = "model_observed"
+
+
 class EvidenceReference(ContractModel):
-    """A stable source location; ``excerpt`` preserves observed source text."""
+    """A stable source location with explicit provenance for model-observed visual text."""
 
     evidence_id: Identifier
     source_id: Identifier
     locator: NonBlankText | None = None
     page: SourcePageReference | None = None
+    page_range: SourcePageRange | None = None
     excerpt: str | None = Field(default=None, max_length=10000)
+    excerpt_provenance: EvidenceTextProvenance | None = None
 
     @model_validator(mode="after")
     def validate_location(self) -> Self:
-        if self.locator is None and self.page is None:
-            raise ValueError("EvidenceReference requires a locator or page.")
+        if self.locator is None and self.page is None and self.page_range is None:
+            raise ValueError("EvidenceReference requires a locator, page, or page range.")
+        if self.excerpt_provenance is not None and self.excerpt is None:
+            raise ValueError("Evidence text provenance requires an excerpt.")
+        if (
+            self.excerpt is not None
+            and (self.page is not None or self.page_range is not None)
+            and self.excerpt_provenance is None
+        ):
+            raise ValueError("Visual evidence excerpts require explicit text provenance.")
         return self
 
 
@@ -257,10 +297,11 @@ class DocumentMap(ContractModel):
 
 
 class Mention(ContractModel):
-    """Observed source text that may refer to an entity or value."""
+    """Model-observed source text that may refer to an entity or value."""
 
     mention_id: Identifier
     observed_text: str = Field(min_length=1, max_length=10000)
+    observed_text_provenance: EvidenceTextProvenance
     evidence_refs: tuple[Identifier, ...] = Field(min_length=1, max_length=MAX_COLLECTION_SIZE)
 
 
@@ -415,6 +456,7 @@ class DocumentInterpretation(ContractModel):
 
     source: DocumentSource
     specification: InterpretationSpecification
+    page_coverage: tuple[PageCoverage, ...] = Field(default=(), max_length=MAX_COLLECTION_SIZE)
     classification: DocumentClassification
     document_map: DocumentMap = Field(default_factory=DocumentMap)
     mentions: tuple[Mention, ...] = Field(default=(), max_length=MAX_COLLECTION_SIZE)
@@ -519,6 +561,96 @@ class DocumentInterpretation(ContractModel):
         )
 
 
+class InterpretationValidationStatus(StrEnum):
+    """Stable deterministic acceptance state for one interpretation."""
+
+    VALID = "VALID"
+    REVIEW_REQUIRED = "REVIEW_REQUIRED"
+    INVALID = "INVALID"
+
+
+class InterpretationValidationFindingCode(StrEnum):
+    """Stable provider-neutral reasons emitted by deterministic validation."""
+
+    PAGE_RANGE_REVERSED = "page_range_reversed"
+    PAGE_COVERAGE_OUT_OF_BOUNDS = "page_coverage_out_of_bounds"
+    DUPLICATE_PAGE_COVERAGE = "duplicate_page_coverage"
+    MISSING_PAGE_COVERAGE = "missing_page_coverage"
+    UNREADABLE_PAGE = "unreadable_page"
+    UNPROCESSED_PAGE = "unprocessed_page"
+    EVIDENCE_MULTIPLE_PAGE_ANCHORS = "evidence_multiple_page_anchors"
+    EVIDENCE_PAGE_MISSING = "evidence_page_missing"
+    EVIDENCE_PAGE_RANGE_REVERSED = "evidence_page_range_reversed"
+    EVIDENCE_PAGE_OUT_OF_BOUNDS = "evidence_page_out_of_bounds"
+    EVIDENCE_ON_NON_INTERPRETED_PAGE = "evidence_on_non_interpreted_page"
+    CLASSIFICATION_EVIDENCE_MISSING = "classification_evidence_missing"
+    CLASSIFICATION_SELECTION_EVIDENCE_MISSING = "classification_selection_evidence_missing"
+    DOCUMENT_MAP_EVIDENCE_MISSING = "document_map_evidence_missing"
+    CANDIDATE_ENTITY_EVIDENCE_MISSING = "candidate_entity_evidence_missing"
+    UNREQUESTED_PREDICATE = "unrequested_predicate"
+
+
+class InterpretationValidationFinding(ContractModel):
+    """One deterministic finding kept separate from model-authored review signals."""
+
+    code: InterpretationValidationFindingCode
+    status: InterpretationValidationStatus
+    message: NonBlankText
+
+    @model_validator(mode="after")
+    def validate_status(self) -> Self:
+        if self.status is InterpretationValidationStatus.VALID:
+            raise ValueError("A validation finding cannot have VALID status.")
+        return self
+
+
+class DocumentInterpretationValidation(ContractModel):
+    """Authoritative deterministic state and its bounded findings."""
+
+    status: InterpretationValidationStatus
+    findings: tuple[InterpretationValidationFinding, ...] = Field(
+        default=(), max_length=MAX_COLLECTION_SIZE
+    )
+
+    @model_validator(mode="after")
+    def validate_status(self) -> Self:
+        if any(
+            finding.status is InterpretationValidationStatus.INVALID for finding in self.findings
+        ):
+            expected = InterpretationValidationStatus.INVALID
+        elif self.findings:
+            expected = InterpretationValidationStatus.REVIEW_REQUIRED
+        else:
+            if self.status is InterpretationValidationStatus.INVALID:
+                raise ValueError("INVALID validation requires a deterministic finding.")
+            return self
+        if self.status is not expected:
+            raise ValueError("Validation status must match its deterministic findings.")
+        return self
+
+
+class DocumentInterpretationOutcome(ContractModel):
+    """The typed model result paired with its authoritative validation disposition."""
+
+    interpretation: DocumentInterpretation
+    validation: DocumentInterpretationValidation
+
+    @model_validator(mode="after")
+    def validate_status(self) -> Self:
+        if self.validation.findings:
+            return self
+        expected = (
+            InterpretationValidationStatus.REVIEW_REQUIRED
+            if self.interpretation.requires_review
+            else InterpretationValidationStatus.VALID
+        )
+        if self.validation.status is not expected:
+            raise ValueError(
+                "Validation status must reflect model review signals when findings are absent."
+            )
+        return self
+
+
 def _unique_ids(kind: str, values: Iterable[str]) -> set[str]:
     identifiers = list(values)
     if len(identifiers) != len(set(identifiers)):
@@ -579,16 +711,22 @@ __all__ = [
     "ClassificationStatus",
     "DocumentClassification",
     "DocumentInterpretation",
+    "DocumentInterpretationOutcome",
     "DocumentInterpretationRequest",
+    "DocumentInterpretationValidation",
     "DocumentMap",
     "DocumentMapNode",
     "DocumentReference",
     "DocumentSource",
     "EvidenceReference",
+    "EvidenceTextProvenance",
     "FactObject",
     "FactSubject",
     "InterpretationField",
     "InterpretationSpecification",
+    "InterpretationValidationFinding",
+    "InterpretationValidationFindingCode",
+    "InterpretationValidationStatus",
     "JsonScalar",
     "LiteralValue",
     "LiteralType",
@@ -596,7 +734,10 @@ __all__ = [
     "MAX_SPECIFICATION_NODES",
     "Mention",
     "NormalizationStatus",
+    "PageCoverage",
+    "PageInterpretationState",
     "ReviewSeverity",
     "ReviewSignal",
     "SourcePageReference",
+    "SourcePageRange",
 ]
