@@ -26,6 +26,7 @@ from receipt_intelligence.interpretation import (
     DocumentSource,
     InterpretationField,
     InterpretationSpecification,
+    InterpretationValidationStatus,
     LiteralValue,
     NormalizationStatus,
     OnePassDocumentInterpreter,
@@ -105,6 +106,12 @@ def _request(
 
 def _response() -> dict[str, object]:
     return {
+        "page_coverage": [
+            {
+                "page_range": {"start_page": 1, "end_page": 1},
+                "state": "interpreted",
+            }
+        ],
         "classification": {
             "status": "classified",
             "dimensions": [
@@ -120,7 +127,12 @@ def _response() -> dict[str, object]:
             "nodes": [{"node_id": "section-1", "label": "Statement", "evidence_refs": ["e-1"]}]
         },
         "mentions": [
-            {"mention_id": "mention-1", "observed_text": "12,?", "evidence_refs": ["e-1"]}
+            {
+                "mention_id": "mention-1",
+                "observed_text": "12,?",
+                "observed_text_provenance": "model_observed",
+                "evidence_refs": ["e-1"],
+            }
         ],
         "candidate_entities": [
             {
@@ -151,6 +163,7 @@ def _response() -> dict[str, object]:
                 "source_id": "document-1",
                 "page": {"page_number": 1},
                 "excerpt": "12,?",
+                "excerpt_provenance": "model_observed",
             }
         ],
         "review_signals": [
@@ -172,6 +185,12 @@ def _write_source(path: Path) -> Path:
 
 def _unsupported_response() -> dict[str, object]:
     return {
+        "page_coverage": [
+            {
+                "page_range": {"start_page": 1, "end_page": 1},
+                "state": "interpreted",
+            }
+        ],
         "classification": {"status": "unsupported", "reason": "Outside the supplied options."},
         "document_map": {"nodes": []},
         "mentions": [],
@@ -224,7 +243,8 @@ def test_interprets_all_outputs_through_one_provider_neutral_call(tmp_path: Path
     )
     request = _request()
 
-    result = interpreter.interpret(request, _write_source(tmp_path / "source.png"))
+    outcome = interpreter.interpret(request, _write_source(tmp_path / "source.png"))
+    result = outcome.interpretation
 
     assert len(gateway.requests) == 1
     generation_request = gateway.requests[0]
@@ -241,6 +261,7 @@ def test_interprets_all_outputs_through_one_provider_neutral_call(tmp_path: Path
     assert result.classification.status is ClassificationStatus.CLASSIFIED
     assert result.document_map.nodes[0].label == "Statement"
     assert result.mentions[0].observed_text == "12,?"
+    assert result.mentions[0].observed_text_provenance.value == "model_observed"
     assert result.candidate_entities[0].candidate_entity_id == "entity-1"
     assert result.evidence[0].source_id == "document-1"
     assert result.review_signals[0].severity is ReviewSeverity.REVIEW_REQUIRED
@@ -249,6 +270,8 @@ def test_interprets_all_outputs_through_one_provider_neutral_call(tmp_path: Path
     assert fact_value.observed == "12,?"
     assert fact_value.normalized is None
     assert fact_value.normalization_status is NormalizationStatus.FAILED
+    assert outcome.validation.status is InterpretationValidationStatus.REVIEW_REQUIRED
+    assert outcome.validation.issues == ()
 
 
 def test_accepts_unselected_optional_classification_dimension(tmp_path: Path) -> None:
@@ -292,7 +315,7 @@ def test_accepts_unselected_optional_classification_dimension(tmp_path: Path) ->
         source_limits=_limits(),
     )
 
-    result = interpreter.interpret(request, _write_source(tmp_path / "source.png"))
+    result = interpreter.interpret(request, _write_source(tmp_path / "source.png")).interpretation
 
     assert len(gateway.requests) == 1
     assert result.classification.dimensions[0].evidence_refs == ("e-1",)
@@ -322,7 +345,7 @@ def test_rejects_output_outside_caller_classification_without_repair_call(
     assert len(gateway.requests) == 1
 
 
-def test_rejects_candidate_fact_not_requested_by_caller(tmp_path: Path) -> None:
+def test_marks_candidate_fact_not_requested_by_caller_invalid(tmp_path: Path) -> None:
     response = _response()
     candidate_facts = response["candidate_facts"]
     assert isinstance(candidate_facts, list)
@@ -334,10 +357,11 @@ def test_rejects_candidate_fact_not_requested_by_caller(tmp_path: Path) -> None:
         source_limits=_limits(),
     )
 
-    with pytest.raises(MalformedGenerationError, match="caller-supplied"):
-        interpreter.interpret(_request(), _write_source(tmp_path / "source.png"))
+    outcome = interpreter.interpret(_request(), _write_source(tmp_path / "source.png"))
 
     assert len(gateway.requests) == 1
+    assert outcome.validation.status is InterpretationValidationStatus.INVALID
+    assert outcome.validation.issues[0].code == "predicate_not_requested"
 
 
 def test_rejects_malformed_output_without_repair_call(tmp_path: Path) -> None:
@@ -358,6 +382,7 @@ def test_rejects_malformed_output_without_repair_call(tmp_path: Path) -> None:
     "missing_section",
     [
         "classification",
+        "page_coverage",
         "document_map",
         "mentions",
         "candidate_entities",
@@ -433,7 +458,7 @@ def test_preserves_source_stated_expiry_without_deriving_expired_state(tmp_path:
         field_description="An expiry date explicitly stated in the source.",
     )
 
-    result = interpreter.interpret(request, _write_source(tmp_path / "source.png"))
+    result = interpreter.interpret(request, _write_source(tmp_path / "source.png")).interpretation
 
     fact = result.candidate_facts[0]
     assert fact.predicate == "valid_until"
@@ -462,7 +487,7 @@ def test_preserves_relative_deadline_without_external_date_inference(tmp_path: P
         field_description="A relative deadline explicitly stated in the source.",
     )
 
-    result = interpreter.interpret(request, _write_source(tmp_path / "source.png"))
+    result = interpreter.interpret(request, _write_source(tmp_path / "source.png")).interpretation
 
     fact = result.candidate_facts[0]
     assert isinstance(fact.object, LiteralValue)
@@ -479,13 +504,15 @@ def test_accepts_unsupported_output_without_extracted_assertions(tmp_path: Path)
         source_limits=_limits(),
     )
 
-    result = interpreter.interpret(_request(), _write_source(tmp_path / "source.png"))
+    outcome = interpreter.interpret(_request(), _write_source(tmp_path / "source.png"))
+    result = outcome.interpretation
 
     assert result.classification.status is ClassificationStatus.UNSUPPORTED
     assert result.evidence == ()
+    assert outcome.validation.status is InterpretationValidationStatus.VALID
 
 
-def test_rejects_evidence_page_outside_normalized_source(tmp_path: Path) -> None:
+def test_marks_evidence_page_outside_normalized_source_invalid(tmp_path: Path) -> None:
     response = _response()
     evidence = response["evidence"]
     assert isinstance(evidence, list)
@@ -497,12 +524,14 @@ def test_rejects_evidence_page_outside_normalized_source(tmp_path: Path) -> None
         source_limits=_limits(),
     )
 
-    with pytest.raises(MalformedGenerationError, match="interpretation contract"):
-        interpreter.interpret(_request(), _write_source(tmp_path / "source.png"))
+    outcome = interpreter.interpret(_request(), _write_source(tmp_path / "source.png"))
+
+    assert outcome.validation.status is InterpretationValidationStatus.INVALID
+    assert outcome.validation.issues[0].code == "evidence_page_out_of_bounds"
 
 
 @pytest.mark.parametrize("assertion_kind", ["classification", "document-map", "candidate-entity"])
-def test_rejects_extracted_assertions_without_evidence(
+def test_marks_extracted_assertions_without_evidence_invalid(
     tmp_path: Path,
     assertion_kind: str,
 ) -> None:
@@ -539,8 +568,9 @@ def test_rejects_extracted_assertions_without_evidence(
         source_limits=_limits(),
     )
 
-    with pytest.raises(MalformedGenerationError, match="interpretation contract"):
-        interpreter.interpret(_request(), _write_source(tmp_path / "source.png"))
+    outcome = interpreter.interpret(_request(), _write_source(tmp_path / "source.png"))
+
+    assert outcome.validation.status is InterpretationValidationStatus.INVALID
 
 
 def test_rejects_declared_media_type_that_does_not_match_source(tmp_path: Path) -> None:

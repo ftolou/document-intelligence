@@ -39,3 +39,26 @@ content. Normalized temporal values use valid ISO 8601 syntax, normalized numeri
 values are finite, and normalized amounts use decimal strings to preserve exact
 JSON round trips. Candidate facts refer to evidence by ID, and the result contract
 rejects dangling source, evidence, mention, entity, and fact references.
+
+## Deterministic validation boundary
+
+The one-pass workflow returns a `DocumentInterpretationOutcome`, which keeps the
+typed model interpretation and `InterpretationValidationResult` together. The
+validation status is one of `valid`, `review_required`, or `invalid` and is the
+authoritative deterministic acceptance state. Model-produced `ReviewSignal`
+values remain unchanged on the interpretation; Core-produced validation issues
+remain separate on the validation result.
+
+Every normalized visual page is accounted for by a bounded `PageCoverage`
+range. `interpreted`, `blank`, and `irrelevant` are complete handling states;
+`unreadable` and `unprocessed_review_required` require review. Missing coverage
+also requires review, while duplicate or source-external coverage is invalid.
+Range endpoints are checked against the trusted normalized page count before
+any range is enumerated.
+
+Visual evidence may use a single page or inclusive page range. Anchors must be
+ordered, source-bounded, and attached only to pages declared `interpreted`.
+Evidence excerpts and mention text carry `model_observed` provenance: Core
+validates their page anchors but does not claim that the text was independently
+verified. Deterministic validation never guesses or repairs observed literal
+values or their optional normalization.

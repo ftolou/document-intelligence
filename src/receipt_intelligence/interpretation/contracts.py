@@ -178,19 +178,57 @@ class SourcePageReference(ContractModel):
     page_number: int = Field(ge=1)
 
 
+class SourcePageRange(ContractModel):
+    """Inclusive one-based page range whose source bounds are validated later."""
+
+    start_page: int = Field(ge=1)
+    end_page: int = Field(ge=1)
+
+
+class PageInterpretationState(StrEnum):
+    """Model-declared handling state for normalized visual source pages."""
+
+    INTERPRETED = "interpreted"
+    BLANK = "blank"
+    IRRELEVANT = "irrelevant"
+    UNREADABLE = "unreadable"
+    UNPROCESSED_REVIEW_REQUIRED = "unprocessed_review_required"
+
+
+class PageCoverage(ContractModel):
+    """A compact declaration that every page in a range received one handling state."""
+
+    page_range: SourcePageRange
+    state: PageInterpretationState
+
+
+class EvidenceTextProvenance(StrEnum):
+    """Provenance of text metadata attached to visual evidence."""
+
+    MODEL_OBSERVED = "model_observed"
+
+
 class EvidenceReference(ContractModel):
-    """A stable source location; ``excerpt`` preserves observed source text."""
+    """A stable source location with explicitly model-observed optional text."""
 
     evidence_id: Identifier
     source_id: Identifier
     locator: NonBlankText | None = None
     page: SourcePageReference | None = None
+    page_range: SourcePageRange | None = None
     excerpt: str | None = Field(default=None, max_length=10000)
+    excerpt_provenance: EvidenceTextProvenance | None = None
 
     @model_validator(mode="after")
     def validate_location(self) -> Self:
-        if self.locator is None and self.page is None:
-            raise ValueError("EvidenceReference requires a locator or page.")
+        if self.locator is None and self.page is None and self.page_range is None:
+            raise ValueError("EvidenceReference requires a locator, page, or page range.")
+        if self.page is not None and self.page_range is not None:
+            raise ValueError("EvidenceReference cannot use both a page and page range.")
+        if self.excerpt is not None and self.excerpt_provenance is None:
+            raise ValueError("Evidence excerpts require explicit text provenance.")
+        if self.excerpt is None and self.excerpt_provenance is not None:
+            raise ValueError("Evidence text provenance requires an excerpt.")
         return self
 
 
@@ -257,10 +295,11 @@ class DocumentMap(ContractModel):
 
 
 class Mention(ContractModel):
-    """Observed source text that may refer to an entity or value."""
+    """Model-observed source text that may refer to an entity or value."""
 
     mention_id: Identifier
     observed_text: str = Field(min_length=1, max_length=10000)
+    observed_text_provenance: EvidenceTextProvenance
     evidence_refs: tuple[Identifier, ...] = Field(min_length=1, max_length=MAX_COLLECTION_SIZE)
 
 
@@ -416,6 +455,7 @@ class DocumentInterpretation(ContractModel):
     source: DocumentSource
     specification: InterpretationSpecification
     classification: DocumentClassification
+    page_coverage: tuple[PageCoverage, ...] = Field(default=(), max_length=MAX_COLLECTION_SIZE)
     document_map: DocumentMap = Field(default_factory=DocumentMap)
     mentions: tuple[Mention, ...] = Field(default=(), max_length=MAX_COLLECTION_SIZE)
     candidate_entities: tuple[CandidateEntity, ...] = Field(
@@ -519,6 +559,45 @@ class DocumentInterpretation(ContractModel):
         )
 
 
+class InterpretationValidationStatus(StrEnum):
+    """Authoritative deterministic acceptance state for one interpretation."""
+
+    VALID = "valid"
+    REVIEW_REQUIRED = "review_required"
+    INVALID = "invalid"
+
+
+class InterpretationValidationIssue(ContractModel):
+    """One bounded deterministic finding, separate from model review metadata."""
+
+    code: Identifier
+    message: NonBlankText
+    severity: InterpretationValidationStatus
+    page_range: SourcePageRange | None = None
+
+    @model_validator(mode="after")
+    def validate_severity(self) -> Self:
+        if self.severity is InterpretationValidationStatus.VALID:
+            raise ValueError("A validation issue must require review or mark the result invalid.")
+        return self
+
+
+class InterpretationValidationResult(ContractModel):
+    """Deterministic validation state and its source-aware findings."""
+
+    status: InterpretationValidationStatus
+    issues: tuple[InterpretationValidationIssue, ...] = Field(
+        default=(), max_length=MAX_COLLECTION_SIZE
+    )
+
+
+class DocumentInterpretationOutcome(ContractModel):
+    """The single completed result owned by the interpretation workflow."""
+
+    interpretation: DocumentInterpretation
+    validation: InterpretationValidationResult
+
+
 def _unique_ids(kind: str, values: Iterable[str]) -> set[str]:
     identifiers = list(values)
     if len(identifiers) != len(set(identifiers)):
@@ -579,16 +658,21 @@ __all__ = [
     "ClassificationStatus",
     "DocumentClassification",
     "DocumentInterpretation",
+    "DocumentInterpretationOutcome",
     "DocumentInterpretationRequest",
     "DocumentMap",
     "DocumentMapNode",
     "DocumentReference",
     "DocumentSource",
     "EvidenceReference",
+    "EvidenceTextProvenance",
     "FactObject",
     "FactSubject",
     "InterpretationField",
     "InterpretationSpecification",
+    "InterpretationValidationIssue",
+    "InterpretationValidationResult",
+    "InterpretationValidationStatus",
     "JsonScalar",
     "LiteralValue",
     "LiteralType",
@@ -596,7 +680,10 @@ __all__ = [
     "MAX_SPECIFICATION_NODES",
     "Mention",
     "NormalizationStatus",
+    "PageCoverage",
+    "PageInterpretationState",
     "ReviewSeverity",
     "ReviewSignal",
     "SourcePageReference",
+    "SourcePageRange",
 ]
