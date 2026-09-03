@@ -201,20 +201,33 @@ def test_invalid_evidence_page_anchors_are_deterministic_findings(
     )
 
 
-def test_evidence_cannot_be_attached_to_a_non_interpreted_page() -> None:
+@pytest.mark.parametrize(
+    "state",
+    [
+        None,
+        PageInterpretationState.BLANK,
+        PageInterpretationState.IRRELEVANT,
+        PageInterpretationState.UNREADABLE,
+        PageInterpretationState.UNPROCESSED_REVIEW_REQUIRED,
+    ],
+)
+def test_evidence_requires_interpreted_page_coverage(
+    state: PageInterpretationState | None,
+) -> None:
     evidence = EvidenceReference(
         evidence_id="e-1",
         source_id="document-1",
         page=SourcePageReference(page_number=1),
     )
+    coverage = () if state is None else (_coverage(1, 1, state),)
 
-    assert "evidence_on_non_interpreted_page" in _codes(
-        _interpretation(
-            _coverage(1, 1, PageInterpretationState.BLANK),
-            evidence=(evidence,),
-        ),
-        1,
+    result = validate_document_interpretation(
+        _interpretation(*coverage, evidence=(evidence,)),
+        source_page_count=1,
     )
+
+    assert result.status is InterpretationValidationStatus.INVALID
+    assert "evidence_on_non_interpreted_page" in {issue.code for issue in result.issues}
 
 
 def test_visual_excerpt_requires_explicit_model_observed_provenance() -> None:

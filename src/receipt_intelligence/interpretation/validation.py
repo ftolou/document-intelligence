@@ -138,14 +138,11 @@ def validate_document_interpretation(
             page_states[page_number - 1]
             for page_number in range(evidence_range.start_page, evidence_range.end_page + 1)
         )
-        if any(
-            state is not None and state is not PageInterpretationState.INTERPRETED
-            for state in anchored_states
-        ):
+        if any(state is not PageInterpretationState.INTERPRETED for state in anchored_states):
             _add_issue(
                 issues,
                 code="evidence_on_non_interpreted_page",
-                message="Evidence is attached to a page declared non-interpreted.",
+                message="Evidence is attached to a page not declared interpreted.",
                 severity=InterpretationValidationStatus.INVALID,
                 page_range=evidence_range,
             )
