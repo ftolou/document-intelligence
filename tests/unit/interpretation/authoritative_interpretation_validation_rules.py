@@ -9,9 +9,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 import interpretation_outcome_support as support
+import pytest
 from receipt_intelligence.interpretation.contracts import MAX_COLLECTION_SIZE
 
 
