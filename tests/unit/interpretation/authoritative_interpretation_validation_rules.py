@@ -67,6 +67,31 @@ def test_evidence_attached_to_a_non_interpreted_page_is_invalid(tmp_path: Path) 
     assert support.validation_status(result) == support.INVALID
 
 
+@pytest.mark.parametrize("page_state", support.PAGE_STATES)
+def test_locator_only_evidence_is_invalid_for_paginated_sources(
+    tmp_path: Path,
+    page_state: str,
+) -> None:
+    response = support.generated_response(
+        page_states=(page_state,),
+        evidence=[
+            {
+                "evidence_id": "e-1",
+                "source_id": support.SOURCE_ID,
+                "locator": "page 1, amount field",
+                "excerpt": "12.50",
+            }
+        ],
+    )
+
+    result = support.interpret(response, tmp_path=tmp_path, pages=1)
+
+    assert support.validation_status(result) == support.INVALID
+    assert "evidence_missing_page_reference" in {
+        issue.code for issue in support.validation_issues(result)
+    }
+
+
 @pytest.mark.parametrize(
     ("page_range", "expected"),
     [

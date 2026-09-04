@@ -192,20 +192,20 @@ def _field_keys(request: DocumentInterpretationRequest) -> set[str]:
 
 @contextmanager
 def _temporary_directory() -> Iterator[Path]:
-    """Create a workflow-local directory without enumerating an untrusted-size range."""
+    """Create a private workflow-local directory and report cleanup failures."""
 
     root = Path(gettempdir())
     while True:
         directory = root / f"document-interpretation-{uuid4().hex}"
         try:
-            directory.mkdir()
+            directory.mkdir(mode=0o700)
         except FileExistsError:
             continue
         break
     try:
         yield directory
     finally:
-        rmtree(directory, ignore_errors=True)
+        rmtree(directory)
 
 
 __all__ = ["OnePassDocumentInterpreter"]

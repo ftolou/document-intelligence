@@ -115,6 +115,13 @@ def validate_document_interpretation(
         )
 
     for evidence in interpretation.evidence:
+        if evidence.page is None and evidence.page_range is None:
+            add_issue(
+                "evidence_missing_page_reference",
+                f"Evidence {evidence.evidence_id!r} has no page or page range.",
+                InterpretationValidationStatus.INVALID,
+            )
+
         if evidence.page is not None:
             page_number = evidence.page.page_number
             if page_number > page_count:

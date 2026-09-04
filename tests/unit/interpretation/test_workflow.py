@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
 from pathlib import Path
 
 import pytest
 from PIL import Image
 
+import receipt_intelligence.interpretation.workflow as workflow_module
 from receipt_intelligence.application.ports.llm import (
     GenerationError,
     GenerationIncompleteError,
@@ -39,10 +42,12 @@ class _RecordingGateway:
         self._response = response
         self.requests: list[MultimodalGenerationRequest] = []
         self.page_payloads: list[tuple[bytes, ...]] = []
+        self.page_directory_modes: list[int] = []
 
     def generate(self, request: MultimodalGenerationRequest) -> MultimodalGenerationResult:
         self.requests.append(request)
         self.page_payloads.append(tuple(path.read_bytes() for path in request.image_paths))
+        self.page_directory_modes.append(request.image_paths[0].parent.stat().st_mode)
         text = self._response if isinstance(self._response, str) else json.dumps(self._response)
         return MultimodalGenerationResult(text=text)
 
@@ -304,6 +309,45 @@ def test_accepts_unselected_optional_classification_dimension(tmp_path: Path) ->
     assert interpretation.classification.dimensions[0].evidence_refs == ("e-1",)
     assert interpretation.classification.dimensions[1].option_paths == ()
     assert interpretation.classification.dimensions[1].evidence_refs == ()
+
+
+def test_normalized_page_images_use_a_cleaned_temporary_directory(
+    tmp_path: Path,
+) -> None:
+    gateway = _RecordingGateway(_response())
+    interpreter = OnePassDocumentInterpreter(
+        gateway=gateway,
+        model="generic-multimodal-model",
+        source_limits=_limits(),
+    )
+
+    interpreter.interpret(_request(), _write_source(tmp_path / "source.png"))
+
+    page_directory = gateway.requests[0].image_paths[0].parent
+    assert not page_directory.exists()
+    if os.name == "posix":
+        assert stat.S_IMODE(gateway.page_directory_modes[0]) == 0o700
+
+
+def test_temporary_directory_cleanup_failures_are_not_silenced(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real_rmtree = workflow_module.rmtree
+
+    def remove_then_fail(directory: str | Path) -> None:
+        real_rmtree(directory)
+        raise OSError("cleanup failed")
+
+    monkeypatch.setattr(workflow_module, "rmtree", remove_then_fail)
+    interpreter = OnePassDocumentInterpreter(
+        gateway=_RecordingGateway(_response()),
+        model="generic-multimodal-model",
+        source_limits=_limits(),
+    )
+
+    with pytest.raises(OSError, match="cleanup failed"):
+        interpreter.interpret(_request(), _write_source(tmp_path / "source.png"))
 
 
 def test_rejects_output_outside_caller_classification_without_repair_call(
