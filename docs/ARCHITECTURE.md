@@ -2,6 +2,10 @@
 
 ```mermaid
 flowchart TD
+    P[Generic image or PDF] --> R[Bounded visual-page normalization]
+    R --> S[Generic one-pass interpretation]
+    S --> T[Typed interpretation and deterministic validation]
+
     A[Receipt image] --> B[Paddle text detection]
     B --> C[Safe crop planning]
     C --> D[Qwen canonical transcription]
@@ -32,6 +36,21 @@ The workflow stages exchange typed artifacts through `ExtractionContext`. Model 
 provider-neutral text and multimodal gateways, and Paddle is isolated behind the text-detection
 port. Deterministic validation never mutates the receipt. Correction candidates are accepted only
 when targeted validation failures improve without regressions.
+
+## Generic interpretation boundary
+
+`run_document_interpretation` is the explicit Core application API for a
+caller-supplied `DocumentInterpretationRequest`. It composes the existing
+provider-neutral multimodal gateway, bounded image/PDF normalization, one-pass
+workflow, typed result contracts, and deterministic validation outcome. It has
+no persistence, current application state, entity resolution, or automatic
+document-type dispatch.
+
+Generic interpretation and receipt extraction are sibling capabilities. They
+reuse low-level source-normalization and generation ports, but they do not share
+a domain workflow: shared low-level infrastructure does not imply shared domain
+semantics. Receipt callers continue to use `run_receipt_extraction`, its receipt
+contracts, and its dedicated validation/correction lifecycle.
 
 ## Generation boundary
 

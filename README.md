@@ -148,6 +148,13 @@ python scripts/run_receipt_pipeline.py test_receipts/example.jpg
 python scripts/run_receipt_images_folder.py test_receipts
 ```
 
+Core consumers can invoke generic image or PDF interpretation independently
+through `receipt_intelligence.interpretation.run_document_interpretation`. The
+generic API returns a typed interpretation together with deterministic
+validation; it does not replace the specialized `run_receipt_extraction` API or
+its receipt validation and correction workflow. See the
+[generic interpretation contract](docs/DOCUMENT_INTERPRETATION_CONTRACTS.md).
+
 ## Development and validation
 
 ```powershell
