@@ -464,6 +464,45 @@ def test_propagates_provider_neutral_generation_failures(
     assert len(gateway.requests) == 1
 
 
+@pytest.mark.parametrize(
+    "error",
+    [
+        GenerationRefusedError("generation refused"),
+        GenerationIncompleteError("generation incomplete"),
+        GenerationProviderUnavailableError("provider unavailable"),
+        GenerationError("provider failed"),
+    ],
+    ids=["refusal", "incomplete", "provider-unavailable", "provider-error"],
+)
+def test_cleanup_failure_does_not_mask_provider_neutral_generation_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    error: GenerationError,
+) -> None:
+    real_rmtree = workflow_module.rmtree
+
+    def remove_then_fail(directory: str | Path) -> None:
+        real_rmtree(directory)
+        raise OSError("cleanup failed")
+
+    monkeypatch.setattr(workflow_module, "rmtree", remove_then_fail)
+    gateway = _FailingGateway(error)
+    interpreter = OnePassDocumentInterpreter(
+        gateway=gateway,
+        model="generic-multimodal-model",
+        source_limits=_limits(),
+    )
+
+    with pytest.raises(type(error)) as raised:
+        interpreter.interpret(_request(), _write_source(tmp_path / "source.png"))
+
+    assert raised.value is error
+    assert raised.value.__notes__ == [
+        "Temporary directory cleanup failed: OSError('cleanup failed')"
+    ]
+    assert len(gateway.requests) == 1
+
+
 def test_preserves_source_stated_expiry_without_deriving_expired_state(tmp_path: Path) -> None:
     gateway = _RecordingGateway(
         _document_fact_response(

@@ -204,7 +204,13 @@ def _temporary_directory() -> Iterator[Path]:
         break
     try:
         yield directory
-    finally:
+    except BaseException as active_error:
+        try:
+            rmtree(directory)
+        except Exception as cleanup_error:
+            active_error.add_note(f"Temporary directory cleanup failed: {cleanup_error!r}")
+        raise
+    else:
         rmtree(directory)
 
 
