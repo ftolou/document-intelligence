@@ -18,6 +18,7 @@ from typing import Any
 
 import pytest
 from PIL import Image
+
 from receipt_intelligence.application.ports.multimodal import (
     MultimodalGenerationRequest,
     MultimodalGenerationResult,
