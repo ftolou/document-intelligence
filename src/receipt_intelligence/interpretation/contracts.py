@@ -178,19 +178,59 @@ class SourcePageReference(ContractModel):
     page_number: int = Field(ge=1)
 
 
+class SourcePageRange(ContractModel):
+    """One-based model-reported page endpoints.
+
+    Endpoint ordering and source bounds depend on the normalized source and are
+    therefore evaluated by deterministic interpretation validation.
+    """
+
+    start_page: int = Field(ge=1)
+    end_page: int = Field(ge=1)
+
+
+class PageHandlingState(StrEnum):
+    """How the model reports handling one or more normalized source pages."""
+
+    INTERPRETED = "interpreted"
+    BLANK = "blank"
+    IRRELEVANT = "irrelevant"
+    UNREADABLE = "unreadable"
+    UNPROCESSED_REVIEW_REQUIRED = "unprocessed_review_required"
+
+
+class SourcePageHandling(ContractModel):
+    """A document-local accounting entry for a bounded source page range."""
+
+    page_range: SourcePageRange
+    state: PageHandlingState
+
+
+class EvidenceTextProvenance(StrEnum):
+    """Provenance of text reported with visual evidence."""
+
+    MODEL_OBSERVED = "model_observed"
+
+
 class EvidenceReference(ContractModel):
-    """A stable source location; ``excerpt`` preserves observed source text."""
+    """A stable source location with explicitly model-observed visual text."""
 
     evidence_id: Identifier
     source_id: Identifier
     locator: NonBlankText | None = None
     page: SourcePageReference | None = None
+    page_range: SourcePageRange | None = None
     excerpt: str | None = Field(default=None, max_length=10000)
+    excerpt_provenance: EvidenceTextProvenance | None = None
 
     @model_validator(mode="after")
     def validate_location(self) -> Self:
-        if self.locator is None and self.page is None:
-            raise ValueError("EvidenceReference requires a locator or page.")
+        if self.locator is None and self.page is None and self.page_range is None:
+            raise ValueError("EvidenceReference requires a locator or page anchor.")
+        if self.page is not None and self.page_range is not None:
+            raise ValueError("EvidenceReference cannot specify both a page and page range.")
+        if self.excerpt is None and self.excerpt_provenance is not None:
+            raise ValueError("Evidence text provenance requires an excerpt.")
         return self
 
 
@@ -406,6 +446,48 @@ class ReviewSignal(ContractModel):
     fact_refs: tuple[Identifier, ...] = Field(default=(), max_length=MAX_COLLECTION_SIZE)
 
 
+class InterpretationValidationStatus(StrEnum):
+    """Authoritative deterministic acceptance state for one interpretation."""
+
+    VALID = "VALID"
+    REVIEW_REQUIRED = "REVIEW_REQUIRED"
+    INVALID = "INVALID"
+
+
+class ValidationIssue(ContractModel):
+    """A deterministic Core finding, distinct from a model ``ReviewSignal``."""
+
+    code: Identifier
+    message: NonBlankText
+    status: Literal[
+        InterpretationValidationStatus.REVIEW_REQUIRED,
+        InterpretationValidationStatus.INVALID,
+    ]
+
+
+class DocumentInterpretationValidation(ContractModel):
+    """Deterministic source and graph validation for an interpretation."""
+
+    status: InterpretationValidationStatus
+    issues: tuple[ValidationIssue, ...] = ()
+
+    @model_validator(mode="after")
+    def validate_status(self) -> Self:
+        issue_statuses = {issue.status for issue in self.issues}
+        if InterpretationValidationStatus.INVALID in issue_statuses:
+            expected = InterpretationValidationStatus.INVALID
+        elif issue_statuses:
+            expected = InterpretationValidationStatus.REVIEW_REQUIRED
+        else:
+            expected = None
+
+        if expected is not None and self.status is not expected:
+            raise ValueError("Validation status must reflect its most severe issue.")
+        if self.status is InterpretationValidationStatus.INVALID and expected is None:
+            raise ValueError("Invalid validation requires an invalid issue.")
+        return self
+
+
 class DocumentInterpretation(ContractModel):
     """Evidence-backed, document-scoped interpretation result.
 
@@ -424,6 +506,9 @@ class DocumentInterpretation(ContractModel):
     candidate_facts: tuple[CandidateFact, ...] = Field(default=(), max_length=MAX_COLLECTION_SIZE)
     evidence: tuple[EvidenceReference, ...] = Field(default=(), max_length=MAX_COLLECTION_SIZE)
     review_signals: tuple[ReviewSignal, ...] = Field(default=(), max_length=MAX_COLLECTION_SIZE)
+    page_handling: tuple[SourcePageHandling, ...] = Field(
+        default=(), max_length=MAX_COLLECTION_SIZE
+    )
 
     @model_validator(mode="after")
     def validate_references(self) -> Self:
@@ -512,11 +597,12 @@ class DocumentInterpretation(ContractModel):
                 raise ValueError("Candidate fact object references an unknown candidate entity.")
         return self
 
-    @property
-    def requires_review(self) -> bool:
-        return any(
-            signal.severity is ReviewSeverity.REVIEW_REQUIRED for signal in self.review_signals
-        )
+
+class DocumentInterpretationOutcome(ContractModel):
+    """The single completed result of the document interpretation workflow."""
+
+    interpretation: DocumentInterpretation
+    validation: DocumentInterpretationValidation
 
 
 def _unique_ids(kind: str, values: Iterable[str]) -> set[str]:
@@ -579,16 +665,20 @@ __all__ = [
     "ClassificationStatus",
     "DocumentClassification",
     "DocumentInterpretation",
+    "DocumentInterpretationOutcome",
     "DocumentInterpretationRequest",
+    "DocumentInterpretationValidation",
     "DocumentMap",
     "DocumentMapNode",
     "DocumentReference",
     "DocumentSource",
     "EvidenceReference",
+    "EvidenceTextProvenance",
     "FactObject",
     "FactSubject",
     "InterpretationField",
     "InterpretationSpecification",
+    "InterpretationValidationStatus",
     "JsonScalar",
     "LiteralValue",
     "LiteralType",
@@ -596,7 +686,11 @@ __all__ = [
     "MAX_SPECIFICATION_NODES",
     "Mention",
     "NormalizationStatus",
+    "PageHandlingState",
     "ReviewSeverity",
     "ReviewSignal",
+    "SourcePageHandling",
+    "SourcePageRange",
     "SourcePageReference",
+    "ValidationIssue",
 ]

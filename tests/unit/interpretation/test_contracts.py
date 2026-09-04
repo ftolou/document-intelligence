@@ -198,7 +198,7 @@ def test_interpretation_represents_atomic_evidence_backed_candidate_fact() -> No
     assert fact.evidence_refs == ("e-1", "e-2")
     assert interpretation.classification.dimensions[0].option_paths == (("record", "supported"),)
     assert interpretation.evidence[0].excerpt == " Amount: 12,? "
-    assert interpretation.requires_review is True
+    assert interpretation.review_signals[0].severity is ReviewSeverity.REVIEW_REQUIRED
 
 
 def test_interpretation_rejects_dangling_evidence_and_entity_references() -> None:
