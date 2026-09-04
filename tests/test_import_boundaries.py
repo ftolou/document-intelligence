@@ -55,6 +55,14 @@ def test_extraction_package_does_not_eagerly_import_context() -> None:
     assert stdout.strip() == "ok"
 
 
+def test_generic_interpretation_api_imports_in_standalone_core() -> None:
+    stdout = _assert_isolated_import_succeeds(
+        "from receipt_intelligence.interpretation import run_document_interpretation; "
+        "assert callable(run_document_interpretation); print('ok')"
+    )
+    assert stdout.strip() == "ok"
+
+
 def test_observability_timing_does_not_eagerly_import_readiness() -> None:
     stdout = _assert_isolated_import_succeeds(
         "import sys; import receipt_intelligence.observability as observability; "
@@ -116,3 +124,21 @@ def test_receipt_extraction_does_not_depend_on_document_interpretation() -> None
                 violations.append(str(path.relative_to(SRC_ROOT)))
 
     assert violations == []
+
+
+def test_receipt_application_entrypoint_keeps_its_specialized_workflow() -> None:
+    entrypoint_path = (
+        SRC_ROOT / "receipt_intelligence" / "pipeline" / "integrated_receipt_pipeline.py"
+    )
+    tree = ast.parse(
+        entrypoint_path.read_text(encoding="utf-8"),
+        filename=str(entrypoint_path),
+    )
+    imported_modules = {
+        node.module for node in ast.walk(tree) if isinstance(node, ast.ImportFrom) and node.module
+    }
+
+    assert "receipt_intelligence.extraction.factory" in imported_modules
+    assert not any(
+        module.startswith("receipt_intelligence.interpretation") for module in imported_modules
+    )

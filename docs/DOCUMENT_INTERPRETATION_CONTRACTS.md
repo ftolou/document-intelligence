@@ -2,8 +2,37 @@
 
 `receipt_intelligence.interpretation` defines provider-neutral input and result
 contracts for evidence-backed interpretation of arbitrary documents. It does
-not invoke a model, read a document format, resolve persistent entities, store
-results, or define a document-type or predicate registry.
+not resolve persistent entities, store results, or define a document-type or
+predicate registry.
+
+The stable Core application entry point is `run_document_interpretation`:
+
+```python
+from receipt_intelligence.extraction import SourceNormalizationLimits
+from receipt_intelligence.interpretation import run_document_interpretation
+
+outcome = run_document_interpretation(
+    request,
+    source_path,
+    gateway=multimodal_gateway,
+    model="runtime-selected-model",
+    source_limits=SourceNormalizationLimits(
+        max_source_bytes=20_000_000,
+        max_pages=50,
+        max_page_width=4_000,
+        max_page_height=4_000,
+        max_page_pixels=16_000_000,
+        max_total_pixels=100_000_000,
+    ),
+)
+```
+
+The caller composes the provider-neutral multimodal gateway, opaque model
+identifier, and explicit source bounds. The returned
+`DocumentInterpretationOutcome` contains both the typed interpretation and its
+deterministic validation result. Provider-neutral generation failures and
+bounded source-normalization failures propagate without exposing provider
+transport responses.
 
 Callers pair a `DocumentSource` with their own bounded
 `InterpretationSpecification` in a `DocumentInterpretationRequest`. A

@@ -1,5 +1,6 @@
-"""Provider-neutral contracts for evidence-backed document interpretation."""
+"""Public Core API for evidence-backed generic document interpretation."""
 
+from receipt_intelligence.interpretation.application import run_document_interpretation
 from receipt_intelligence.interpretation.contracts import (
     CandidateEntity,
     CandidateEntityReference,
@@ -73,5 +74,6 @@ __all__ = [
     "SourcePageRange",
     "SourcePageReference",
     "ValidationIssue",
+    "run_document_interpretation",
     "validate_document_interpretation",
 ]
