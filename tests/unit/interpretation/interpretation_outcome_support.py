@@ -16,9 +16,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from PIL import Image
 import pytest
-
+from PIL import Image
 from receipt_intelligence.application.ports.multimodal import (
     MultimodalGenerationRequest,
     MultimodalGenerationResult,
