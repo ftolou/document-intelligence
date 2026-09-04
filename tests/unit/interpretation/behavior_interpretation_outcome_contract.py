@@ -12,6 +12,7 @@ from pathlib import Path
 
 import interpretation_outcome_support as support
 import pytest
+
 from receipt_intelligence.interpretation import ReviewSignal
 
 pytestmark = pytest.mark.behavior_contract
