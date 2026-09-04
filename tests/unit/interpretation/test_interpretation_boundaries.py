@@ -11,6 +11,7 @@ from pathlib import Path
 
 import interpretation_outcome_support as support
 import pytest
+
 from receipt_intelligence.application.ports.llm import (
     GenerationError,
     GenerationProviderUnavailableError,
