@@ -53,6 +53,7 @@ markers = [
     "unit: fast isolated tests",
     "integration: database or service integration",
     "regression: saved receipt regression suite",
+    "behavior_contract: owner-authored executable behavior contract run explicitly before implementation",
     "gpu: requires locally available GPU-backed extraction models",
     "ollama: requires a reachable Ollama model",
 ]
