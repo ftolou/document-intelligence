@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
-from tempfile import TemporaryDirectory
+from shutil import rmtree
+from tempfile import gettempdir
+from uuid import uuid4
 
 from pydantic import Field, ValidationError
 
@@ -21,7 +25,6 @@ from receipt_intelligence.interpretation.contracts import (
     MAX_COLLECTION_SIZE,
     CandidateEntity,
     CandidateFact,
-    ClassificationStatus,
     ContractModel,
     DocumentClassification,
     DocumentInterpretation,
@@ -29,7 +32,12 @@ from receipt_intelligence.interpretation.contracts import (
     DocumentMap,
     EvidenceReference,
     Mention,
+    PageAccountingEntry,
     ReviewSignal,
+)
+from receipt_intelligence.interpretation.validation import (
+    DocumentInterpretationOutcome,
+    validate_document_interpretation,
 )
 
 _SYSTEM_PROMPT = """You interpret exactly one document from ordered page images.
@@ -50,6 +58,7 @@ class _GeneratedInterpretation(ContractModel):
     candidate_facts: tuple[CandidateFact, ...] = Field(max_length=MAX_COLLECTION_SIZE)
     evidence: tuple[EvidenceReference, ...] = Field(max_length=MAX_COLLECTION_SIZE)
     review_signals: tuple[ReviewSignal, ...] = Field(max_length=MAX_COLLECTION_SIZE)
+    page_accounting: tuple[PageAccountingEntry, ...] = Field(max_length=MAX_COLLECTION_SIZE)
 
 
 class OnePassDocumentInterpreter:
@@ -73,7 +82,7 @@ class OnePassDocumentInterpreter:
         self,
         request: DocumentInterpretationRequest,
         source_path: str | Path,
-    ) -> DocumentInterpretation:
+    ) -> DocumentInterpretationOutcome:
         """Normalize and interpret one source without repair, routing, or fallback calls."""
 
         normalized = normalize_document_source(source_path, limits=self._source_limits)
@@ -84,8 +93,7 @@ class OnePassDocumentInterpreter:
 
         schema = _GeneratedInterpretation.model_json_schema()
         prompt = _build_prompt(request, page_count=len(normalized.pages))
-        with TemporaryDirectory(prefix="document-interpretation-") as temporary_directory:
-            directory = Path(temporary_directory)
+        with _temporary_directory() as directory:
             image_paths: list[Path] = []
             for page in normalized.pages:
                 image_path = directory / f"page-{page.page_index + 1:04d}.png"
@@ -119,13 +127,6 @@ class OnePassDocumentInterpreter:
             ) from exc
 
         try:
-            _validate_source_grounding(interpretation, page_count=len(normalized.pages))
-        except ValueError as exc:
-            raise MalformedGenerationError(
-                "Model output violates the document interpretation contract."
-            ) from exc
-
-        try:
             allowed_predicates = _field_keys(request)
             unexpected_predicates = {
                 fact.predicate
@@ -134,11 +135,19 @@ class OnePassDocumentInterpreter:
             }
             if unexpected_predicates:
                 raise ValueError("Candidate facts contain concepts absent from the specification.")
-            return interpretation
         except ValueError as exc:
             raise MalformedGenerationError(
                 "Model output violates the caller-supplied interpretation specification."
             ) from exc
+
+        validation = validate_document_interpretation(
+            interpretation,
+            page_count=len(normalized.pages),
+        )
+        return DocumentInterpretationOutcome(
+            interpretation=interpretation,
+            validation=validation,
+        )
 
 
 def _build_prompt(request: DocumentInterpretationRequest, *, page_count: int) -> str:
@@ -166,6 +175,8 @@ Rules:
   applicable, fulfilled, breached, enforceable, or otherwise consequential.
 - Every extracted assertion must cite evidence from this document. Do not perform cross-document entity
   resolution or introduce facts not grounded in the supplied pages.
+- Account for each source page exactly once using one of: interpreted, blank, irrelevant, unreadable,
+  or unprocessed_review_required. Only interpreted pages may support evidence.
 """
 
 
@@ -179,33 +190,22 @@ def _field_keys(request: DocumentInterpretationRequest) -> set[str]:
     return keys
 
 
-def _validate_source_grounding(
-    interpretation: DocumentInterpretation,
-    *,
-    page_count: int,
-) -> None:
-    for evidence in interpretation.evidence:
-        if evidence.page is not None and evidence.page.page_number > page_count:
-            raise ValueError("Evidence references a page outside the normalized source.")
+@contextmanager
+def _temporary_directory() -> Iterator[Path]:
+    """Create a workflow-local directory without enumerating an untrusted-size range."""
 
-    if interpretation.classification.status is ClassificationStatus.CLASSIFIED:
-        if not interpretation.classification.evidence_refs:
-            raise ValueError("A classified result requires evidence.")
-        if any(
-            dimension.option_paths and not dimension.evidence_refs
-            for dimension in interpretation.classification.dimensions
-        ):
-            raise ValueError("Each classification selection requires evidence.")
-
-    pending_nodes = list(interpretation.document_map.nodes)
-    while pending_nodes:
-        node = pending_nodes.pop()
-        if not node.evidence_refs:
-            raise ValueError("Each document map node requires evidence.")
-        pending_nodes.extend(node.children)
-
-    if any(not entity.evidence_refs for entity in interpretation.candidate_entities):
-        raise ValueError("Each candidate entity requires evidence.")
+    root = Path(gettempdir())
+    while True:
+        directory = root / f"document-interpretation-{uuid4().hex}"
+        try:
+            directory.mkdir()
+        except FileExistsError:
+            continue
+        break
+    try:
+        yield directory
+    finally:
+        rmtree(directory, ignore_errors=True)
 
 
 __all__ = ["OnePassDocumentInterpreter"]

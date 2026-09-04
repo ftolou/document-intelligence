@@ -178,6 +178,13 @@ class SourcePageReference(ContractModel):
     page_number: int = Field(ge=1)
 
 
+class SourcePageRange(ContractModel):
+    """A model-observed inclusive page range, validated against the source later."""
+
+    start_page: int = Field(ge=1)
+    end_page: int = Field(ge=1)
+
+
 class EvidenceReference(ContractModel):
     """A stable source location; ``excerpt`` preserves observed source text."""
 
@@ -185,13 +192,33 @@ class EvidenceReference(ContractModel):
     source_id: Identifier
     locator: NonBlankText | None = None
     page: SourcePageReference | None = None
+    page_range: SourcePageRange | None = None
     excerpt: str | None = Field(default=None, max_length=10000)
 
     @model_validator(mode="after")
     def validate_location(self) -> Self:
-        if self.locator is None and self.page is None:
-            raise ValueError("EvidenceReference requires a locator or page.")
+        if self.locator is None and self.page is None and self.page_range is None:
+            raise ValueError(
+                "EvidenceReference requires a locator or page (including a page range)."
+            )
         return self
+
+
+class PageInterpretationState(StrEnum):
+    """The model's explicit handling state for one normalized source page."""
+
+    INTERPRETED = "interpreted"
+    BLANK = "blank"
+    IRRELEVANT = "irrelevant"
+    UNREADABLE = "unreadable"
+    UNPROCESSED_REVIEW_REQUIRED = "unprocessed_review_required"
+
+
+class PageAccountingEntry(ContractModel):
+    """A model declaration of how one normalized source page was handled."""
+
+    page_number: int = Field(ge=1)
+    state: PageInterpretationState
 
 
 class ClassificationStatus(StrEnum):
@@ -424,6 +451,9 @@ class DocumentInterpretation(ContractModel):
     candidate_facts: tuple[CandidateFact, ...] = Field(default=(), max_length=MAX_COLLECTION_SIZE)
     evidence: tuple[EvidenceReference, ...] = Field(default=(), max_length=MAX_COLLECTION_SIZE)
     review_signals: tuple[ReviewSignal, ...] = Field(default=(), max_length=MAX_COLLECTION_SIZE)
+    page_accounting: tuple[PageAccountingEntry, ...] = Field(
+        default=(), max_length=MAX_COLLECTION_SIZE
+    )
 
     @model_validator(mode="after")
     def validate_references(self) -> Self:
@@ -596,7 +626,10 @@ __all__ = [
     "MAX_SPECIFICATION_NODES",
     "Mention",
     "NormalizationStatus",
+    "PageAccountingEntry",
+    "PageInterpretationState",
     "ReviewSeverity",
     "ReviewSignal",
     "SourcePageReference",
+    "SourcePageRange",
 ]

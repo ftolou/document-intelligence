@@ -23,9 +23,19 @@ from receipt_intelligence.interpretation.contracts import (
     LiteralValue,
     Mention,
     NormalizationStatus,
+    PageAccountingEntry,
+    PageInterpretationState,
     ReviewSeverity,
     ReviewSignal,
+    SourcePageRange,
     SourcePageReference,
+)
+from receipt_intelligence.interpretation.validation import (
+    DocumentInterpretationOutcome,
+    InterpretationValidationIssue,
+    InterpretationValidationResult,
+    InterpretationValidationStatus,
+    validate_document_interpretation,
 )
 from receipt_intelligence.interpretation.workflow import OnePassDocumentInterpreter
 
@@ -40,6 +50,7 @@ __all__ = [
     "ClassificationStatus",
     "DocumentClassification",
     "DocumentInterpretation",
+    "DocumentInterpretationOutcome",
     "DocumentInterpretationRequest",
     "DocumentMap",
     "DocumentMapNode",
@@ -53,7 +64,14 @@ __all__ = [
     "Mention",
     "NormalizationStatus",
     "OnePassDocumentInterpreter",
+    "PageAccountingEntry",
+    "PageInterpretationState",
+    "InterpretationValidationIssue",
+    "InterpretationValidationResult",
+    "InterpretationValidationStatus",
     "ReviewSeverity",
     "ReviewSignal",
     "SourcePageReference",
+    "SourcePageRange",
+    "validate_document_interpretation",
 ]

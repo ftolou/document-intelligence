@@ -26,6 +26,7 @@ from receipt_intelligence.interpretation import (
     DocumentSource,
     InterpretationField,
     InterpretationSpecification,
+    InterpretationValidationStatus,
     LiteralValue,
     NormalizationStatus,
     OnePassDocumentInterpreter,
@@ -162,6 +163,7 @@ def _response() -> dict[str, object]:
                 "fact_refs": ["fact-1"],
             }
         ],
+        "page_accounting": [{"page_number": 1, "state": "interpreted"}],
     }
 
 
@@ -179,6 +181,7 @@ def _unsupported_response() -> dict[str, object]:
         "candidate_facts": [],
         "evidence": [],
         "review_signals": [],
+        "page_accounting": [{"page_number": 1, "state": "interpreted"}],
     }
 
 
@@ -225,6 +228,7 @@ def test_interprets_all_outputs_through_one_provider_neutral_call(tmp_path: Path
     request = _request()
 
     result = interpreter.interpret(request, _write_source(tmp_path / "source.png"))
+    interpretation = result.interpretation
 
     assert len(gateway.requests) == 1
     generation_request = gateway.requests[0]
@@ -236,15 +240,16 @@ def test_interprets_all_outputs_through_one_provider_neutral_call(tmp_path: Path
     assert request.specification.model_dump_json(indent=2) in generation_request.prompt
     assert "supported_record" in generation_request.prompt
 
-    assert result.source is request.source
-    assert result.specification is request.specification
-    assert result.classification.status is ClassificationStatus.CLASSIFIED
-    assert result.document_map.nodes[0].label == "Statement"
-    assert result.mentions[0].observed_text == "12,?"
-    assert result.candidate_entities[0].candidate_entity_id == "entity-1"
-    assert result.evidence[0].source_id == "document-1"
-    assert result.review_signals[0].severity is ReviewSeverity.REVIEW_REQUIRED
-    fact_value = result.candidate_facts[0].object
+    assert interpretation.source is request.source
+    assert interpretation.specification is request.specification
+    assert interpretation.classification.status is ClassificationStatus.CLASSIFIED
+    assert interpretation.document_map.nodes[0].label == "Statement"
+    assert interpretation.mentions[0].observed_text == "12,?"
+    assert interpretation.candidate_entities[0].candidate_entity_id == "entity-1"
+    assert interpretation.evidence[0].source_id == "document-1"
+    assert interpretation.review_signals[0].severity is ReviewSeverity.REVIEW_REQUIRED
+    assert result.validation.status is InterpretationValidationStatus.REVIEW_REQUIRED
+    fact_value = interpretation.candidate_facts[0].object
     assert isinstance(fact_value, LiteralValue)
     assert fact_value.observed == "12,?"
     assert fact_value.normalized is None
@@ -293,11 +298,12 @@ def test_accepts_unselected_optional_classification_dimension(tmp_path: Path) ->
     )
 
     result = interpreter.interpret(request, _write_source(tmp_path / "source.png"))
+    interpretation = result.interpretation
 
     assert len(gateway.requests) == 1
-    assert result.classification.dimensions[0].evidence_refs == ("e-1",)
-    assert result.classification.dimensions[1].option_paths == ()
-    assert result.classification.dimensions[1].evidence_refs == ()
+    assert interpretation.classification.dimensions[0].evidence_refs == ("e-1",)
+    assert interpretation.classification.dimensions[1].option_paths == ()
+    assert interpretation.classification.dimensions[1].evidence_refs == ()
 
 
 def test_rejects_output_outside_caller_classification_without_repair_call(
@@ -364,6 +370,7 @@ def test_rejects_malformed_output_without_repair_call(tmp_path: Path) -> None:
         "candidate_facts",
         "evidence",
         "review_signals",
+        "page_accounting",
     ],
 )
 def test_rejects_response_with_missing_section_without_repair_call(
@@ -435,12 +442,12 @@ def test_preserves_source_stated_expiry_without_deriving_expired_state(tmp_path:
 
     result = interpreter.interpret(request, _write_source(tmp_path / "source.png"))
 
-    fact = result.candidate_facts[0]
+    fact = result.interpretation.candidate_facts[0]
     assert fact.predicate == "valid_until"
     assert isinstance(fact.object, LiteralValue)
     assert fact.object.observed == "2021-02-07"
     assert fact.object.normalized == "2021-02-07"
-    assert "expired" not in result.model_dump_json()
+    assert "expired" not in result.interpretation.model_dump_json()
 
 
 def test_preserves_relative_deadline_without_external_date_inference(tmp_path: Path) -> None:
@@ -464,7 +471,7 @@ def test_preserves_relative_deadline_without_external_date_inference(tmp_path: P
 
     result = interpreter.interpret(request, _write_source(tmp_path / "source.png"))
 
-    fact = result.candidate_facts[0]
+    fact = result.interpretation.candidate_facts[0]
     assert isinstance(fact.object, LiteralValue)
     assert fact.object.observed == "two weeks after notification"
     assert fact.object.normalized is None
@@ -481,11 +488,11 @@ def test_accepts_unsupported_output_without_extracted_assertions(tmp_path: Path)
 
     result = interpreter.interpret(_request(), _write_source(tmp_path / "source.png"))
 
-    assert result.classification.status is ClassificationStatus.UNSUPPORTED
-    assert result.evidence == ()
+    assert result.interpretation.classification.status is ClassificationStatus.UNSUPPORTED
+    assert result.interpretation.evidence == ()
 
 
-def test_rejects_evidence_page_outside_normalized_source(tmp_path: Path) -> None:
+def test_marks_evidence_page_outside_normalized_source_invalid(tmp_path: Path) -> None:
     response = _response()
     evidence = response["evidence"]
     assert isinstance(evidence, list)
@@ -497,12 +504,13 @@ def test_rejects_evidence_page_outside_normalized_source(tmp_path: Path) -> None
         source_limits=_limits(),
     )
 
-    with pytest.raises(MalformedGenerationError, match="interpretation contract"):
-        interpreter.interpret(_request(), _write_source(tmp_path / "source.png"))
+    result = interpreter.interpret(_request(), _write_source(tmp_path / "source.png"))
+
+    assert result.validation.status is InterpretationValidationStatus.INVALID
 
 
 @pytest.mark.parametrize("assertion_kind", ["classification", "document-map", "candidate-entity"])
-def test_rejects_extracted_assertions_without_evidence(
+def test_marks_extracted_assertions_without_evidence_invalid(
     tmp_path: Path,
     assertion_kind: str,
 ) -> None:
@@ -539,8 +547,9 @@ def test_rejects_extracted_assertions_without_evidence(
         source_limits=_limits(),
     )
 
-    with pytest.raises(MalformedGenerationError, match="interpretation contract"):
-        interpreter.interpret(_request(), _write_source(tmp_path / "source.png"))
+    result = interpreter.interpret(_request(), _write_source(tmp_path / "source.png"))
+
+    assert result.validation.status is InterpretationValidationStatus.INVALID
 
 
 def test_rejects_declared_media_type_that_does_not_match_source(tmp_path: Path) -> None:
