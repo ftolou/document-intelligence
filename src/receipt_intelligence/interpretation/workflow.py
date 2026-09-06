@@ -167,6 +167,7 @@ class BoundedDocumentInterpreter:
                 interpretation=interpretation, validation=validation
             )
 
+        window_output_budget = MAX_COLLECTION_SIZE // len(windows)
         partials: list[DocumentInterpretation] = []
         for window_number, (start, end) in enumerate(windows, start=1):
             pages = normalized.pages[start:end]
@@ -181,15 +182,16 @@ class BoundedDocumentInterpreter:
                     source_page_start=start + 1,
                     source_page_end=end,
                 ),
+                max_aggregate_items=window_output_budget,
             )
-            partials.append(
-                _scope_partial(
-                    partial,
-                    window_number=window_number,
-                    page_offset=start,
-                    window_page_count=len(pages),
-                )
+            scoped_partial = _scope_partial(
+                partial,
+                window_number=window_number,
+                page_offset=start,
+                window_page_count=len(pages),
             )
+            _validate_page_handling_budget(scoped_partial, max_items=window_output_budget)
+            partials.append(scoped_partial)
 
         interpretation, aggregation_issues = _aggregate_partials(request, partials)
         validation = validate_document_interpretation(interpretation, source_page_count=page_count)
@@ -227,6 +229,10 @@ def _plan_windows(
         raise InterpretationExecutionLimitError(
             "Document interpretation requires more provider calls than the configured bound."
         )
+    if required_calls > MAX_COLLECTION_SIZE:
+        raise InterpretationExecutionLimitError(
+            "Document interpretation requires more windows than the aggregate result can represent."
+        )
     return tuple(
         (start, min(start + limits.max_pages_per_call, page_count))
         for start in range(0, page_count, limits.max_pages_per_call)
@@ -240,8 +246,9 @@ def _generate_interpretation(
     gateway: MultimodalGateway,
     model: str,
     prompt: str,
+    max_aggregate_items: int = MAX_COLLECTION_SIZE,
 ) -> DocumentInterpretation:
-    schema = _GeneratedInterpretation.model_json_schema()
+    schema = _generated_interpretation_schema(max_aggregate_items=max_aggregate_items)
     with TemporaryDirectory(prefix="document-interpretation-") as temporary_directory:
         directory = Path(temporary_directory)
         image_paths: list[Path] = []
@@ -286,6 +293,45 @@ def _generate_interpretation(
             "Model output violates the caller-supplied interpretation specification."
         )
     return interpretation
+
+
+def _generated_interpretation_schema(*, max_aggregate_items: int) -> dict[str, object]:
+    """Constrain every window collection that aggregation concatenates."""
+
+    schema = _GeneratedInterpretation.model_json_schema()
+    properties = schema["properties"]
+    for field_name in (
+        "mentions",
+        "candidate_entities",
+        "candidate_facts",
+        "evidence",
+        "review_signals",
+        "page_handling",
+    ):
+        properties[field_name]["maxItems"] = max_aggregate_items
+
+    definitions = schema["$defs"]
+    definitions["DocumentMap"]["properties"]["nodes"]["maxItems"] = max_aggregate_items
+    definitions["DocumentClassification"]["properties"]["evidence_refs"]["maxItems"] = (
+        max_aggregate_items
+    )
+    definitions["ClassificationDimensionResult"]["properties"]["evidence_refs"]["maxItems"] = (
+        max_aggregate_items
+    )
+    return schema
+
+
+def _validate_page_handling_budget(
+    partial: DocumentInterpretation,
+    *,
+    max_items: int,
+) -> None:
+    """Recheck the one collection extended after response-schema validation."""
+
+    if len(partial.page_handling) > max_items:
+        raise MalformedGenerationError(
+            "Window output exceeds its share of the aggregate interpretation capacity."
+        )
 
 
 def _scope_partial(

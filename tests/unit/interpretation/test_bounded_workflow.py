@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from PIL import Image
@@ -27,6 +28,7 @@ from receipt_intelligence.interpretation import (
     InterpretationSpecification,
     InterpretationValidationStatus,
     PageHandlingState,
+    workflow,
 )
 
 
@@ -233,6 +235,94 @@ def test_total_provider_work_limit_is_checked_before_generation(tmp_path: Path) 
         )
 
     assert gateway.requests == []
+
+
+def test_unrepresentable_window_count_is_rejected_before_generation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gateway = _SequentialGateway()
+    pages = (object(),) * 257
+    monkeypatch.setattr(
+        workflow,
+        "_normalize",
+        lambda request, source_path, *, limits: SimpleNamespace(pages=pages),
+    )
+
+    with pytest.raises(InterpretationExecutionLimitError, match="aggregate result"):
+        _interpreter(gateway, pages_per_call=1, calls=257).interpret(_request(), "unused.pdf")
+
+    assert gateway.requests == []
+
+
+def test_window_schema_budgets_every_concatenated_collection(tmp_path: Path) -> None:
+    gateway = _SequentialGateway(_response(pages=1), _response(pages=1))
+
+    _interpreter(gateway, pages_per_call=1).interpret(
+        _request(), _write_pdf(tmp_path / "source.pdf", 2)
+    )
+
+    schema = gateway.requests[0].response_json_schema
+    assert schema is not None
+    assert {
+        name: definition["maxItems"]
+        for name, definition in schema["properties"].items()
+        if name
+        in {
+            "mentions",
+            "candidate_entities",
+            "candidate_facts",
+            "evidence",
+            "review_signals",
+            "page_handling",
+        }
+    } == {
+        "mentions": 128,
+        "candidate_entities": 128,
+        "candidate_facts": 128,
+        "evidence": 128,
+        "review_signals": 128,
+        "page_handling": 128,
+    }
+    definitions = schema["$defs"]
+    assert definitions["DocumentMap"]["properties"]["nodes"]["maxItems"] == 128
+    assert definitions["DocumentClassification"]["properties"]["evidence_refs"]["maxItems"] == 128
+    assert (
+        definitions["ClassificationDimensionResult"]["properties"]["evidence_refs"]["maxItems"]
+        == 128
+    )
+
+
+def test_window_output_cannot_consume_another_windows_aggregate_capacity(
+    tmp_path: Path,
+) -> None:
+    oversized = _response(pages=1)
+    mention = oversized["mentions"][0]
+    oversized["mentions"] = [{**mention, "mention_id": f"mention-{index}"} for index in range(129)]
+    gateway = _SequentialGateway(oversized, _response(pages=1))
+
+    with pytest.raises(MalformedGenerationError, match="response schema"):
+        _interpreter(gateway, pages_per_call=1).interpret(
+            _request(), _write_pdf(tmp_path / "source.pdf", 2)
+        )
+
+    assert len(gateway.requests) == 1
+
+
+def test_missing_page_accounting_must_fit_the_window_aggregate_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gateway = _SequentialGateway(_response(pages=1))
+    pages = (SimpleNamespace(image_bytes=b"page"),) * 512
+    monkeypatch.setattr(
+        workflow,
+        "_normalize",
+        lambda request, source_path, *, limits: SimpleNamespace(pages=pages),
+    )
+
+    with pytest.raises(MalformedGenerationError, match="aggregate interpretation capacity"):
+        _interpreter(gateway, pages_per_call=2, calls=256).interpret(_request(), "unused.pdf")
+
+    assert len(gateway.requests) == 1
 
 
 def test_partial_provider_failure_aborts_the_complete_interpretation(tmp_path: Path) -> None:
