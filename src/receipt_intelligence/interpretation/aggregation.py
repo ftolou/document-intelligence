@@ -6,6 +6,7 @@ from itertools import count
 
 from receipt_intelligence.interpretation.contracts import (
     CandidateEntityReference,
+    ClassificationDimensionResult,
     ClassificationStatus,
     DocumentClassification,
     DocumentInterpretation,
@@ -199,13 +200,18 @@ def _aggregate_classification(
         )
 
     first = classifications[0]
+    reasons = {item.reason for item in classifications}
+    common_reason = next(iter(reasons)) if len(reasons) == 1 else None
     if first.status is ClassificationStatus.UNSUPPORTED:
         return (
-            first.model_copy(
-                update={
+            DocumentClassification.model_validate(
+                {
+                    **first.model_dump(),
+                    "reason": common_reason
+                    or "Bounded windows agree that the document classification is unsupported.",
                     "evidence_refs": tuple(
                         value for item in classifications for value in item.evidence_refs
-                    )
+                    ),
                 }
             ),
             (),
@@ -220,8 +226,9 @@ def _aggregate_classification(
         matching = tuple(values[first_dimension.dimension_key] for values in dimensions_by_window)
         confidences = {item.confidence for item in matching}
         dimensions.append(
-            first_dimension.model_copy(
-                update={
+            ClassificationDimensionResult.model_validate(
+                {
+                    **first_dimension.model_dump(),
                     "confidence": next(iter(confidences)) if len(confidences) == 1 else None,
                     "evidence_refs": tuple(
                         value for item in matching for value in item.evidence_refs
@@ -230,8 +237,10 @@ def _aggregate_classification(
             )
         )
     return (
-        first.model_copy(
-            update={
+        DocumentClassification.model_validate(
+            {
+                **first.model_dump(),
+                "reason": common_reason,
                 "dimensions": tuple(dimensions),
                 "evidence_refs": tuple(
                     value for item in classifications for value in item.evidence_refs
@@ -245,11 +254,11 @@ def _aggregate_classification(
 def _classification_signature(classification: DocumentClassification) -> tuple[object, ...]:
     dimensions = tuple(
         sorted(
-            (dimension.dimension_key, dimension.option_paths)
+            (dimension.dimension_key, tuple(sorted(dimension.option_paths)))
             for dimension in classification.dimensions
         )
     )
-    return classification.status, classification.reason, dimensions
+    return classification.status, dimensions
 
 
 def _identifier(window_number: int, kind: str, item_number: int) -> str:

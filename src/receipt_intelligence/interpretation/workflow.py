@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Any
 
 from pydantic import Field, ValidationError
 
@@ -64,6 +65,16 @@ class _GeneratedInterpretation(ContractModel):
     page_handling: tuple[SourcePageHandling, ...] = Field(max_length=MAX_COLLECTION_SIZE)
 
 
+_AGGREGATED_ROOT_COLLECTIONS = (
+    "mentions",
+    "candidate_entities",
+    "candidate_facts",
+    "evidence",
+    "review_signals",
+    "page_handling",
+)
+
+
 class DocumentInterpreter:
     """Interpret one source through deterministic bounded provider work."""
 
@@ -100,12 +111,12 @@ class DocumentInterpreter:
             len(normalized.pages),
             limits=self._execution_limits,
         )
-        schema = _GeneratedInterpretation.model_json_schema()
+        collection_capacities = _allocate_collection_capacities(len(windows))
         interpretations: list[DocumentInterpretation] = []
         window_issues: list[ValidationIssue] = []
         with TemporaryDirectory(prefix="document-interpretation-") as temporary_directory:
             directory = Path(temporary_directory)
-            for window in windows:
+            for window, collection_capacity in zip(windows, collection_capacities, strict=True):
                 pages = normalized.pages[window.start_page - 1 : window.end_page]
                 interpretation = self._generate_window(
                     request,
@@ -113,7 +124,7 @@ class DocumentInterpreter:
                     window=window if len(windows) > 1 else None,
                     total_page_count=len(normalized.pages),
                     directory=directory,
-                    schema=schema,
+                    schema=_generated_interpretation_schema(collection_capacity),
                 )
                 interpretations.append(interpretation)
                 if len(windows) > 1:
@@ -174,7 +185,7 @@ class DocumentInterpreter:
         window: InterpretationWindow | None,
         total_page_count: int,
         directory: Path,
-        schema: dict[str, object],
+        schema: dict[str, Any],
     ) -> DocumentInterpretation:
         prompt = _build_prompt(
             request,
@@ -227,6 +238,38 @@ class DocumentInterpreter:
                 "Model output violates the caller-supplied interpretation specification."
             ) from exc
         return interpretation
+
+
+def _allocate_collection_capacities(window_count: int) -> tuple[int, ...]:
+    """Partition every aggregate collection's contract capacity across windows."""
+
+    if window_count < 1:
+        raise ValueError("At least one interpretation window is required.")
+    if window_count > MAX_COLLECTION_SIZE:
+        raise ValueError(
+            "Document interpretation requires more window results than can be represented."
+        )
+    capacity, remainder = divmod(MAX_COLLECTION_SIZE, window_count)
+    return tuple(capacity + (1 if index < remainder else 0) for index in range(window_count))
+
+
+def _generated_interpretation_schema(collection_capacity: int) -> dict[str, Any]:
+    """Bound one window so mechanical concatenation remains contract-representable."""
+
+    schema = _GeneratedInterpretation.model_json_schema()
+    properties = schema["properties"]
+    for field_name in _AGGREGATED_ROOT_COLLECTIONS:
+        properties[field_name]["maxItems"] = collection_capacity
+
+    definitions = schema["$defs"]
+    definitions["DocumentMap"]["properties"]["nodes"]["maxItems"] = collection_capacity
+    definitions["DocumentClassification"]["properties"]["evidence_refs"]["maxItems"] = (
+        collection_capacity
+    )
+    definitions["ClassificationDimensionResult"]["properties"]["evidence_refs"]["maxItems"] = (
+        collection_capacity
+    )
+    return schema
 
 
 class OnePassDocumentInterpreter(DocumentInterpreter):
