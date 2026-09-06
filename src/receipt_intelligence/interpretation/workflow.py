@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import TypeVar
 
 from pydantic import Field, ValidationError
 
@@ -53,6 +54,8 @@ matches the supplied response schema. Use only the caller-supplied interpretatio
 do not introduce a global taxonomy, business ontology, current-state conclusion, or consequence.
 Perform classification, document mapping, mention detection, candidate entity detection, atomic
 candidate fact extraction, evidence linking, and review signaling together in this response."""
+
+_T = TypeVar("_T")
 
 
 @dataclass(frozen=True, slots=True)
@@ -366,12 +369,11 @@ def _scope_partial(
     review_signals = tuple(
         item.model_copy(
             update={
-                "code": _scoped_signal_code(window_number, index, item.code),
                 "evidence_refs": _mapped(item.evidence_refs, evidence_ids),
                 "fact_refs": _mapped(item.fact_refs, fact_ids),
             }
         )
-        for index, item in enumerate(partial.review_signals, start=1)
+        for item in partial.review_signals
     )
     classification = partial.classification.model_copy(
         update={
@@ -524,10 +526,15 @@ def _aggregate_classification(
     first = classifications[0]
     evidence_refs = tuple(ref for item in classifications for ref in item.evidence_refs)
     if first.status is ClassificationStatus.UNSUPPORTED:
+        reasons = {item.reason for item in classifications}
         return (
             DocumentClassification(
                 status=first.status,
-                reason=first.reason,
+                reason=(
+                    first.reason
+                    if len(reasons) == 1
+                    else "All bounded windows reported an unsupported classification."
+                ),
                 evidence_refs=evidence_refs,
             ),
             None,
@@ -541,7 +548,12 @@ def _aggregate_classification(
         ClassificationDimensionResult(
             dimension_key=dimension.dimension_key,
             option_paths=dimension.option_paths,
-            confidence=dimension.confidence,
+            confidence=_common_value(
+                tuple(
+                    window_dimensions[dimension.dimension_key].confidence
+                    for window_dimensions in dimensions_by_key
+                )
+            ),
             evidence_refs=tuple(
                 ref
                 for window_dimensions in dimensions_by_key
@@ -554,7 +566,7 @@ def _aggregate_classification(
         DocumentClassification(
             status=first.status,
             dimensions=dimensions,
-            reason=first.reason,
+            reason=_common_value(tuple(item.reason for item in classifications)),
             evidence_refs=evidence_refs,
         ),
         None,
@@ -564,11 +576,16 @@ def _aggregate_classification(
 def _classification_signature(classification: DocumentClassification) -> tuple[object, ...]:
     dimensions = tuple(
         sorted(
-            (dimension.dimension_key, dimension.option_paths, dimension.confidence)
+            (dimension.dimension_key, tuple(sorted(dimension.option_paths)))
             for dimension in classification.dimensions
         )
     )
-    return classification.status, classification.reason, dimensions
+    return classification.status, dimensions
+
+
+def _common_value(values: tuple[_T, ...]) -> _T | None:
+    first = values[0]
+    return first if all(value == first for value in values[1:]) else None
 
 
 def _add_validation_issues(
@@ -622,11 +639,6 @@ def _shift_range(page_range: SourcePageRange, offset: int) -> SourcePageRange:
 
 def _scoped_id(window_number: int, kind: str, position: int) -> str:
     return f"window-{window_number}-{kind}-{position}"
-
-
-def _scoped_signal_code(window_number: int, position: int, code: str) -> str:
-    prefix = f"window-{window_number}-signal-{position}:"
-    return prefix + code[: 200 - len(prefix)]
 
 
 def _flatten_map(nodes: tuple[DocumentMapNode, ...]) -> list[DocumentMapNode]:

@@ -279,6 +279,91 @@ def test_incompatible_window_classifications_are_not_silently_merged(tmp_path: P
     assert "AMBIGUOUS_WINDOW_CLASSIFICATION" in {issue.code for issue in outcome.validation.issues}
 
 
+def test_classification_metadata_differences_do_not_change_an_agreed_decision(
+    tmp_path: Path,
+) -> None:
+    first = _response(pages=1)
+    second = _response(pages=1)
+    first_classification = first["classification"]
+    second_classification = second["classification"]
+    assert isinstance(first_classification, dict)
+    assert isinstance(second_classification, dict)
+    first_classification["reason"] = "The first window explanation."
+    second_classification["reason"] = "The second window explanation."
+    first_dimensions = first_classification["dimensions"]
+    second_dimensions = second_classification["dimensions"]
+    assert isinstance(first_dimensions, list)
+    assert isinstance(second_dimensions, list)
+    assert isinstance(first_dimensions[0], dict)
+    assert isinstance(second_dimensions[0], dict)
+    first_dimensions[0]["confidence"] = 0.6
+    second_dimensions[0]["confidence"] = 0.8
+    gateway = _SequentialGateway(first, second)
+
+    outcome = _interpreter(gateway, pages_per_call=1).interpret(
+        _request(), _write_pdf(tmp_path / "source.pdf", 2)
+    )
+
+    classification = outcome.interpretation.classification
+    assert classification.status.value == "classified"
+    assert classification.reason is None
+    assert classification.dimensions[0].confidence is None
+    assert len(classification.evidence_refs) == 2
+    assert len(classification.dimensions[0].evidence_refs) == 2
+    assert outcome.validation.status is InterpretationValidationStatus.VALID
+    assert "AMBIGUOUS_WINDOW_CLASSIFICATION" not in {
+        issue.code for issue in outcome.validation.issues
+    }
+
+
+def test_differing_unsupported_reasons_do_not_create_semantic_disagreement(
+    tmp_path: Path,
+) -> None:
+    first = _response(pages=1)
+    second = _response(pages=1)
+    first["classification"] = {"status": "unsupported", "reason": "First explanation."}
+    second["classification"] = {"status": "unsupported", "reason": "Second explanation."}
+    gateway = _SequentialGateway(first, second)
+
+    outcome = _interpreter(gateway, pages_per_call=1).interpret(
+        _request(), _write_pdf(tmp_path / "source.pdf", 2)
+    )
+
+    classification = outcome.interpretation.classification
+    assert classification.status.value == "unsupported"
+    assert classification.reason == "All bounded windows reported an unsupported classification."
+    assert outcome.validation.status is InterpretationValidationStatus.VALID
+
+
+def test_windowed_review_signal_codes_are_preserved_while_references_are_scoped(
+    tmp_path: Path,
+) -> None:
+    first = _response(pages=1)
+    second = _response(pages=1)
+    signal = {
+        "code": "ambiguous_value",
+        "message": "The value requires review.",
+        "evidence_refs": ["evidence-1"],
+        "fact_refs": ["fact-1"],
+    }
+    first["review_signals"] = [signal]
+    second["review_signals"] = [signal]
+    gateway = _SequentialGateway(first, second)
+
+    result = (
+        _interpreter(gateway, pages_per_call=1)
+        .interpret(_request(), _write_pdf(tmp_path / "source.pdf", 2))
+        .interpretation
+    )
+
+    assert [item.code for item in result.review_signals] == [
+        "ambiguous_value",
+        "ambiguous_value",
+    ]
+    assert len({item.evidence_refs[0] for item in result.review_signals}) == 2
+    assert len({item.fact_refs[0] for item in result.review_signals}) == 2
+
+
 def test_window_cannot_claim_evidence_from_an_unsupplied_page(tmp_path: Path) -> None:
     first = _response(pages=1)
     evidence = first["evidence"]
