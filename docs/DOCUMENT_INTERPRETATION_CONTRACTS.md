@@ -9,7 +9,10 @@ The stable Core application entry point is `run_document_interpretation`:
 
 ```python
 from receipt_intelligence.extraction import SourceNormalizationLimits
-from receipt_intelligence.interpretation import run_document_interpretation
+from receipt_intelligence.interpretation import (
+    InterpretationExecutionLimits,
+    run_document_interpretation,
+)
 
 outcome = run_document_interpretation(
     request,
@@ -24,11 +27,31 @@ outcome = run_document_interpretation(
         max_page_pixels=16_000_000,
         max_total_pixels=100_000_000,
     ),
+    execution_limits=InterpretationExecutionLimits(
+        reliable_single_pass_max_pages=10,
+        max_model_calls=5,
+    ),
 )
 ```
 
 The caller composes the provider-neutral multimodal gateway, opaque model
-identifier, and explicit source bounds. The returned
+identifier, explicit source bounds, and generic execution bounds. Documents at
+or below `reliable_single_pass_max_pages` retain the one-call path. Larger
+documents are split into deterministic, non-overlapping page windows of that
+size, and `max_model_calls` bounds total model work before any call is made.
+Omitting `execution_limits` preserves the original one-pass behavior.
+
+Window outputs are combined without additional model calls or semantic merge
+reasoning. Original one-based page anchors are retained. Window-local evidence,
+mention, map-node, candidate-entity, and fact identifiers are deterministically
+namespaced with all references rewritten together, so collisions cannot join
+unrelated candidates. Even semantically similar candidates and facts remain
+separate document-local observations. Missing page accounting is represented as
+`unprocessed_review_required`; incompatible window classifications produce an
+explicit review signal. Any provider or malformed-generation failure aborts the
+workflow rather than returning a result that looks complete.
+
+The returned
 `DocumentInterpretationOutcome` contains both the typed interpretation and its
 deterministic validation result. Provider-neutral generation failures and
 bounded source-normalization failures propagate without exposing provider
