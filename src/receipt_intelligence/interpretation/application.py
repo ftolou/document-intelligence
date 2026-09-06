@@ -10,7 +10,8 @@ from receipt_intelligence.interpretation.contracts import (
     DocumentInterpretationOutcome,
     DocumentInterpretationRequest,
 )
-from receipt_intelligence.interpretation.workflow import OnePassDocumentInterpreter
+from receipt_intelligence.interpretation.windowing import InterpretationExecutionLimits
+from receipt_intelligence.interpretation.workflow import DocumentInterpreter
 
 
 def run_document_interpretation(
@@ -20,6 +21,7 @@ def run_document_interpretation(
     gateway: MultimodalGateway,
     model: str,
     source_limits: SourceNormalizationLimits,
+    execution_limits: InterpretationExecutionLimits | None = None,
 ) -> DocumentInterpretationOutcome:
     """Interpret one document through the provider-neutral Core workflow.
 
@@ -28,10 +30,11 @@ def run_document_interpretation(
     propagate unchanged to the caller.
     """
 
-    return OnePassDocumentInterpreter(
+    return DocumentInterpreter(
         gateway=gateway,
         model=model,
         source_limits=source_limits,
+        execution_limits=execution_limits or InterpretationExecutionLimits(),
     ).interpret(request, source_path)
 
 

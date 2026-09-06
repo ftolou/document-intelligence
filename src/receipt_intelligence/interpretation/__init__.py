@@ -37,7 +37,15 @@ from receipt_intelligence.interpretation.contracts import (
     ValidationIssue,
 )
 from receipt_intelligence.interpretation.validation import validate_document_interpretation
-from receipt_intelligence.interpretation.workflow import OnePassDocumentInterpreter
+from receipt_intelligence.interpretation.windowing import (
+    InterpretationExecutionLimits,
+    InterpretationWindow,
+    plan_interpretation_windows,
+)
+from receipt_intelligence.interpretation.workflow import (
+    DocumentInterpreter,
+    OnePassDocumentInterpreter,
+)
 
 __all__ = [
     "CandidateEntity",
@@ -53,6 +61,7 @@ __all__ = [
     "DocumentInterpretationOutcome",
     "DocumentInterpretationRequest",
     "DocumentInterpretationValidation",
+    "DocumentInterpreter",
     "DocumentMap",
     "DocumentMapNode",
     "DocumentReference",
@@ -60,8 +69,10 @@ __all__ = [
     "EvidenceReference",
     "EvidenceTextProvenance",
     "InterpretationField",
+    "InterpretationExecutionLimits",
     "InterpretationSpecification",
     "InterpretationValidationStatus",
+    "InterpretationWindow",
     "LiteralValue",
     "LiteralType",
     "Mention",
@@ -75,5 +86,6 @@ __all__ = [
     "SourcePageReference",
     "ValidationIssue",
     "run_document_interpretation",
+    "plan_interpretation_windows",
     "validate_document_interpretation",
 ]

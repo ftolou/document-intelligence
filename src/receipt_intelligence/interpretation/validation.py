@@ -19,6 +19,7 @@ def validate_document_interpretation(
     interpretation: DocumentInterpretation,
     *,
     source_page_count: int,
+    source_page_start: int = 1,
 ) -> DocumentInterpretationValidation:
     """Validate integrity that depends on the complete normalized visual source.
 
@@ -28,16 +29,21 @@ def validate_document_interpretation(
 
     if source_page_count < 1:
         raise ValueError("source_page_count must be positive.")
+    if source_page_start < 1:
+        raise ValueError("source_page_start must be positive.")
+    source_page_end = source_page_start + source_page_count - 1
 
     issues: list[ValidationIssue] = []
     valid_handling = _validate_page_handling(
         interpretation.page_handling,
-        source_page_count=source_page_count,
+        source_page_start=source_page_start,
+        source_page_end=source_page_end,
         issues=issues,
     )
     _validate_evidence_pages(
         interpretation,
-        source_page_count=source_page_count,
+        source_page_start=source_page_start,
+        source_page_end=source_page_end,
         valid_handling=valid_handling,
         issues=issues,
     )
@@ -59,7 +65,8 @@ def validate_document_interpretation(
 def _validate_page_handling(
     page_handling: tuple[SourcePageHandling, ...],
     *,
-    source_page_count: int,
+    source_page_start: int,
+    source_page_end: int,
     issues: list[ValidationIssue],
 ) -> list[SourcePageHandling]:
     valid: list[SourcePageHandling] = []
@@ -73,7 +80,7 @@ def _validate_page_handling(
                 )
             )
             continue
-        if page_range.end_page > source_page_count:
+        if page_range.start_page < source_page_start or page_range.end_page > source_page_end:
             issues.append(
                 _invalid(
                     "NONEXISTENT_PAGE_COVERAGE",
@@ -97,7 +104,7 @@ def _validate_page_handling(
                 )
             )
 
-    cursor = 1
+    cursor = source_page_start
     for handling in sorted(
         valid,
         key=lambda item: (item.page_range.start_page, item.page_range.end_page),
@@ -120,7 +127,7 @@ def _validate_page_handling(
             )
         cursor = max(cursor, end + 1)
 
-    if cursor <= source_page_count:
+    if cursor <= source_page_end:
         issues.append(
             _review_required(
                 "MISSING_PAGE_COVERAGE",
@@ -133,7 +140,8 @@ def _validate_page_handling(
 def _validate_evidence_pages(
     interpretation: DocumentInterpretation,
     *,
-    source_page_count: int,
+    source_page_start: int,
+    source_page_end: int,
     valid_handling: list[SourcePageHandling],
     issues: list[ValidationIssue],
 ) -> None:
@@ -170,7 +178,7 @@ def _validate_evidence_pages(
                 )
             )
             continue
-        if end > source_page_count:
+        if start < source_page_start or end > source_page_end:
             issues.append(
                 _invalid(
                     "NONEXISTENT_EVIDENCE_PAGE",
