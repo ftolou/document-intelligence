@@ -502,20 +502,27 @@ def _aggregate_classification(
             (),
         )
 
-    first = classifications[0]
-    signatures = tuple(
+    dimensions_by_key = (
         tuple(
-            (dimension.dimension_key, dimension.option_paths)
-            for dimension in classification.dimensions
+            {dimension.dimension_key: dimension for dimension in classification.dimensions}
+            for classification in classifications
         )
-        if classification.status is ClassificationStatus.CLASSIFIED
-        else None
-        for classification in classifications
+        if all(
+            classification.status is ClassificationStatus.CLASSIFIED
+            for classification in classifications
+        )
+        else ()
     )
-    if all(signature == signatures[0] for signature in signatures) and signatures[0] is not None:
+    signatures = tuple(
+        {key: frozenset(dimension.option_paths) for key, dimension in dimensions.items()}
+        for dimensions in dimensions_by_key
+    )
+    if signatures and all(signature == signatures[0] for signature in signatures):
         dimensions: list[ClassificationDimensionResult] = []
-        for index, first_dimension in enumerate(first.dimensions):
-            window_dimensions = tuple(item.dimensions[index] for item in classifications)
+        for first_dimension in classifications[0].dimensions:
+            window_dimensions = tuple(
+                items[first_dimension.dimension_key] for items in dimensions_by_key
+            )
             confidences = {item.confidence for item in window_dimensions}
             dimensions.append(
                 first_dimension.model_copy(

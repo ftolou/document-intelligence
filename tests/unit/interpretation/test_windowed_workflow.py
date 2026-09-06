@@ -326,6 +326,117 @@ def test_incompatible_window_classification_requires_review(
     assert outcome.validation.status is InterpretationValidationStatus.REVIEW_REQUIRED
 
 
+def test_equivalent_reordered_window_classifications_merge_by_dimension(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "receipt_intelligence.interpretation.workflow.normalize_document_source",
+        lambda source_path, *, limits: _source(3),
+    )
+    request = _request().model_copy(
+        update={
+            "specification": InterpretationSpecification(
+                specification_id="specification-1",
+                description="Extract only the requested concepts.",
+                classifications=(
+                    ClassificationDimension(
+                        key="record_kind",
+                        description="Generic record kind.",
+                        options=(
+                            ClassificationOption(
+                                key="supported_record",
+                                description="A supported record.",
+                            ),
+                        ),
+                    ),
+                    ClassificationDimension(
+                        key="topics",
+                        description="Topics present in the record.",
+                        options=(
+                            ClassificationOption(key="alpha", description="Alpha topic."),
+                            ClassificationOption(key="beta", description="Beta topic."),
+                        ),
+                        max_selections=2,
+                    ),
+                ),
+                fields=(InterpretationField(key="stated_name", description="A stated name."),),
+            )
+        }
+    )
+    first = _response(evidence_page=1, handled_start=1, handled_end=2)
+    second = _response(evidence_page=3, handled_start=3, handled_end=3)
+    for response, page_number in ((first, 1), (second, 3)):
+        response["evidence"] = [
+            {
+                "evidence_id": evidence_id,
+                "source_id": "document-1",
+                "page": {"page_number": page_number},
+            }
+            for evidence_id in (
+                "evidence-local",
+                "evidence-record-kind",
+                "evidence-topics",
+            )
+        ]
+    first["classification"] = {
+        "status": "classified",
+        "dimensions": [
+            {
+                "dimension_key": "record_kind",
+                "option_paths": [["supported_record"]],
+                "confidence": 0.8,
+                "evidence_refs": ["evidence-record-kind"],
+            },
+            {
+                "dimension_key": "topics",
+                "option_paths": [["alpha"], ["beta"]],
+                "confidence": 0.6,
+                "evidence_refs": ["evidence-topics"],
+            },
+        ],
+        "evidence_refs": ["evidence-local"],
+    }
+    second["classification"] = {
+        "status": "classified",
+        "dimensions": [
+            {
+                "dimension_key": "topics",
+                "option_paths": [["beta"], ["alpha"]],
+                "confidence": 0.6,
+                "evidence_refs": ["evidence-topics"],
+            },
+            {
+                "dimension_key": "record_kind",
+                "option_paths": [["supported_record"]],
+                "confidence": 0.8,
+                "evidence_refs": ["evidence-record-kind"],
+            },
+        ],
+        "evidence_refs": ["evidence-local"],
+    }
+    gateway = _SequenceGateway([first, second])
+
+    outcome = _interpreter(gateway, page_count=3).interpret(request, "source.pdf")
+
+    classification = outcome.interpretation.classification
+    assert classification.status is ClassificationStatus.CLASSIFIED
+    assert [item.dimension_key for item in classification.dimensions] == [
+        "record_kind",
+        "topics",
+    ]
+    assert [item.confidence for item in classification.dimensions] == [0.8, 0.6]
+    assert classification.dimensions[0].evidence_refs == (
+        "window-0001-evidence-0002",
+        "window-0002-evidence-0002",
+    )
+    assert classification.dimensions[1].evidence_refs == (
+        "window-0001-evidence-0003",
+        "window-0002-evidence-0003",
+    )
+    assert outcome.interpretation.review_signals == ()
+    assert outcome.validation.status is InterpretationValidationStatus.VALID
+
+
 def test_small_document_keeps_unmodified_one_pass_result(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "receipt_intelligence.interpretation.workflow.normalize_document_source",
