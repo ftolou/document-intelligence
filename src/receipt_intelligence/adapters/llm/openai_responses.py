@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import copy
 import io
+import json
 import mimetypes
 import re
 import time
@@ -143,6 +144,7 @@ class _OpenAIResponsesAdapter:
             transport_schema = _strict_transport_schema(response_json_schema)
             if transport_schema is None:
                 payload["text"] = {"format": {"type": "json_object"}}
+                payload["input"] = _json_schema_fallback_input(input_value, response_json_schema)
             else:
                 payload["text"] = {
                     "format": {
@@ -239,6 +241,32 @@ class OpenAIMultimodalGateway(_OpenAIResponsesAdapter):
             text_source="output_text",
             raw_response=raw_response,
         )
+
+
+def _json_schema_fallback_input(input_value: Any, schema: dict[str, Any]) -> Any:
+    schema_json = json.dumps(schema, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    instruction = (
+        "Return exactly one JSON object matching this response JSON Schema. "
+        "Treat the schema as authoritative for the response shape.\n"
+        "<response_json_schema>\n"
+        f"{schema_json}\n"
+        "</response_json_schema>"
+    )
+    if isinstance(input_value, str):
+        return f"{input_value.rstrip()}\n\n{instruction}"
+    if isinstance(input_value, list):
+        copied_input = copy.deepcopy(input_value)
+        for message in reversed(copied_input):
+            if not isinstance(message, dict) or message.get("role") != "user":
+                continue
+            content = message.get("content")
+            if isinstance(content, list):
+                content.append({"type": "input_text", "text": instruction})
+                return copied_input
+            if isinstance(content, str):
+                message["content"] = f"{content.rstrip()}\n\n{instruction}"
+                return copied_input
+    raise ValueError("OpenAI JSON-schema fallback requires a string or user-message input.")
 
 
 def _response_text(response: Any, raw_response: dict[str, Any]) -> str:
