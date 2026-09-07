@@ -24,15 +24,18 @@ outcome = run_document_interpretation(
         max_page_pixels=16_000_000,
         max_total_pixels=100_000_000,
     ),
+    max_output_tokens=16_384,
 )
 ```
 
 The caller composes the provider-neutral multimodal gateway, opaque model
-identifier, and explicit source bounds. The returned
-`DocumentInterpretationOutcome` contains both the typed interpretation and its
-deterministic validation result. Provider-neutral generation failures and
-bounded source-normalization failures propagate without exposing provider
-transport responses.
+identifier, explicit source bounds, and output-token budget. The interpretation
+workflow defaults that budget to 16,384 tokens when the caller does not override
+it; provider adapters translate the generic generation limit to their native
+transport. The returned `DocumentInterpretationOutcome` contains both the typed
+interpretation and its deterministic validation result. Provider-neutral
+generation failures and bounded source-normalization failures propagate without
+exposing provider transport responses.
 
 Callers pair a `DocumentSource` with their own bounded
 `InterpretationSpecification` in a `DocumentInterpretationRequest`. A
