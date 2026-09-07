@@ -41,6 +41,20 @@ class ContractModel(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
+    @classmethod
+    def __get_pydantic_json_schema__(
+        cls,
+        core_schema: Any,
+        handler: GetJsonSchemaHandler,
+    ) -> dict[str, Any]:
+        """Make bounded contract fields explicit in generated response schemas."""
+
+        schema = handler(core_schema)
+        properties = schema.get("properties")
+        if isinstance(properties, dict):
+            schema["required"] = list(properties)
+        return schema
+
 
 class DocumentSource(ContractModel):
     """Opaque identity and media metadata for one caller-owned document."""
@@ -376,22 +390,23 @@ def _literal_json_schema_branch(
     else:
         unit_schema = {"type": "null"}
 
+    properties = {
+        "kind": {"type": "string", "const": "literal"},
+        "literal_type": {"type": "string", "const": literal_type.value},
+        "observed": {"type": "string", "minLength": 1, "maxLength": 10000},
+        "normalization_status": {
+            "type": "string",
+            "enum": [status.value for status in NormalizationStatus],
+        },
+        "normalized": {"anyOf": [normalized_schema, {"type": "null"}]},
+        "currency": currency_schema,
+        "unit": unit_schema,
+    }
     return {
         "type": "object",
         "additionalProperties": False,
-        "properties": {
-            "kind": {"type": "string", "const": "literal"},
-            "literal_type": {"type": "string", "const": literal_type.value},
-            "observed": {"type": "string", "minLength": 1, "maxLength": 10000},
-            "normalization_status": {
-                "type": "string",
-                "enum": [status.value for status in NormalizationStatus],
-            },
-            "normalized": {"anyOf": [normalized_schema, {"type": "null"}]},
-            "currency": currency_schema,
-            "unit": unit_schema,
-        },
-        "required": ["literal_type", "observed"],
+        "properties": properties,
+        "required": list(properties),
     }
 
 
