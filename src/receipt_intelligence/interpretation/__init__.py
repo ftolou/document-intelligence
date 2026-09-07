@@ -37,12 +37,18 @@ from receipt_intelligence.interpretation.contracts import (
     ValidationIssue,
 )
 from receipt_intelligence.interpretation.validation import validate_document_interpretation
-from receipt_intelligence.interpretation.workflow import OnePassDocumentInterpreter
+from receipt_intelligence.interpretation.workflow import (
+    BoundedDocumentInterpreter,
+    InterpretationExecutionLimitError,
+    InterpretationExecutionLimits,
+    OnePassDocumentInterpreter,
+)
 
 __all__ = [
     "CandidateEntity",
     "CandidateEntityReference",
     "CandidateFact",
+    "BoundedDocumentInterpreter",
     "ClassificationDimension",
     "ClassificationDimensionResult",
     "ClassificationOption",
@@ -60,6 +66,8 @@ __all__ = [
     "EvidenceReference",
     "EvidenceTextProvenance",
     "InterpretationField",
+    "InterpretationExecutionLimitError",
+    "InterpretationExecutionLimits",
     "InterpretationSpecification",
     "InterpretationValidationStatus",
     "LiteralValue",
