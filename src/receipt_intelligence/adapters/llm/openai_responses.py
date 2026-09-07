@@ -293,11 +293,11 @@ def _normalize_openai_error(exc: Exception) -> GenerationError:
     status_code = getattr(exc, "status_code", None)
     if isinstance(status_code, int):
         if status_code in {408, 429} or status_code >= 500:
-            raise GenerationProviderUnavailableError(
+            return GenerationProviderUnavailableError(
                 f"OpenAI request failed with HTTP {status_code}: {exc}",
                 provider="openai",
             )
-        raise GenerationError(
+        return GenerationError(
             f"OpenAI request failed with HTTP {status_code}: {exc}",
             provider="openai",
         )
