@@ -368,6 +368,8 @@ class NormalizationStatus(StrEnum):
 def _literal_json_schema_branch(
     literal_type: LiteralType,
     normalized_schema: dict[str, Any],
+    *,
+    normalized: bool,
 ) -> dict[str, Any]:
     currency_schema: dict[str, Any]
     unit_schema: dict[str, Any]
@@ -390,15 +392,28 @@ def _literal_json_schema_branch(
     else:
         unit_schema = {"type": "null"}
 
+    status_schema: dict[str, Any]
+    value_schema: dict[str, Any]
+    if normalized:
+        status_schema = {"type": "string", "const": NormalizationStatus.NORMALIZED.value}
+        value_schema = normalized_schema
+    else:
+        status_schema = {
+            "type": "string",
+            "enum": [
+                NormalizationStatus.NOT_ATTEMPTED.value,
+                NormalizationStatus.FAILED.value,
+                NormalizationStatus.UNSAFE.value,
+            ],
+        }
+        value_schema = {"type": "null"}
+
     properties = {
         "kind": {"type": "string", "const": "literal"},
         "literal_type": {"type": "string", "const": literal_type.value},
         "observed": {"type": "string", "minLength": 1, "maxLength": 10000},
-        "normalization_status": {
-            "type": "string",
-            "enum": [status.value for status in NormalizationStatus],
-        },
-        "normalized": {"anyOf": [normalized_schema, {"type": "null"}]},
+        "normalization_status": status_schema,
+        "normalized": value_schema,
         "currency": currency_schema,
         "unit": unit_schema,
     }
@@ -434,31 +449,24 @@ class LiteralValue(ContractModel):
         """Expose literal-type dependencies to schema-constrained generators."""
 
         base_schema = handler(core_schema)
+        normalized_schemas = {
+            LiteralType.TEXT: {"type": "string"},
+            LiteralType.IDENTIFIER: {"type": "string"},
+            LiteralType.DATE: {"type": "string", "pattern": rf"^{_DATE_PATTERN}$"},
+            LiteralType.TIME: {"type": "string", "pattern": rf"^{_TIME_PATTERN}$"},
+            LiteralType.DATETIME: {"type": "string", "pattern": rf"^{_DATETIME_PATTERN}$"},
+            LiteralType.AMOUNT: {"type": "string", "pattern": rf"^{_DECIMAL_PATTERN}$"},
+            LiteralType.MEASUREMENT: {"type": "number"},
+            LiteralType.NUMBER: {"type": "number"},
+            LiteralType.BOOLEAN: {"type": "boolean"},
+        }
         return {
             "title": base_schema.get("title", cls.__name__),
             "description": cls.__doc__,
             "anyOf": [
-                _literal_json_schema_branch(LiteralType.TEXT, {"type": "string"}),
-                _literal_json_schema_branch(LiteralType.IDENTIFIER, {"type": "string"}),
-                _literal_json_schema_branch(
-                    LiteralType.DATE,
-                    {"type": "string", "pattern": rf"^{_DATE_PATTERN}$"},
-                ),
-                _literal_json_schema_branch(
-                    LiteralType.TIME,
-                    {"type": "string", "pattern": rf"^{_TIME_PATTERN}$"},
-                ),
-                _literal_json_schema_branch(
-                    LiteralType.DATETIME,
-                    {"type": "string", "pattern": rf"^{_DATETIME_PATTERN}$"},
-                ),
-                _literal_json_schema_branch(
-                    LiteralType.AMOUNT,
-                    {"type": "string", "pattern": rf"^{_DECIMAL_PATTERN}$"},
-                ),
-                _literal_json_schema_branch(LiteralType.MEASUREMENT, {"type": "number"}),
-                _literal_json_schema_branch(LiteralType.NUMBER, {"type": "number"}),
-                _literal_json_schema_branch(LiteralType.BOOLEAN, {"type": "boolean"}),
+                _literal_json_schema_branch(literal_type, schema, normalized=normalized)
+                for literal_type, schema in normalized_schemas.items()
+                for normalized in (True, False)
             ],
         }
 
