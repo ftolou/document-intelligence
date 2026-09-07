@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from receipt_intelligence.adapters.llm import (
     OpenAIChatGateway,
     OpenAIGenerationGateway,
@@ -45,39 +47,39 @@ class _Client:
         self.responses = _Responses(output_text)
 
 
-def _fallback_schema() -> dict[str, Any]:
+def _schema() -> dict[str, Any]:
     return {
         "type": "object",
         "additionalProperties": False,
-        "properties": {"optional_value": {"type": "string"}},
+        "properties": {"value": {"type": "integer"}},
+        "required": ["value"],
     }
 
 
-def _assert_schema_instruction(text: str) -> None:
-    assert "JSON Schema" in text
-    assert "<response_json_schema>" in text
-    assert '"optional_value"' in text
-
-
-def test_generation_fallback_puts_original_schema_in_model_input() -> None:
-    client = _Client("{}")
+def test_generation_schema_uses_strict_output_without_prompt_duplication() -> None:
+    client = _Client('{"value":7}')
     gateway = OpenAIGenerationGateway(client=client)
 
     gateway.generate(
         GenerationRequest(
             model="opaque-model",
             prompt="Do the task.",
-            response_json_schema=_fallback_schema(),
+            response_json_schema=_schema(),
         )
     )
 
     payload = client.responses.calls[-1]
-    assert payload["text"] == {"format": {"type": "json_object"}}
-    _assert_schema_instruction(payload["input"])
+    assert payload["input"] == "Do the task."
+    assert payload["text"]["format"] == {
+        "type": "json_schema",
+        "name": "generation",
+        "schema": _schema(),
+        "strict": True,
+    }
 
 
-def test_chat_fallback_puts_original_schema_in_model_input() -> None:
-    client = _Client("{}")
+def test_chat_schema_uses_strict_output_without_prompt_duplication() -> None:
+    client = _Client('{"value":7}')
     gateway = OpenAIChatGateway(client=client)
 
     gateway.generate(
@@ -85,20 +87,21 @@ def test_chat_fallback_puts_original_schema_in_model_input() -> None:
             model="opaque-model",
             system_prompt="System intent.",
             user_prompt="Do the task.",
-            response_json_schema=_fallback_schema(),
+            response_json_schema=_schema(),
         )
     )
 
     payload = client.responses.calls[-1]
     assert payload["instructions"] == "System intent."
-    assert payload["text"] == {"format": {"type": "json_object"}}
-    _assert_schema_instruction(payload["input"])
+    assert payload["input"] == "Do the task."
+    assert payload["text"]["format"]["type"] == "json_schema"
+    assert payload["text"]["format"]["strict"] is True
 
 
-def test_multimodal_fallback_appends_schema_without_replacing_image_input(tmp_path: Path) -> None:
+def test_multimodal_schema_does_not_append_schema_to_model_input(tmp_path: Path) -> None:
     image_path = tmp_path / "receipt.png"
     image_path.write_bytes(b"png-data")
-    client = _Client("{}")
+    client = _Client('{"value":7}')
     gateway = OpenAIMultimodalGateway(client=client)
 
     gateway.generate(
@@ -107,37 +110,33 @@ def test_multimodal_fallback_appends_schema_without_replacing_image_input(tmp_pa
             prompt="Read the image.",
             image_paths=(image_path,),
             format_json=True,
-            response_json_schema=_fallback_schema(),
+            response_json_schema=_schema(),
         )
     )
 
     payload = client.responses.calls[-1]
     content = payload["input"][0]["content"]
-    assert payload["text"] == {"format": {"type": "json_object"}}
-    assert [part["type"] for part in content] == ["input_text", "input_image", "input_text"]
+    assert [part["type"] for part in content] == ["input_text", "input_image"]
     assert content[0]["text"] == "Read the image."
-    assert content[1]["image_url"].startswith("data:image/png;base64,")
-    _assert_schema_instruction(content[2]["text"])
+    assert payload["text"]["format"]["type"] == "json_schema"
 
 
-def test_strict_schema_transport_does_not_duplicate_schema_into_input() -> None:
+def test_incompatible_schema_fails_before_provider_call() -> None:
     schema = {
         "type": "object",
         "additionalProperties": False,
-        "properties": {"value": {"type": "integer"}},
-        "required": ["value"],
+        "properties": {"metadata": {"type": "object"}},
+        "required": ["metadata"],
     }
-    client = _Client('{"value":7}')
-    gateway = OpenAIGenerationGateway(client=client)
+    client = _Client("{}")
 
-    gateway.generate(
-        GenerationRequest(
-            model="opaque-model",
-            prompt="Do the task.",
-            response_json_schema=schema,
+    with pytest.raises(ValueError, match="not compatible"):
+        OpenAIGenerationGateway(client=client).generate(
+            GenerationRequest(
+                model="opaque-model",
+                prompt="Do the task.",
+                response_json_schema=schema,
+            )
         )
-    )
 
-    payload = client.responses.calls[-1]
-    assert payload["text"]["format"]["type"] == "json_schema"
-    assert payload["input"] == "Do the task."
+    assert client.responses.calls == []

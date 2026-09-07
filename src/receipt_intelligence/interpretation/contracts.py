@@ -12,9 +12,9 @@ from datetime import date, datetime, time
 from enum import StrEnum
 from math import isfinite
 from re import fullmatch
-from typing import Annotated, Literal, Self, TypeAlias
+from typing import Annotated, Any, Literal, Self, TypeAlias
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, GetJsonSchemaHandler, model_validator
 
 MAX_SPECIFICATION_DEPTH = 8
 MAX_SPECIFICATION_NODES = 256
@@ -40,6 +40,20 @@ class ContractModel(BaseModel):
     """Immutable, closed value object used at the interpretation boundary."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
+
+    @classmethod
+    def __get_pydantic_json_schema__(
+        cls,
+        core_schema: Any,
+        handler: GetJsonSchemaHandler,
+    ) -> dict[str, Any]:
+        """Make bounded contract fields explicit in generated response schemas."""
+
+        schema = handler(core_schema)
+        properties = schema.get("properties")
+        if isinstance(properties, dict):
+            schema["required"] = list(properties)
+        return schema
 
 
 class DocumentSource(ContractModel):
@@ -351,6 +365,66 @@ class NormalizationStatus(StrEnum):
     UNSAFE = "unsafe"
 
 
+def _literal_json_schema_branch(
+    literal_type: LiteralType,
+    normalized_schema: dict[str, Any],
+    *,
+    normalized: bool,
+) -> dict[str, Any]:
+    currency_schema: dict[str, Any]
+    unit_schema: dict[str, Any]
+    if literal_type is LiteralType.AMOUNT:
+        currency_schema = {
+            "anyOf": [
+                {"type": "string", "minLength": 1, "maxLength": 200, "pattern": r"\S"},
+                {"type": "null"},
+            ]
+        }
+    else:
+        currency_schema = {"type": "null"}
+    if literal_type is LiteralType.MEASUREMENT:
+        unit_schema = {
+            "anyOf": [
+                {"type": "string", "minLength": 1, "maxLength": 4000, "pattern": r"\S"},
+                {"type": "null"},
+            ]
+        }
+    else:
+        unit_schema = {"type": "null"}
+
+    status_schema: dict[str, Any]
+    value_schema: dict[str, Any]
+    if normalized:
+        status_schema = {"type": "string", "const": NormalizationStatus.NORMALIZED.value}
+        value_schema = normalized_schema
+    else:
+        status_schema = {
+            "type": "string",
+            "enum": [
+                NormalizationStatus.NOT_ATTEMPTED.value,
+                NormalizationStatus.FAILED.value,
+                NormalizationStatus.UNSAFE.value,
+            ],
+        }
+        value_schema = {"type": "null"}
+
+    properties = {
+        "kind": {"type": "string", "const": "literal"},
+        "literal_type": {"type": "string", "const": literal_type.value},
+        "observed": {"type": "string", "minLength": 1, "maxLength": 10000},
+        "normalization_status": status_schema,
+        "normalized": value_schema,
+        "currency": currency_schema,
+        "unit": unit_schema,
+    }
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": properties,
+        "required": list(properties),
+    }
+
+
 class LiteralValue(ContractModel):
     """Literal preserving observed content separately from optional normalization.
 
@@ -365,6 +439,36 @@ class LiteralValue(ContractModel):
     normalized: JsonScalar = None
     currency: Identifier | None = None
     unit: NonBlankText | None = None
+
+    @classmethod
+    def __get_pydantic_json_schema__(
+        cls,
+        core_schema: Any,
+        handler: GetJsonSchemaHandler,
+    ) -> dict[str, Any]:
+        """Expose literal-type dependencies to schema-constrained generators."""
+
+        base_schema = handler(core_schema)
+        normalized_schemas = {
+            LiteralType.TEXT: {"type": "string"},
+            LiteralType.IDENTIFIER: {"type": "string"},
+            LiteralType.DATE: {"type": "string", "pattern": rf"^{_DATE_PATTERN}$"},
+            LiteralType.TIME: {"type": "string", "pattern": rf"^{_TIME_PATTERN}$"},
+            LiteralType.DATETIME: {"type": "string", "pattern": rf"^{_DATETIME_PATTERN}$"},
+            LiteralType.AMOUNT: {"type": "string", "pattern": rf"^{_DECIMAL_PATTERN}$"},
+            LiteralType.MEASUREMENT: {"type": "number"},
+            LiteralType.NUMBER: {"type": "number"},
+            LiteralType.BOOLEAN: {"type": "boolean"},
+        }
+        return {
+            "title": base_schema.get("title", cls.__name__),
+            "description": cls.__doc__,
+            "anyOf": [
+                _literal_json_schema_branch(literal_type, schema, normalized=normalized)
+                for literal_type, schema in normalized_schemas.items()
+                for normalized in (True, False)
+            ],
+        }
 
     @model_validator(mode="after")
     def validate_normalization(self) -> Self:
@@ -411,14 +515,8 @@ class LiteralValue(ContractModel):
         return self
 
 
-FactSubject: TypeAlias = Annotated[
-    DocumentReference | CandidateEntityReference,
-    Field(discriminator="kind"),
-]
-FactObject: TypeAlias = Annotated[
-    LiteralValue | CandidateEntityReference,
-    Field(discriminator="kind"),
-]
+FactSubject: TypeAlias = DocumentReference | CandidateEntityReference
+FactObject: TypeAlias = LiteralValue | CandidateEntityReference
 
 
 class CandidateFact(ContractModel):

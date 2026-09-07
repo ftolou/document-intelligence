@@ -167,151 +167,71 @@ def test_structured_transport_uses_strict_schema_without_mutating_original() -> 
 
 
 @pytest.mark.parametrize(
-    "dynamic_property",
+    "schema",
     [
-        {"type": "object"},
-        {"type": ["object", "null"]},
-        {"type": "object", "additionalProperties": {"type": "string"}},
-    ],
-)
-def test_dynamic_and_nullable_objects_fall_back_without_schema_narrowing(
-    dynamic_property: dict[str, Any],
-) -> None:
-    schema = {
-        "type": "object",
-        "additionalProperties": False,
-        "properties": {"metadata": dynamic_property},
-        "required": ["metadata"],
-    }
-    client = _Client(_Response(output_text='{"metadata":{"extra":"ok"}}'))
-    result = OpenAIGenerationGateway(client=client).generate(_request(response_json_schema=schema))
-
-    assert client.responses.calls[-1]["text"] == {"format": {"type": "json_object"}}
-    assert parse_json_from_llm(result, response_json_schema=schema)["metadata"] == {"extra": "ok"}
-
-
-def test_optional_properties_fall_back_instead_of_becoming_required() -> None:
-    schema = {
-        "type": "object",
-        "additionalProperties": False,
-        "properties": {"optional_value": {"type": "string"}},
-    }
-    client = _Client(_Response(output_text="{}"))
-    result = OpenAIGenerationGateway(client=client).generate(_request(response_json_schema=schema))
-
-    assert client.responses.calls[-1]["text"] == {"format": {"type": "json_object"}}
-    assert parse_json_from_llm(result, response_json_schema=schema) == {}
-
-
-@pytest.mark.parametrize(
-    ("keyword", "constraint"),
-    [
-        ("allOf", [{"required": ["left"]}]),
-        ("not", {"required": ["other"]}),
-        ("dependentRequired", {"left": ["right"]}),
-        ("dependentSchemas", {"left": {"required": ["right"]}}),
-        ("if", {"required": ["left"]}),
-        ("then", {"required": ["right"]}),
-        ("else", {"required": ["right"]}),
-    ],
-)
-def test_unsupported_strict_compositions_fall_back_without_schema_narrowing(
-    keyword: str,
-    constraint: Any,
-) -> None:
-    value_schema = {
-        "type": "object",
-        "additionalProperties": False,
-        "properties": {"left": {"type": "string"}, "right": {"type": "string"}},
-        "required": ["left", "right"],
-        keyword: constraint,
-    }
-    schema = {
-        "type": "object",
-        "additionalProperties": False,
-        "properties": {"value": value_schema},
-        "required": ["value"],
-    }
-    output = {"value": {"left": "a", "right": "b"}}
-    client = _Client(_Response(output_text=json.dumps(output)))
-    result = OpenAIGenerationGateway(client=client).generate(_request(response_json_schema=schema))
-
-    assert client.responses.calls[-1]["text"] == {"format": {"type": "json_object"}}
-    assert parse_json_from_llm(result, response_json_schema=schema) == output
-
-
-@pytest.mark.parametrize(
-    ("keyword", "constraint"),
-    [
-        ("oneOf", [{"type": "string"}, {"type": "integer"}]),
-        ("prefixItems", [{"type": "string"}]),
-        ("contains", {"type": "string"}),
-        ("propertyNames", {"pattern": "^[a-z]+$"}),
-    ],
-)
-def test_other_unsupported_strict_keywords_fall_back_to_json_mode(
-    keyword: str,
-    constraint: Any,
-) -> None:
-    schema = {
-        "type": "object",
-        "additionalProperties": False,
-        "properties": {
-            "value": {
-                "type": "string",
-                keyword: constraint,
-            }
+        {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {"metadata": {"type": "object"}},
+            "required": ["metadata"],
         },
-        "required": ["value"],
-    }
-    client = _Client(_Response(output_text='{"value":"ok"}'))
-    result = OpenAIGenerationGateway(client=client).generate(_request(response_json_schema=schema))
-
-    assert client.responses.calls[-1]["text"] == {"format": {"type": "json_object"}}
-    assert parse_json_from_llm(result, response_json_schema=schema) == {"value": "ok"}
-
-
-@pytest.mark.parametrize(
-    ("schema", "output"),
-    [
-        (
-            {
-                "anyOf": [
-                    {
-                        "type": "object",
-                        "additionalProperties": False,
-                        "properties": {"value": {"type": "string"}},
-                        "required": ["value"],
-                    },
-                    {
-                        "type": "object",
-                        "additionalProperties": False,
-                        "properties": {"value": {"type": "integer"}},
-                        "required": ["value"],
-                    },
-                ]
+        {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {"optional_value": {"type": "string"}},
+        },
+        {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "value": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {"left": {"type": "string"}, "right": {"type": "string"}},
+                    "required": ["left", "right"],
+                    "allOf": [{"required": ["left"]}],
+                }
             },
-            {"value": "ok"},
-        ),
-        (
-            {
-                "additionalProperties": False,
-                "properties": {"value": {"type": "string"}},
-                "required": ["value"],
+            "required": ["value"],
+        },
+        {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "value": {
+                    "type": "string",
+                    "oneOf": [{"type": "string"}, {"type": "integer"}],
+                }
             },
-            {"value": "ok"},
-        ),
+            "required": ["value"],
+        },
+        {
+            "anyOf": [
+                {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {"value": {"type": "string"}},
+                    "required": ["value"],
+                },
+                {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {"value": {"type": "integer"}},
+                    "required": ["value"],
+                },
+            ]
+        },
     ],
 )
-def test_unsupported_strict_root_shapes_fall_back_without_schema_narrowing(
+def test_incompatible_structured_schemas_fail_before_provider_call(
     schema: dict[str, Any],
-    output: Any,
 ) -> None:
-    client = _Client(_Response(output_text=json.dumps(output)))
-    result = OpenAIGenerationGateway(client=client).generate(_request(response_json_schema=schema))
+    client = _Client()
 
-    assert client.responses.calls[-1]["text"] == {"format": {"type": "json_object"}}
-    assert parse_json_from_llm(result, response_json_schema=schema) == output
+    with pytest.raises(ValueError):
+        OpenAIGenerationGateway(client=client).generate(_request(response_json_schema=schema))
+
+    assert client.responses.calls == []
 
 
 @pytest.mark.parametrize("keyword", ["const", "enum"])

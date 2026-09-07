@@ -5,7 +5,6 @@ from __future__ import annotations
 import base64
 import copy
 import io
-import json
 import mimetypes
 import re
 import time
@@ -141,19 +140,14 @@ class _OpenAIResponsesAdapter:
         if system_prompt:
             payload["instructions"] = system_prompt
         if response_json_schema is not None:
-            transport_schema = _strict_transport_schema(response_json_schema)
-            if transport_schema is None:
-                payload["text"] = {"format": {"type": "json_object"}}
-                payload["input"] = _json_schema_fallback_input(input_value, response_json_schema)
-            else:
-                payload["text"] = {
-                    "format": {
-                        "type": "json_schema",
-                        "name": _schema_name(operation),
-                        "schema": transport_schema,
-                        "strict": True,
-                    }
+            payload["text"] = {
+                "format": {
+                    "type": "json_schema",
+                    "name": _schema_name(operation),
+                    "schema": _strict_transport_schema(response_json_schema),
+                    "strict": True,
                 }
+            }
         elif format_json:
             payload["text"] = {"format": {"type": "json_object"}}
         if self.reasoning_effort is not None:
@@ -243,32 +237,6 @@ class OpenAIMultimodalGateway(_OpenAIResponsesAdapter):
         )
 
 
-def _json_schema_fallback_input(input_value: Any, schema: dict[str, Any]) -> Any:
-    schema_json = json.dumps(schema, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
-    instruction = (
-        "Return exactly one JSON object matching this response JSON Schema. "
-        "Treat the schema as authoritative for the response shape.\n"
-        "<response_json_schema>\n"
-        f"{schema_json}\n"
-        "</response_json_schema>"
-    )
-    if isinstance(input_value, str):
-        return f"{input_value.rstrip()}\n\n{instruction}"
-    if isinstance(input_value, list):
-        copied_input = copy.deepcopy(input_value)
-        for message in reversed(copied_input):
-            if not isinstance(message, dict) or message.get("role") != "user":
-                continue
-            content = message.get("content")
-            if isinstance(content, list):
-                content.append({"type": "input_text", "text": instruction})
-                return copied_input
-            if isinstance(content, str):
-                message["content"] = f"{content.rstrip()}\n\n{instruction}"
-                return copied_input
-    raise ValueError("OpenAI JSON-schema fallback requires a string or user-message input.")
-
-
 def _response_text(response: Any, raw_response: dict[str, Any]) -> str:
     status = str(getattr(response, "status", None) or raw_response.get("status") or "").lower()
     if status == "incomplete":
@@ -276,7 +244,7 @@ def _response_text(response: Any, raw_response: dict[str, Any]) -> str:
             "incomplete_details"
         )
         raise GenerationIncompleteError(
-            f"OpenAI generation was incomplete: {details!r}",
+            f"OpenAI generation was incomplete: {details!r}.",
             provider="openai",
         )
     if status and status not in {"completed", "succeeded"}:
@@ -377,13 +345,13 @@ def _schema_name(operation: str) -> str:
     return (value or "generation")[:64]
 
 
-def _strict_transport_schema(schema: dict[str, Any]) -> dict[str, Any] | None:
-    """Return a non-narrowing strict transport schema, or request JSON mode."""
+def _strict_transport_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """Return an OpenAI strict schema without narrowing the response contract."""
 
     if schema.get("type") != "object" or "anyOf" in schema:
-        return None
+        raise ValueError("OpenAI structured output requires a single object root schema.")
     if _has_unfaithful_strict_shape(schema):
-        return None
+        raise ValueError("Response JSON Schema is not compatible with OpenAI structured output.")
     return _normalize_strict_schema_node(schema)
 
 
