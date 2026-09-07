@@ -244,7 +244,7 @@ def _response_text(response: Any, raw_response: dict[str, Any]) -> str:
             "incomplete_details"
         )
         raise GenerationIncompleteError(
-            f"OpenAI generation was incomplete: {details!r}",
+            f"OpenAI generation was incomplete: {details!r}.",
             provider="openai",
         )
     if status and status not in {"completed", "succeeded"}:
@@ -346,7 +346,7 @@ def _schema_name(operation: str) -> str:
 
 
 def _strict_transport_schema(schema: dict[str, Any]) -> dict[str, Any]:
-    """Return an OpenAI strict schema without weakening unsupported structure."""
+    """Return an OpenAI strict schema without narrowing the response contract."""
 
     if schema.get("type") != "object" or "anyOf" in schema:
         raise ValueError("OpenAI structured output requires a single object root schema.")
@@ -378,6 +378,10 @@ def _has_unfaithful_strict_shape(value: dict[str, Any]) -> bool:
     )
     if is_object or isinstance(properties, dict):
         if value.get("additionalProperties") is not False:
+            return True
+        property_names = set(properties) if isinstance(properties, dict) else set()
+        required_names = {name for name in value.get("required", []) if isinstance(name, str)}
+        if required_names != property_names:
             return True
     return any(_has_unfaithful_strict_shape(child) for child in _schema_children(value))
 
