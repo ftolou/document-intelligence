@@ -23,9 +23,7 @@ def _unsupported_response() -> dict[str, object]:
         "candidate_facts": [],
         "evidence": [],
         "review_signals": [],
-        "page_handling": [
-            {"page_range": {"start_page": 1, "end_page": 1}, "state": "irrelevant"}
-        ],
+        "page_handling": [{"page_range": {"start_page": 1, "end_page": 1}, "state": "irrelevant"}],
     }
 
 
