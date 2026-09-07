@@ -12,9 +12,9 @@ from datetime import date, datetime, time
 from enum import StrEnum
 from math import isfinite
 from re import fullmatch
-from typing import Annotated, Literal, Self, TypeAlias
+from typing import Annotated, Any, Literal, Self, TypeAlias
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, GetJsonSchemaHandler, model_validator
 
 MAX_SPECIFICATION_DEPTH = 8
 MAX_SPECIFICATION_NODES = 256
@@ -351,6 +351,50 @@ class NormalizationStatus(StrEnum):
     UNSAFE = "unsafe"
 
 
+def _literal_json_schema_branch(
+    literal_type: LiteralType,
+    normalized_schema: dict[str, Any],
+) -> dict[str, Any]:
+    currency_schema: dict[str, Any]
+    unit_schema: dict[str, Any]
+    if literal_type is LiteralType.AMOUNT:
+        currency_schema = {
+            "anyOf": [
+                {"type": "string", "minLength": 1, "maxLength": 200, "pattern": r"\S"},
+                {"type": "null"},
+            ]
+        }
+    else:
+        currency_schema = {"type": "null"}
+    if literal_type is LiteralType.MEASUREMENT:
+        unit_schema = {
+            "anyOf": [
+                {"type": "string", "minLength": 1, "maxLength": 4000, "pattern": r"\S"},
+                {"type": "null"},
+            ]
+        }
+    else:
+        unit_schema = {"type": "null"}
+
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "kind": {"type": "string", "const": "literal"},
+            "literal_type": {"type": "string", "const": literal_type.value},
+            "observed": {"type": "string", "minLength": 1, "maxLength": 10000},
+            "normalization_status": {
+                "type": "string",
+                "enum": [status.value for status in NormalizationStatus],
+            },
+            "normalized": {"anyOf": [normalized_schema, {"type": "null"}]},
+            "currency": currency_schema,
+            "unit": unit_schema,
+        },
+        "required": ["literal_type", "observed"],
+    }
+
+
 class LiteralValue(ContractModel):
     """Literal preserving observed content separately from optional normalization.
 
@@ -365,6 +409,43 @@ class LiteralValue(ContractModel):
     normalized: JsonScalar = None
     currency: Identifier | None = None
     unit: NonBlankText | None = None
+
+    @classmethod
+    def __get_pydantic_json_schema__(
+        cls,
+        core_schema: Any,
+        handler: GetJsonSchemaHandler,
+    ) -> dict[str, Any]:
+        """Expose literal-type dependencies to schema-constrained generators."""
+
+        base_schema = handler(core_schema)
+        return {
+            "title": base_schema.get("title", cls.__name__),
+            "description": cls.__doc__,
+            "anyOf": [
+                _literal_json_schema_branch(LiteralType.TEXT, {"type": "string"}),
+                _literal_json_schema_branch(LiteralType.IDENTIFIER, {"type": "string"}),
+                _literal_json_schema_branch(
+                    LiteralType.DATE,
+                    {"type": "string", "pattern": rf"^{_DATE_PATTERN}$"},
+                ),
+                _literal_json_schema_branch(
+                    LiteralType.TIME,
+                    {"type": "string", "pattern": rf"^{_TIME_PATTERN}$"},
+                ),
+                _literal_json_schema_branch(
+                    LiteralType.DATETIME,
+                    {"type": "string", "pattern": rf"^{_DATETIME_PATTERN}$"},
+                ),
+                _literal_json_schema_branch(
+                    LiteralType.AMOUNT,
+                    {"type": "string", "pattern": rf"^{_DECIMAL_PATTERN}$"},
+                ),
+                _literal_json_schema_branch(LiteralType.MEASUREMENT, {"type": "number"}),
+                _literal_json_schema_branch(LiteralType.NUMBER, {"type": "number"}),
+                _literal_json_schema_branch(LiteralType.BOOLEAN, {"type": "boolean"}),
+            ],
+        }
 
     @model_validator(mode="after")
     def validate_normalization(self) -> Self:
@@ -411,14 +492,8 @@ class LiteralValue(ContractModel):
         return self
 
 
-FactSubject: TypeAlias = Annotated[
-    DocumentReference | CandidateEntityReference,
-    Field(discriminator="kind"),
-]
-FactObject: TypeAlias = Annotated[
-    LiteralValue | CandidateEntityReference,
-    Field(discriminator="kind"),
-]
+FactSubject: TypeAlias = DocumentReference | CandidateEntityReference
+FactObject: TypeAlias = LiteralValue | CandidateEntityReference
 
 
 class CandidateFact(ContractModel):
