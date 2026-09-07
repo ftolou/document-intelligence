@@ -244,6 +244,7 @@ def test_interprets_all_outputs_through_one_provider_neutral_call(tmp_path: Path
     assert len(gateway.requests) == 1
     generation_request = gateway.requests[0]
     assert generation_request.operation == "document_interpretation"
+    assert generation_request.temperature is None
     assert generation_request.format_json is True
     assert generation_request.response_json_schema is not None
     assert len(generation_request.image_paths) == 1
