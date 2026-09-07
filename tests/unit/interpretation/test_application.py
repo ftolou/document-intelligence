@@ -14,22 +14,22 @@ from receipt_intelligence.interpretation import (
 from receipt_intelligence.pipeline.integrated_receipt_pipeline import run_receipt_extraction
 
 
+def _unsupported_response() -> dict[str, object]:
+    return {
+        "classification": {"status": "unsupported", "reason": "Outside the options."},
+        "document_map": {"nodes": []},
+        "mentions": [],
+        "candidate_entities": [],
+        "candidate_facts": [],
+        "evidence": [],
+        "review_signals": [],
+        "page_handling": [{"page_range": {"start_page": 1, "end_page": 1}, "state": "irrelevant"}],
+    }
+
+
 def test_public_application_api_returns_typed_validated_outcome(tmp_path: Path) -> None:
     source_path, media_type = support.write_source(tmp_path)
-    gateway = support.RecordingGateway(
-        {
-            "classification": {"status": "unsupported", "reason": "Outside the options."},
-            "document_map": {"nodes": []},
-            "mentions": [],
-            "candidate_entities": [],
-            "candidate_facts": [],
-            "evidence": [],
-            "review_signals": [],
-            "page_handling": [
-                {"page_range": {"start_page": 1, "end_page": 1}, "state": "irrelevant"}
-            ],
-        }
-    )
+    gateway = support.RecordingGateway(_unsupported_response())
 
     outcome = run_document_interpretation(
         support.interpretation_request(media_type=media_type),
@@ -42,6 +42,41 @@ def test_public_application_api_returns_typed_validated_outcome(tmp_path: Path) 
     assert isinstance(outcome, DocumentInterpretationOutcome)
     assert outcome.validation.status is InterpretationValidationStatus.VALID
     assert len(gateway.requests) == 1
+    assert gateway.requests[0].num_predict == 16_384
+
+
+def test_public_application_api_forwards_explicit_output_budget(tmp_path: Path) -> None:
+    source_path, media_type = support.write_source(tmp_path)
+    gateway = support.RecordingGateway(_unsupported_response())
+
+    run_document_interpretation(
+        support.interpretation_request(media_type=media_type),
+        source_path,
+        gateway=gateway,
+        model="generic-multimodal-model",
+        source_limits=support.limits(),
+        max_output_tokens=12_345,
+    )
+
+    assert len(gateway.requests) == 1
+    assert gateway.requests[0].num_predict == 12_345
+
+
+def test_public_application_api_rejects_nonpositive_output_budget(tmp_path: Path) -> None:
+    source_path, media_type = support.write_source(tmp_path)
+    gateway = support.RecordingGateway(_unsupported_response())
+
+    with pytest.raises(ValueError, match="max_output_tokens"):
+        run_document_interpretation(
+            support.interpretation_request(media_type=media_type),
+            source_path,
+            gateway=gateway,
+            model="generic-multimodal-model",
+            source_limits=support.limits(),
+            max_output_tokens=0,
+        )
+
+    assert gateway.requests == []
 
 
 def test_public_application_api_propagates_provider_neutral_failure(tmp_path: Path) -> None:
