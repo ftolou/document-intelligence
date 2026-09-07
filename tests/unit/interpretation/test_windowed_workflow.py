@@ -17,6 +17,8 @@ from receipt_intelligence.application.ports.multimodal import (
 )
 from receipt_intelligence.interpretation import (
     CandidateEntityReference,
+    ClassificationDimension,
+    ClassificationOption,
     InterpretationExecutionLimitError,
     InterpretationExecutionLimits,
     InterpretationValidationStatus,
@@ -225,6 +227,76 @@ def test_semantically_disagreeing_classifications_are_not_silently_merged(
 
     with pytest.raises(MalformedGenerationError, match="classifications disagree"):
         _run(tmp_path, gateway, pages=4, pages_per_call=2, max_calls=2)
+
+
+def test_classification_dimensions_are_aggregated_by_key_in_specification_order(
+    tmp_path: Path,
+) -> None:
+    responses = [_window_response(1, 2), _window_response(3, 4)]
+    for response, page_number in zip(responses, (1, 3), strict=True):
+        response["classification"]["dimensions"].append(
+            {
+                "dimension_key": "delivery_speed",
+                "option_paths": [["standard_delivery"]],
+                "evidence_refs": ["e-2"],
+            }
+        )
+        response["evidence"].append(
+            {
+                "evidence_id": "e-2",
+                "source_id": "document-1",
+                "page": {"page_number": page_number},
+                "excerpt": "Standard delivery",
+                "excerpt_provenance": "model_observed",
+            }
+        )
+    responses[1]["classification"]["dimensions"].reverse()
+    gateway = _SequenceGateway(responses)
+    source_path, media_type = support.write_source(tmp_path, pages=4)
+    request = support.interpretation_request(media_type=media_type)
+    request = request.model_copy(
+        update={
+            "specification": request.specification.model_copy(
+                update={
+                    "classifications": request.specification.classifications
+                    + (
+                        ClassificationDimension(
+                            key="delivery_speed",
+                            description="The stated delivery speed.",
+                            options=(
+                                ClassificationOption(
+                                    key="standard_delivery",
+                                    description="Standard delivery.",
+                                ),
+                            ),
+                        ),
+                    )
+                }
+            )
+        }
+    )
+
+    outcome = run_document_interpretation(
+        request,
+        source_path,
+        gateway=gateway,
+        model="generic-multimodal-model",
+        source_limits=support.limits(max_pages=4),
+        execution_limits=InterpretationExecutionLimits(
+            max_pages_per_call=2,
+            max_provider_calls=2,
+        ),
+    )
+
+    assert [
+        dimension.dimension_key for dimension in outcome.interpretation.classification.dimensions
+    ] == ["record_kind", "delivery_speed"]
+    assert [
+        dimension.evidence_refs for dimension in outcome.interpretation.classification.dimensions
+    ] == [
+        ("w1-e1", "w2-e1"),
+        ("w1-e2", "w2-e2"),
+    ]
 
 
 @pytest.mark.parametrize(

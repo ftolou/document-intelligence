@@ -501,8 +501,18 @@ def _aggregate_classification(
             "Window classifications disagree and cannot be deterministically aggregated."
         )
 
+    dimensions_by_interpretation = tuple(
+        {dimension.dimension_key: dimension for dimension in item.classification.dimensions}
+        for item in interpretations
+    )
+    dimension_keys = (
+        tuple(definition.key for definition in interpretations[0].specification.classifications)
+        if first.dimensions
+        else ()
+    )
     dimensions: list[ClassificationDimensionResult] = []
-    for index, dimension in enumerate(first.dimensions):
+    for dimension_key in dimension_keys:
+        dimension = dimensions_by_interpretation[0][dimension_key]
         dimensions.append(
             ClassificationDimensionResult(
                 dimension_key=dimension.dimension_key,
@@ -510,8 +520,8 @@ def _aggregate_classification(
                 confidence=dimension.confidence,
                 evidence_refs=tuple(
                     evidence_ref
-                    for item in interpretations
-                    for evidence_ref in item.classification.dimensions[index].evidence_refs
+                    for item in dimensions_by_interpretation
+                    for evidence_ref in item[dimension_key].evidence_refs
                 ),
             )
         )
@@ -530,8 +540,12 @@ def _aggregate_classification(
 def _classification_semantics(classification: DocumentClassification) -> dict[str, object]:
     payload = classification.model_dump(mode="json")
     payload.pop("evidence_refs")
-    for dimension in payload["dimensions"]:
+    dimensions = payload.pop("dimensions")
+    dimensions_by_key = {}
+    for dimension in dimensions:
         dimension.pop("evidence_refs")
+        dimensions_by_key[dimension.pop("dimension_key")] = dimension
+    payload["dimensions"] = dimensions_by_key
     return payload
 
 
