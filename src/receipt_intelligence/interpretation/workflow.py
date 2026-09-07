@@ -148,6 +148,8 @@ def _build_prompt(request: DocumentInterpretationRequest, *, page_count: int) ->
     specification_json = request.specification.model_dump_json(indent=2)
     return f"""Interpret the {page_count} ordered page image(s) as one document.
 
+Return exactly one JSON object matching the supplied response schema.
+
 The source_id for every evidence reference and document reference must be
 {request.source.source_id!r}. Page numbers in evidence are one-based.
 
