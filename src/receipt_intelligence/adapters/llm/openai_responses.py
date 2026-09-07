@@ -328,7 +328,7 @@ def _normalize_openai_error(exc: Exception) -> GenerationError:
             return GenerationProviderUnavailableError(
                 f"OpenAI request failed with HTTP {status_code}: {exc}",
                 provider="openai",
-            ) from exc
+            )
         return GenerationError(
             f"OpenAI request failed with HTTP {status_code}: {exc}",
             provider="openai",
