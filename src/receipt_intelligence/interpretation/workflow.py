@@ -101,7 +101,6 @@ class OnePassDocumentInterpreter:
                     prompt=prompt,
                     image_paths=tuple(image_paths),
                     operation="document_interpretation",
-                    temperature=0.0,
                     format_json=True,
                     response_json_schema=schema,
                     system_prompt=_SYSTEM_PROMPT,
