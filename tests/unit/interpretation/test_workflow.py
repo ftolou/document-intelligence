@@ -250,6 +250,7 @@ def test_interprets_all_outputs_through_one_provider_neutral_call(tmp_path: Path
     assert len(generation_request.image_paths) == 1
     assert gateway.page_payloads[0][0].startswith(b"\x89PNG")
     assert request.specification.model_dump_json(indent=2) in generation_request.prompt
+    assert "JSON" in generation_request.prompt
     assert "supported_record" in generation_request.prompt
 
     assert result.source is request.source
